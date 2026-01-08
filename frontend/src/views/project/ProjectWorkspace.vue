@@ -8,6 +8,9 @@
                 @dataset-updated="handleDatasetUpdate"
             />
         </el-tab-pane>
+        <el-tab-pane label="数据探索 (EDA)">
+            <EdaTab :datasetId="dataset?.dataset_id" />
+        </el-tab-pane>
         <el-tab-pane label="统计建模">
             <ModelingTab 
                 :projectId="route.params.id"
@@ -24,6 +27,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import DataTab from './components/DataTab.vue'
 import ModelingTab from './components/ModelingTab.vue'
+import EdaTab from './components/EdaTab.vue'
 import api from '../../api/client'
 
 const route = useRoute()

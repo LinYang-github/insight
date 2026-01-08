@@ -65,8 +65,29 @@
                     </el-descriptions-item>
                 </el-descriptions>
 
-                <!-- Summary Table -->
-                <el-table :data="results.summary" style="width: 100%" height="400" stripe border size="small">
+                   <!-- ML Results -->
+                <div v-if="results.importance">
+                    <el-descriptions title="模型指标 (Metrics)" :column="2" border size="small" style="margin-bottom: 20px">
+                        <el-descriptions-item v-for="(val, key) in results.metrics" :key="key" :label="key">
+                            <template v-if="typeof val === 'number'">{{ val.toFixed(4) }}</template>
+                            <template v-else>{{ val }}</template>
+                        </el-descriptions-item>
+                    </el-descriptions>
+                    
+                    <h3>特征重要性 (Feature Importance - SHAP)</h3>
+                    <el-table :data="results.importance" style="width: 100%" height="400" stripe border size="small">
+                        <el-table-column prop="feature" label="变量名" />
+                        <el-table-column prop="importance" label="重要性 (SHAP mean)">
+                            <template #default="scope">
+                                <el-progress :percentage="Math.min(scope.row.importance * 100 / maxImportance, 100)" :show-text="false" />
+                                {{ scope.row.importance.toFixed(5) }}
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </div>
+
+                <!-- Statistical Summary Table -->
+                <el-table v-else :data="results.summary" style="width: 100%" height="400" stripe border size="small">
                     <el-table-column prop="variable" label="变量" />
                     <el-table-column prop="coef" label="系数 (Coef)">
                         <template #default="scope">{{ scope.row.coef.toFixed(4) }}</template>
@@ -109,6 +130,11 @@ const props = defineProps({
 const loading = ref(false)
 const results = ref(null)
 
+const maxImportance = computed(() => {
+    if (!results.value || !results.value.importance) return 1
+    return Math.max(...results.value.importance.map(i => i.importance))
+})
+
 const config = reactive({
     model_type: 'logistic',
     target: null, 
@@ -126,7 +152,9 @@ watch(() => config.model_type, (newType) => {
 const modelOptions = [
     { label: '逻辑回归 (Logistic)', value: 'logistic' },
     { label: '线性回归 (Linear)', value: 'linear' },
-    { label: 'Cox 生存分析', value: 'cox' }
+    { label: 'Cox 生存分析', value: 'cox' },
+    { label: '随机森林 (Random Forest)', value: 'random_forest' },
+    { label: 'XGBoost', value: 'xgboost' }
 ]
 
 const variableOptions = computed(() => {
