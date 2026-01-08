@@ -1,0 +1,80 @@
+<template>
+  <div>
+    <div class="data-actions">
+      <el-upload
+        class="upload-demo"
+        :action="uploadUrl"
+        :headers="headers"
+        :on-success="handleUploadFinish"
+        :on-error="handleUploadError"
+        :show-file-list="false"
+      >
+        <el-button type="primary">上传文件 (CSV/Excel)</el-button>
+      </el-upload>
+    </div>
+
+    <el-card v-if="metadata" class="box-card" shadow="never" style="margin-top: 20px">
+         <template #header>
+            <div class="card-header">
+                <span>数据集元数据 ({{ metadata.row_count }} 行)</span>
+            </div>
+         </template>
+         <el-table :data="metadata.variables" style="width: 100%" stripe border>
+            <el-table-column prop="name" label="变量名" />
+            <el-table-column prop="type" label="类型">
+                <template #default="scope">
+                    <el-tag :type="scope.row.type === 'numerical' ? 'success' : 'warning'">{{ scope.row.type === 'numerical' ? '数值型' : (scope.row.type === 'categorical' ? '分类变量' : '文本') }}</el-tag>
+                </template>
+            </el-table-column>
+            <el-table-column prop="role" label="角色"/>
+            <el-table-column prop="missing_count" label="缺失值" />
+            <el-table-column prop="unique_count" label="唯一值" />
+         </el-table>
+    </el-card>
+    
+    <el-empty v-else description="暂无数据，请先上传文件" style="margin-top: 50px" />
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+
+const props = defineProps({
+    projectId: { type: String, required: true },
+    dataset: { type: Object, default: null }
+})
+const emit = defineEmits(['dataset-updated'])
+
+const metadata = ref(null)
+
+watch(() => props.dataset, (newVal) => {
+    if (newVal && newVal.metadata) {
+        metadata.value = newVal.metadata
+    }
+}, { immediate: true })
+
+const uploadUrl = computed(() => `/api/data/upload/${props.projectId}`)
+const headers = computed(() => ({
+    Authorization: `Bearer ${localStorage.getItem('token')}`
+}))
+
+const handleUploadFinish = (response) => {
+    ElMessage.success('上传成功')
+    metadata.value = response.metadata
+    emit('dataset-updated', { 
+        dataset_id: response.dataset_id, 
+        metadata: response.metadata 
+    })
+}
+
+const handleUploadError = () => {
+    ElMessage.error('上传失败')
+}
+</script>
+
+<style scoped>
+.data-actions {
+    margin-bottom: 20px;
+}
+</style>

@@ -1,0 +1,13 @@
+from flask import Blueprint
+from .auth import auth_bp
+from .projects import projects_bp
+from .data import data_bp
+from .modeling import modeling_bp
+
+main_bp = Blueprint('api', __name__)
+
+def register_blueprints(app):
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(projects_bp, url_prefix='/api/projects')
+    app.register_blueprint(data_bp, url_prefix='/api/data')
+    app.register_blueprint(modeling_bp, url_prefix='/api/modeling')
