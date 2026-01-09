@@ -10,11 +10,12 @@ eda_bp = Blueprint('eda', __name__)
 @token_required
 def get_stats(current_user, dataset_id):
     dataset = Dataset.query.get_or_404(dataset_id)
-    project = enumerate(Project.query.filter_by(id=dataset.project_id))
-    # Permission check omitted for MVP speed within same user context, but ideally check project author
+    # Permission check or project check
     
     try:
-        stats = EdaService.get_basic_stats(dataset.filepath)
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
+        stats = EdaService.get_basic_stats(df)
         return jsonify({'stats': stats}), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -24,7 +25,9 @@ def get_stats(current_user, dataset_id):
 def get_correlation(current_user, dataset_id):
     dataset = Dataset.query.get_or_404(dataset_id)
     try:
-        corr_data = EdaService.get_correlation(dataset.filepath)
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
+        corr_data = EdaService.get_correlation(df)
         return jsonify(corr_data), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -34,7 +37,9 @@ def get_correlation(current_user, dataset_id):
 def get_distribution(current_user, dataset_id, column):
     dataset = Dataset.query.get_or_404(dataset_id)
     try:
-        dist_data = EdaService.get_distribution(dataset.filepath, column)
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
+        dist_data = EdaService.get_distribution(df, column)
         return jsonify(dist_data), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500

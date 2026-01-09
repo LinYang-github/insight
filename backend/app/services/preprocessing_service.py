@@ -7,17 +7,15 @@ import os
 
 class PreprocessingService:
     @staticmethod
-    def impute_data(filepath, strategies):
+    def impute_data(df, strategies):
         """
         Impute missing values.
-        :param filepath: Path to CSV
+        :param df: pandas DataFrame
         :param strategies: Dict { "col_name": "mean"|"median"|"mode"|"drop" }
         :return: Processed DataFrame
         """
-        # Robust read
-        df = PreprocessingService._read_robust(filepath)
-        if df is None:
-            raise ValueError("Failed to read file")
+        # copy to avoid mutating original if needed (though here we want to return new one)
+        df = df.copy()
 
         for col, method in strategies.items():
             if col not in df.columns:
@@ -41,24 +39,23 @@ class PreprocessingService:
         return df
 
     @staticmethod
-    def encode_data(filepath, columns):
+    def encode_data(df, columns):
         """
-        Factorize (Label Encode) variables.
-        :param filepath: Path to CSV
+        One-Hot Encode nominal variables (get_dummies) to ensure statistical accuracy.
+        Drop first level to avoid dummy variable trap (multicollinearity).
+        :param df: pandas DataFrame
         :param columns: List of column names to encode
         :return: Processed DataFrame
         """
-        df = PreprocessingService._read_robust(filepath)
-        if df is None:
-            raise ValueError("Failed to read file")
+        df = df.copy()
+        
+        valid_cols = [c for c in columns if c in df.columns]
+        if not valid_cols:
+            return df
 
-        for col in columns:
-            if col not in df.columns:
-                continue
-            # Use pandas factorize (returns codes, uniques)
-            codes, uniques = pd.factorize(df[col])
-            # Replace with codes
-            df[col] = codes
+        # Use get_dummies with drop_first=True for rigorous statistical modeling
+        # This converts nominal 'A','B','C' -> 'B','C' (A is reference)
+        df = pd.get_dummies(df, columns=valid_cols, drop_first=True)
             
         return df
 

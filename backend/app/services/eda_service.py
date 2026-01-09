@@ -5,27 +5,11 @@ from app.services.data_service import DataService
 
 class EdaService:
     @staticmethod
-    def get_basic_stats(filepath):
+    def get_basic_stats(df):
         """
         Returns descriptive statistics for all columns.
         """
-        df = pd.read_csv(filepath, low_memory=False) # DataService handles encoding, but we assume UTF-8/compatible here or need to reuse logic
-        # Ideally we should reuse DataService.read_dataframe to handle encoding robustly. 
-        # For now, let's implement robust reading here quickly or better yet reuse.
-        # Let's duplicate robustness for now to be safe, or refactor DataService to expose read.
-        
-        # Robust read logic
-        encodings = ['utf-8', 'gb18030', 'latin1']
-        df = None
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(filepath, encoding=encoding, low_memory=False)
-                break
-            except UnicodeDecodeError:
-                continue
-        if df is None:
-            raise ValueError("Failed to read file")
-
+        # df passed in directly
         stats = []
         for col in df.columns:
             dtype = str(df[col].dtype)
@@ -58,22 +42,10 @@ class EdaService:
         return DataService.sanitize_for_json(stats)
 
     @staticmethod
-    def get_correlation(filepath):
+    def get_correlation(df):
         """
         Returns correlation matrix for numerical columns.
         """
-        # Robust read
-        encodings = ['utf-8', 'gb18030', 'latin1']
-        df = None
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(filepath, encoding=encoding, low_memory=False)
-                break
-            except UnicodeDecodeError:
-                continue
-        
-        if df is None: return []
-
         numeric_df = df.select_dtypes(include=[np.number])
         if numeric_df.empty:
             return {'columns': [], 'matrix': []}
@@ -90,20 +62,10 @@ class EdaService:
         })
 
     @staticmethod
-    def get_distribution(filepath, column, bins=20):
+    def get_distribution(df, column, bins=20):
         """
         Returns histogram data for a specific column.
         """
-        # Robust read
-        encodings = ['utf-8', 'gb18030', 'latin1']
-        df = None
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(filepath, encoding=encoding, low_memory=False)
-                break
-            except UnicodeDecodeError:
-                continue
-        
         if column not in df.columns:
             return None
 

@@ -25,3 +25,19 @@ class Dataset(db.Model):
 
     def __repr__(self):
         return '<Dataset {}>'.format(self.name)
+
+# Event listener for file cleanup
+from sqlalchemy import event
+import os
+
+@event.listens_for(Dataset, 'after_delete')
+def receive_after_delete(mapper, connection, target):
+    """
+    Automatically delete the physical file when a Dataset record is deleted.
+    """
+    if target.filepath and os.path.exists(target.filepath):
+        try:
+            os.remove(target.filepath)
+        except OSError:
+            # Log warning in production, for now pass
+            pass

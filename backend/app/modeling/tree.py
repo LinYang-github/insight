@@ -1,0 +1,122 @@
+
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import roc_curve, auc, confusion_matrix, accuracy_score, mean_squared_error, r2_score
+import xgboost as xgb
+import shap
+from .base import BaseModelStrategy
+from app.utils.formatter import ResultFormatter
+
+class TreeModelStrategy(BaseModelStrategy):
+    def __init__(self, model_type):
+        self.model_type = model_type
+
+    def fit(self, df, target, features, params):
+        X = df[features]
+        y = df[target]
+
+        # Determine task
+        is_classification = False
+        if pd.api.types.is_numeric_dtype(y):
+             if y.nunique() <= 10 and sorted(y.unique().tolist()) == [0, 1]:
+                 is_classification = True
+             elif y.nunique() <= 10:
+                 is_classification = True # Assumption
+             else:
+                 is_classification = False
+        else:
+             is_classification = True
+
+        # Encode Y
+        if is_classification and not pd.api.types.is_numeric_dtype(y):
+             y = pd.Categorical(y).codes
+        
+        # Encode X (Robust encoding for Categorical)
+        X = X.copy()
+        for col in X.columns:
+            if not pd.api.types.is_numeric_dtype(X[col]):
+                X[col] = X[col].astype(str)
+                X[col] = pd.Categorical(X[col]).codes
+
+        # Params
+        n_estimators = int(params.get('n_estimators', 100))
+        max_depth = params.get('max_depth', None)
+        if max_depth is not None and str(max_depth).strip() != '':
+             max_depth = int(max_depth)
+        else:
+             max_depth = None if self.model_type == 'random_forest' else 6
+             
+        learning_rate = float(params.get('learning_rate', 0.1))
+
+        # Model Init
+        model = self._init_model(is_classification, n_estimators, max_depth, learning_rate)
+        
+        # Fit
+        model.fit(X, y)
+        
+        # Eval
+        metrics, plots = self._evaluate(model, X, y, is_classification)
+        
+        # Explain
+        importance = self._explain(model, X, features)
+        
+        return {
+            'model_type': self.model_type,
+            'task': 'classification' if is_classification else 'regression',
+            'metrics': metrics,
+            'importance': importance,
+            'plots': plots
+        }
+    
+    def _init_model(self, is_clf, n_est, depth, lr):
+        if self.model_type == 'random_forest':
+            if is_clf: return RandomForestClassifier(n_estimators=n_est, max_depth=depth, random_state=42)
+            else: return RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=42)
+        elif self.model_type == 'xgboost':
+            if is_clf: return xgb.XGBClassifier(n_estimators=n_est, max_depth=depth, learning_rate=lr, random_state=42, use_label_encoder=False, eval_metric='logloss')
+            else: return xgb.XGBRegressor(n_estimators=n_est, max_depth=depth, learning_rate=lr, random_state=42)
+        raise ValueError(f"Unknown model type {self.model_type}")
+
+    def _evaluate(self, model, X, y, is_clf):
+        metrics = {}
+        plots = {}
+        y_pred = model.predict(X)
+        
+        if is_clf:
+            y_prob = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else y_pred
+            metrics['accuracy'] = ResultFormatter.format_float(accuracy_score(y, y_pred), 4)
+            if len(np.unique(y)) == 2:
+                 fpr, tpr, _ = roc_curve(y, y_prob)
+                 metrics['auc'] = ResultFormatter.format_float(auc(fpr, tpr), 4)
+                 plots['roc'] = {'fpr': fpr.tolist(), 'tpr': tpr.tolist()}
+            cm = confusion_matrix(y, y_pred)
+            metrics['confusion_matrix'] = cm.tolist()
+        else:
+            metrics['r2'] = ResultFormatter.format_float(r2_score(y, y_pred), 4)
+            metrics['rmse'] = ResultFormatter.format_float(np.sqrt(mean_squared_error(y, y_pred)), 4)
+            
+        return metrics, plots
+
+    def _explain(self, model, X, features):
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X)
+        
+        if isinstance(shap_values, list): 
+            shap_values = shap_values[1]
+        
+        feature_importance = np.abs(shap_values).mean(axis=0)
+        importance_df = pd.DataFrame({
+            'feature': features,
+            'importance': feature_importance
+        }).sort_values(by='importance', ascending=False)
+        
+        return importance_df.to_dict(orient='records')
+
+class RandomForestStrategy(TreeModelStrategy):
+    def __init__(self):
+        super().__init__('random_forest')
+
+class XGBoostStrategy(TreeModelStrategy):
+    def __init__(self):
+        super().__init__('xgboost')
