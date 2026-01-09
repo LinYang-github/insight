@@ -104,3 +104,38 @@ def calculate_cif(current_user):
         return jsonify(results), 200
     except Exception as e:
         return jsonify({'message': f"CIF Calculation failed: {str(e)}"}), 500
+
+@advanced_bp.route('/nomogram', methods=['POST'])
+@token_required
+def generate_nomogram(current_user):
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    try:
+         df, dataset = DataService.load_data(dataset_id, current_user)
+    except Exception as e:
+         return jsonify({'message': str(e)}), 404
+    
+    target = data.get('target')
+    event_col = data.get('event_col')
+    model_type = data.get('model_type', 'logistic')
+    predictors = data.get('predictors', [])
+    
+    if not predictors:
+         return jsonify({'message': 'Predictors are required'}), 400
+
+    # Validation
+    try:
+         tgt_arg = target
+         if model_type == 'cox' and event_col:
+             tgt_arg = {'time': target, 'event': event_col}
+         ModelingService.check_data_integrity(df, predictors, tgt_arg)
+    except Exception as e:
+         return jsonify({'message': str(e)}), 400
+
+    try:
+        results = AdvancedModelingService.generate_nomogram(
+            df, target, event_col, model_type, predictors
+        )
+        return jsonify(results), 200
+    except Exception as e:
+        return jsonify({'message': f"Nomogram generation failed: {str(e)}"}), 500

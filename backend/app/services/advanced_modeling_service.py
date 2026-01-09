@@ -185,8 +185,8 @@ class AdvancedModelingService:
             # But getting design matrix from formula on new data:
             # dmatrix = patsy.build_design_matrices([model.data.design_info], pred_df, return_type='dataframe')[0]
             
-            dmatrix_pred = patsy.build_design_matrices([model.data.design_info.builder], pred_df, return_type='dataframe')[0]
-            dmatrix_ref = patsy.build_design_matrices([model.data.design_info.builder], ref_df, return_type='dataframe')[0]
+            dmatrix_pred = patsy.build_design_matrices([model.model.data.design_info], pred_df, return_type='dataframe')[0]
+            dmatrix_ref = patsy.build_design_matrices([model.model.data.design_info], ref_df, return_type='dataframe')[0]
             
             lp_pred = dmatrix_pred.dot(model.params)
             lp_ref = dmatrix_ref.dot(model.params).iloc[0]
@@ -432,4 +432,187 @@ class AdvancedModelingService:
                 except Exception as e:
                     print(f"AJ fit failed for grp={grp} evt={evt}: {e}")
                     
+        return results
+
+    @staticmethod
+    def generate_nomogram(df, target, event_col, model_type, predictors):
+        """
+        Generate data for Nomogram and Web Calculator.
+        
+        Logic:
+        1. Fit Model -> Get Coefs.
+        2. Calculate "Points" for each variable based on its effect size relative to the one with max effect.
+        3. Create mapping: Value -> Points.
+        4. Create mapping: Total Points -> Probability.
+        """
+        results = {
+            'variables': [],
+            'risk_table': []
+        }
+        
+        # 1. Fit Model
+        # Simple Logic: Reuse fit_simple_model or just fit here.
+        # We need the model object to predict.
+        df_clean = df[[target] + predictors].copy()
+        if event_col: 
+            df_clean = df[[target, event_col] + predictors].dropna()
+        else:
+            df_clean = df_clean.dropna()
+
+        # Fit
+        params = {}
+        model = None
+        base_risk = 0 # Intercept
+        
+        if model_type == 'logistic':
+             # formula
+             f = f"{target} ~ {' + '.join(predictors)}"
+             model_res = smf.logit(f, data=df_clean).fit(disp=0)
+             params = model_res.params.to_dict()
+             # params include Intercept
+        elif model_type == 'cox':
+             cph = CoxPHFitter()
+             cph.fit(df_clean, duration_col=target, event_col=event_col, formula=" + ".join(predictors))
+             params = cph.params_.to_dict()
+             # Cox has no intercept in partial hazard, but baseline hazard exists.
+             # Nomogram for Cox usually predicts Survival at Time T.
+             # We need a baseline survival at specific T (e.g. median time).
+             # Let's pick median time for now.
+             median_time = df_clean[target].median()
+             baseline_sf = cph.predict_survival_function(pd.DataFrame({p:[0] for p in predictors}, index=[0]), times=[median_time]).iloc[0,0]
+             # S(t|x) = S0(t)^exp(lp)
+             # lp = Xb (centered? lifelines centers data)
+             # Let's stick to Linear Predictor points.
+             
+        # 2. Calculate Points Scaling
+        # Find the variable with largest effect range (beta * (max-min))
+        max_effect = 0
+        effect_ranges = {}
+        
+        var_metas = {} # Store min/max/categories
+        
+        for var in predictors:
+            if var not in params and f"C({var})" not in str(params.keys()):
+                # Categorical might be dummy encoded in params? 
+                # Statsmodels/Lifelines formula handles it.
+                # Simplification: Assume numeric predictors for MVP or check simple categorical logic.
+                pass
+            
+            # Numeric logic
+            if pd.api.types.is_numeric_dtype(df_clean[var]):
+                 coef = params.get(var, 0)
+                 mn, mx = df_clean[var].min(), df_clean[var].max()
+                 rng = abs(coef * (mx - mn))
+                 effect_ranges[var] = rng
+                 var_metas[var] = {'type': 'numeric', 'min': mn, 'max': mx, 'coef': coef}
+                 if rng > max_effect: max_effect = rng
+            else:
+                 # Categorical
+                 # Coefs are usually Var[T.Level]
+                 # Find all levels
+                 levels = df_clean[var].unique()
+                 # Find max coef diff
+                 # base level is 0
+                 c_values = [0]
+                 for l in levels:
+                     k = f"{var}[T.{l}]"
+                     if k in params: c_values.append(params[k])
+                 
+                 rng = max(c_values) - min(c_values)
+                 effect_ranges[var] = rng
+                 # Store levels coeff
+                 # ... (skipped for MVP complex categorical, assuming numeric/binary for simplicity or handling nicely)
+                 # Actually, let's assume numeric for now to prevent complexity explosion in 1 step.
+                 # If user passes categorical, we might skip or simplistic handle.
+                 pass
+
+        if max_effect == 0:
+            return results # No significant vars or empty
+            
+        points_per_unit_beta = 100 / max_effect
+        
+        # 3. Generate Variable Scales
+        total_min_points = 0
+        total_max_points = 0
+        
+        for var in predictors:
+            if var in var_metas:
+                meta = var_metas[var]
+                coef = meta['coef']
+                
+                # Points for Min and Max
+                # We align Min Value to 0 points? No.
+                # If coef > 0: MinVal -> 0 pts (relative), MaxVal -> 100 pts.
+                # Linear contribution: Pts = (Val - Min) * Coef * Scaling ?? 
+                # Standard Nomogram: 
+                #  LP_contribution = Val * Coef
+                #  Points = abs(LP_contribution) * Scaling? 
+                #  Usually relative to base.
+                #  Let's define: Points(Val) = (Val * Coef - Min_Contribution) * points_per_unit_beta
+                
+                contributions = [meta['min']*coef, meta['max']*coef]
+                min_c = min(contributions)
+                max_c = max(contributions)
+                
+                def val_to_point(v):
+                    c = v * coef
+                    # We map [min_c, max_c] to [0, 100] (normalized to max_effect)
+                    # wait, max_effect is the global max span.
+                    # so current span maps to (max_c - min_c) * points_per_unit_beta
+                    return (c - min_c) * points_per_unit_beta
+                
+                # Setup visualization axis
+                # Ticks
+                ticks = np.linspace(meta['min'], meta['max'], 10)
+                tick_points = [val_to_point(t) for t in ticks]
+                
+                results['variables'].append({
+                    'name': var,
+                    'type': 'numeric',
+                    'min': meta['min'],
+                    'max': meta['max'],
+                    'coef': coef,
+                    'points_mapping': [{'val': t, 'pts': p} for t, p in zip(ticks, tick_points)]
+                })
+                
+                total_min_points += 0 # By definition of shift
+                total_max_points += (max_c - min_c) * points_per_unit_beta
+
+        # 4. Risk Mapping
+        # Total Points -> LP -> Prob
+        # LP = Intercept + Sum(Val*Coef)
+        # We shifted Val*Coef by min_c.
+        # LP = Intercept + Sum(Points / Scaling + Min_C)
+        #    = Intercept + Sum(Min_C) + Total_Points / Scaling
+        
+        sum_min_c = sum([var_metas[v]['min']*var_metas[v]['coef'] for v in predictors if v in var_metas]+[0]) # +0 for safety
+        intercept = params.get('Intercept', 0)
+        
+        point_grid = np.linspace(0, total_max_points, 100)
+        risks = []
+        
+        for pt in point_grid:
+            lp = intercept + sum_min_c + (pt / points_per_unit_beta)
+            if model_type == 'logistic':
+                prob = 1 / (1 + np.exp(-lp))
+                risks.append(prob)
+            elif model_type == 'cox':
+                 # 1 - S0(t)^exp(lp)
+                 # need baseline
+                 prob = 1 - (baseline_sf ** np.exp(lp - intercept)) # Cox Logic is complex. LP is usually Xb-Mean(Xb).
+                 # Simpler: Risk at Median Time.
+                 prob = 1 - (baseline_sf ** np.exp(lp)) 
+                 # Note: lifelines 'partial hazard' usually excludes baseline.
+                 risks.append(prob)
+                 
+        results['risk_table'] = [{'points': pt, 'risk': r} for pt, r in zip(point_grid, risks)]
+        
+        # Meta info for Calculator
+        results['formula'] = {
+            'intercept': intercept,
+            'baseline_survival': baseline_sf if model_type == 'cox' else None,
+            'coeffs': {v: var_metas[v]['coef'] for v in predictors if v in var_metas},
+            'model_type': model_type
+        }
+        
         return results

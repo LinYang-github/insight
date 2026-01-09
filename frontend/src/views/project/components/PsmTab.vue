@@ -100,6 +100,14 @@
                             </template>
                         </el-table-column>
                      </el-table>
+                     
+                     <!-- Love Plot -->
+                     <div style="margin-top: 30px;">
+                        <div class="card-header" style="margin-bottom: 15px; font-weight: bold;">
+                             <span>协变量平衡图 (Love Plot)</span>
+                        </div>
+                        <div id="love-plot" style="width: 100%; height: 500px;"></div>
+                     </div>
                 </div>
                 <el-empty v-else description="请配置参数并运行匹配" />
                 
@@ -119,9 +127,10 @@
  * 2. 执行 1:1 最近邻匹配。
  * 3. 展示匹配前后的均衡性诊断（SMD, 标准化均数差）。
  */
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
+import Plotly from 'plotly.js-dist-min'
 
 /**
  * 评估匹配后的均衡性。
@@ -178,11 +187,70 @@ const runPSM = async () => {
             })
         }
         
+        // Render Love Plot
+        nextTick(() => {
+            renderLovePlot(data.balance)
+        })
+        
     } catch (error) {
         ElMessage.error(error.response?.data?.message || "匹配失败")
     } finally {
         loading.value = false
     }
+}
+
+const renderLovePlot = (balanceData) => {
+    // balanceData: [{variable, smd_pre, smd_post}, ...]
+    // Sort logic? Usually by pre-match SMD desc? Or just natural order.
+    // Let's sort by Pre-match SMD for better visual
+    const sorted = [...balanceData].sort((a,b) => Math.abs(a.smd_pre) - Math.abs(b.smd_pre));
+    
+    const vars = sorted.map(d => d.variable);
+    const pre = sorted.map(d => Math.abs(d.smd_pre));
+    const post = sorted.map(d => Math.abs(d.smd_post));
+    
+    const trace1 = {
+        x: pre,
+        y: vars,
+        mode: 'markers',
+        name: 'Unmatched',
+        marker: { color: '#F56C6C', size: 10, symbol: 'circle-open' }, // Red open circle
+        type: 'scatter'
+    };
+    
+    const trace2 = {
+        x: post,
+        y: vars,
+        mode: 'markers',
+        name: 'Matched',
+        marker: { color: '#67C23A', size: 10, symbol: 'circle' }, // Green filled circle
+        type: 'scatter'
+    };
+    
+    const layout = {
+        title: 'Covariate Balance (Love Plot)',
+        xaxis: { 
+            title: 'Absolute Standardized Mean Difference (SMD)', 
+            range: [0, Math.max(0.2, ...pre) + 0.1],
+            zeroline: true
+        },
+        yaxis: { 
+            title: '',
+            automargin: true 
+        },
+        shapes: [
+            {
+                type: 'line',
+                x0: 0.1, x1: 0.1,
+                y0: 0, y1: 1, yref: 'paper',
+                line: { color: 'gray', width: 1, dash: 'dash' }
+            }
+        ],
+        margin: { l: 150, r: 20, t: 40, b: 40 },
+        legend: { x: 0.8, y: 0.1 }
+    };
+    
+    Plotly.newPlot('love-plot', [trace1, trace2], layout);
 }
 </script>
 

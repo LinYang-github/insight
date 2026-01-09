@@ -56,6 +56,10 @@
                 <el-icon><Histogram /></el-icon>
                 <span>高级建模 (Advanced)</span>
             </el-menu-item>
+            <el-menu-item index="viz" :disabled="!dataset">
+                <el-icon><Cpu /></el-icon>
+                <span>临床应用 (Nomogram)</span>
+            </el-menu-item>
         </el-menu>
     </el-aside>
 
@@ -97,6 +101,9 @@
          <div v-else-if="activeTabName === 'advanced'">
              <AdvancedModelingTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
          </div>
+         <div v-else-if="activeTabName === 'viz'">
+             <ClinicalVizTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+         </div>
     </el-main>
   </el-container>
 </template>
@@ -122,9 +129,10 @@ import SurvivalTab from './components/SurvivalTab.vue'
 import ClinicalTab from './components/ClinicalTab.vue'
 import DataManagementTab from './components/DataManagementTab.vue'
 import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
+import ClinicalVizTab from './components/ClinicalVizTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)
