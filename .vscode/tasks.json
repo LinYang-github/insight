@@ -90,6 +90,48 @@
             }
         },
         {
+            "label": "🧪 Analytics: Run Smoke Tests",
+            "type": "shell",
+            "command": "export PYTHONPATH=$PYTHONPATH:${workspaceFolder}/backend && pytest backend/tests/test_api_flow.py -v",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "flame",
+                "color": "terminal.ansiRed"
+            }
+        },
+        {
+            "label": "🧪 Analytics: Run Regression Tests",
+            "type": "shell",
+            "command": "export PYTHONPATH=$PYTHONPATH:${workspaceFolder}/backend && pytest backend/tests -m 'not slow' -v",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "history",
+                "color": "terminal.ansiBlue"
+            }
+        },
+        {
+            "label": "🧪 Analytics: Run Scientific Validation",
+            "type": "shell",
+            "command": "export PYTHONPATH=$PYTHONPATH:${workspaceFolder}/backend && pytest backend/tests/test_r_benchmark.py -v",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "pulse",
+                "color": "terminal.ansiGreen"
+            }
+        },
+        {
             "label": "📦 Insight: Install All Dependencies",
             "type": "shell",
             "command": "pip install -r requirements.txt && cd frontend && npm install",
