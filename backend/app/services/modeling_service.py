@@ -80,7 +80,11 @@ class ModelingService:
             
         # 3. Execute
         try:
-            results = strategy.fit(df, target, features, model_params)
+            # Add Robust Preprocessing for Matrix-based methods (all strategies here)
+            # This ensures string/object columns are One-Hot Encoded
+            df_processed, new_features = DataService.preprocess_for_matrix(df, features)
+            
+            results = strategy.fit(df_processed, target, new_features, model_params)
         except np.linalg.LinAlgError:
               raise ValueError("Linear Algebra Error: Singular matrix detected. Please check for perfect multi-collinearity among your variables.")
         except Exception as e:

@@ -106,3 +106,71 @@ class DataService:
         elif pd.isna(obj): 
             return None
         return obj
+
+    @staticmethod
+    def preprocess_for_formula(df):
+        """
+        Prepare dataframe for Formula-based libraries (statsmodels formulas, lifelines formulas).
+        Ensures Object columns are cast to 'category' so the formula engine can auto-encode them.
+        """
+        df_mod = df.copy()
+        for col in df_mod.columns:
+            if df_mod[col].dtype == 'object':
+                try:
+                    df_mod[col] = df_mod[col].astype('float')
+                except:
+                    df_mod[col] = df_mod[col].astype('category')
+        return df_mod
+
+    @staticmethod
+    def preprocess_for_matrix(df, features):
+        """
+        Prepare dataframe for Matrix-based libraries.
+        Explicitly performs One-Hot Encoding for categorical variables in 'features'.
+        Preserves other columns (like target).
+        
+        Args:
+            df (pd.DataFrame): Input dataframe.
+            features (list): List of feature names to use.
+            
+        Returns:
+            tuple: (df_encoded, new_features_list)
+        """
+        df_mod = df.copy()
+        
+        # Identify categorical cols in FEATURES only
+        cat_cols = []
+        for col in features:
+            if col in df_mod.columns and (df_mod[col].dtype == 'object' or str(df_mod[col].dtype) == 'category'):
+                cat_cols.append(col)
+                
+        if not cat_cols:
+            return df_mod, features
+            
+        # One-Hot Encoding
+        df_encoded = pd.get_dummies(df_mod, columns=cat_cols, drop_first=True)
+        
+        # Update feature list
+        # Remove original cat_cols, add new dummy cols
+        new_features = [f for f in features if f not in cat_cols]
+        # Find new columns that start with old name? 
+        # get_dummies(columns=cat_cols) replaces them.
+        # We need to find which columns were added.
+        # Heuristic: All columns in df_encoded that are NOT in (df_mod.columns - cat_cols)
+        # Or simply: df_encoded.columns intersection with derived names.
+        
+        # Better: get_dummies returns known names if we trace it, but pandas just returns new DF.
+        # We can diff columns.
+        original_cols = set(df_mod.columns)
+        new_cols_set = set(df_encoded.columns)
+        
+        # We want to identify the feature content of the new DF.
+        # Construct new features list order?
+        # Simply: features minus cat_cols plus (new_cols - (original_cols - cat_cols))
+        kept_original = original_cols - set(cat_cols)
+        generated_dummies = new_cols_set - kept_original
+        
+        # We need to append generated_dummies to new_features
+        new_features.extend(list(generated_dummies))
+        
+        return df_encoded, new_features

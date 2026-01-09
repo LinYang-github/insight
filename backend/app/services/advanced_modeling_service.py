@@ -41,6 +41,7 @@ class AdvancedModelingService:
             cols += [target]
         
         df_clean = df[cols].dropna()
+        df_clean = DataService.preprocess_for_formula(df_clean)
         
         # We need to calculate predictions across range of exposure
         # Reference: usually median or mean of exposure => HR=1
@@ -263,6 +264,7 @@ class AdvancedModelingService:
                 temp_cols = [target, exposure, grp_col] + covariates
                 if event_col: temp_cols.append(event_col)
                 temp_df = df[temp_cols].dropna()
+                temp_df = DataService.preprocess_for_formula(temp_df)
                 
                 # Formula Construction
                 cov_part = " + ".join(covariates)
@@ -300,6 +302,7 @@ class AdvancedModelingService:
             for val in groups:
                 # Subset
                 sub_df = df[df[grp_col] == val]
+                sub_df = DataService.preprocess_for_formula(sub_df)
                 # Check sample size
                 if len(sub_df) < 10:
                     continue
@@ -458,6 +461,8 @@ class AdvancedModelingService:
             df_clean = df[[target, event_col] + predictors].dropna()
         else:
             df_clean = df_clean.dropna()
+
+        df_clean = DataService.preprocess_for_formula(df_clean)
 
         # Fit
         params = {}
