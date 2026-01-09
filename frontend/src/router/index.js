@@ -32,8 +32,7 @@ const routes = [
             },
             {
                 path: 'projects/list',
-                name: 'ProjectList',
-                component: () => import('../views/project/ProjectList.vue')
+                redirect: '/dashboard'
             },
             {
                 path: 'settings',

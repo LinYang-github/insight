@@ -2,34 +2,18 @@
   <el-container class="layout-container" direction="vertical">
       <el-header class="layout-header">
         <div class="header-left">
-           <div class="logo-area">
+           <div class="logo-area" @click="router.push('/dashboard')">
               <el-icon :size="24" color="#409EFF" style="margin-right: 8px"><Platform /></el-icon>
               <h3>Insight 平台</h3>
            </div>
-           
-           <el-menu
-            :default-active="activeMenu"
-            mode="horizontal"
-            class="top-menu"
-            router
-            background-color="transparent"
-            text-color="#303133"
-            active-text-color="#409EFF"
-            :ellipsis="false" 
-           >
-             <el-menu-item index="/dashboard">
-                <el-icon><Odometer /></el-icon> 首页
-             </el-menu-item>
-             <el-menu-item index="/projects/list">
-                <el-icon><Folder /></el-icon> 项目列表
-             </el-menu-item>
-             <el-menu-item index="/settings">
-                <el-icon><Setting /></el-icon> 系统设置
-             </el-menu-item>
-           </el-menu>
         </div>
 
         <div class="header-right">
+          <div class="common-nav" v-if="userStore.user">
+            <el-link :underline="false" @click="router.push('/dashboard')" class="nav-item">
+              <el-icon><Odometer /></el-icon> 首页
+            </el-link>
+          </div>
            <!-- Project Title Context could go here if needed, but we have breadcrumbs usually -->
            <!-- For now kept simple -->
            
@@ -41,6 +25,10 @@
                 </span>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item command="settings">
+                       <el-icon><Setting /></el-icon>系统设置
+                    </el-dropdown-item>
+                    <el-divider style="margin: 4px 0" />
                     <el-dropdown-item command="logout">退出登录</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -80,6 +68,8 @@ const headerTitle = computed(() => {
 const handleCommand = (command) => {
     if (command === 'logout') {
         userStore.logout()
+    } else if (command === 'settings') {
+        router.push('/settings')
     }
 }
 </script>
@@ -138,5 +128,28 @@ const handleCommand = (command) => {
   display: flex;
   align-items: center;
   color: #606266;
+}
+
+.common-nav {
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    margin-right: 15px;
+    font-size: 14px;
+    color: #606266;
+    transition: color 0.3s;
+}
+
+.nav-item:hover {
+    color: #409EFF;
+}
+
+.nav-item i {
+    margin-right: 4px;
 }
 </style>
