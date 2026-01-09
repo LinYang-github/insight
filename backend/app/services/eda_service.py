@@ -1,3 +1,9 @@
+"""
+app.services.eda_service.py
+
+探索性数据分析 (EDA) 服务。
+提供基础描述性统计（均值、标准差、分位数）、相关性矩阵以及数据分布可视化数据。
+"""
 import pandas as pd
 import numpy as np
 import math
@@ -7,7 +13,11 @@ class EdaService:
     @staticmethod
     def get_basic_stats(df):
         """
-        Returns descriptive statistics for all columns.
+        获取所有变量的基础描述性统计指标。
+        
+        包含样本量、缺失值数量。
+        对于数值型变量：计算均值 (Mean), 标准差 (SD), 以及四分位数。
+        对于分类型变量：计算 Top 5 的分布频率。
         """
         # df passed in directly
         stats = []
@@ -44,7 +54,7 @@ class EdaService:
     @staticmethod
     def get_correlation(df):
         """
-        Returns correlation matrix for numerical columns.
+        计算数值型变量间的 Pearson 相关系数矩阵。
         """
         numeric_df = df.select_dtypes(include=[np.number])
         if numeric_df.empty:
@@ -52,9 +62,9 @@ class EdaService:
 
         corr_matrix = numeric_df.corr(method='pearson')
         
-        # Prepare for Heatmap: x, y, z
+        # 转换为 Heatmap 格式: x, y, z
         columns = list(corr_matrix.columns)
-        z = corr_matrix.where(pd.notnull(corr_matrix), 0).values.tolist() # Replace NaN corr with 0
+        z = corr_matrix.where(pd.notnull(corr_matrix), 0).values.tolist() # 将空相关系数替换为 0
         
         return DataService.sanitize_for_json({
             'columns': columns,
@@ -64,7 +74,7 @@ class EdaService:
     @staticmethod
     def get_distribution(df, column, bins=20):
         """
-        Returns histogram data for a specific column.
+        获取特定变量的分布数据（直方图或条形图）。
         """
         if column not in df.columns:
             return None

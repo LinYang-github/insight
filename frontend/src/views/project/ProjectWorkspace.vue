@@ -76,6 +76,15 @@
 </template>
 
 <script setup>
+/**
+ * ProjectWorkspace.vue
+ * 项目工作台主布局。
+ * 
+ * 职责：
+ * 1. 管理左侧线性工作流导航（数据导入 -> 预处理 -> 描述性统计 -> 建模）。
+ * 2. 维护数据集 (Dataset) 上下文，确保各子组件共享最新的元数据。
+ * 3. 处理数据集更新事件，实现流程间的自动跳转（如导入成功后跳转至预处理）。
+ */
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import DataTab from './components/DataTab.vue'

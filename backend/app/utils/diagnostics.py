@@ -1,4 +1,9 @@
+"""
+app.utils.diagnostics.py
 
+工具模块：提供模型诊断相关的统计指标计算。
+目前支持方差膨胀因子 (VIF) 计算，用于检测变量间的多重共线性。
+"""
 import pandas as pd
 import numpy as np
 from statsmodels.stats.outliers_influence import variance_inflation_factor
@@ -9,7 +14,17 @@ class ModelDiagnostics:
     @staticmethod
     def calculate_vif(df, features):
         """
-        Calculate Variance Inflation Factor (VIF) for features.
+        计算特征变量的方差膨胀因子 (VIF, Variance Inflation Factor)。
+        
+        VIF 是衡量多重共线性 (Multicollinearity) 的重要指标。
+        如果 VIF > 5 或 10，通常认为变量之间存在严重的线性相关，可能导致回归系数不稳定。
+
+        Args:
+            df (pd.DataFrame): 包含特征变量的数据集。
+            features (list): 需要计算 VIF 的特征变量列表。
+
+        Returns:
+            list: 包含每个变量及其 VIF 值的字典列表。
         """
         if not features or len(features) < 2:
             return []

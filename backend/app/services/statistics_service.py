@@ -12,11 +12,17 @@ class StatisticsService:
     @staticmethod
     def generate_table_one(df, group_by, variables):
         """
-        Generates Table 1 statistics.
-        :param df: DataFrame
-        :param group_by: Column name to group by (optional)
-        :param variables: List of variable names to analyze
-        :return: List of rows for Table 1
+        生成基线特征表 (Table 1)。
+        
+        医学研究中，Table 1 通常用于展示研究人群的基线特征，并按照暴露因素或处理组（Treatment）进行分组对比。
+
+        Args:
+            df (pd.DataFrame): 包含变量的数据集。
+            group_by (str): 分组变量（如实验组 vs 对照组）。如果不提供，则只生成全人群 (Overall) 统计。
+            variables (list): 需要展示统计指标的变量列表。
+
+        Returns:
+            list: 包含每行统计结果的字典列表。具体包含 'overall', 'groups' (如果有分组), 'p_value' 和 'test'。
         """
         # Data Integrity
         if group_by and group_by not in df.columns:
@@ -56,7 +62,10 @@ class StatisticsService:
                     
                 row['groups'] = group_stats
                 
-                # Hypothesis Test
+                # 假设检验选择逻辑 (Hypothesis Test Selection):
+                # 1. 数值型变量 (Numeric):
+                #    - 两组：使用 Welch's T-test (不假设方差相等)，比标准 T-test 更稳健。
+                #    - 多组：使用 ANOVA 单因素方差分析。
                 if row['type'] == 'numeric':
                     try:
                         if len(groups) == 2:
@@ -132,7 +141,16 @@ class StatisticsService:
     @staticmethod
     def generate_km_data(df, time_col, event_col, group_col=None):
         """
-        Generates Kaplan-Meier survival curves data.
+        计算 Kaplan-Meier 生存分析数据。
+
+        Args:
+            df (pd.DataFrame): 包含时间、终点事件及可选分组变量的数据。
+            time_col (str): 生存时间（Time），必须为数值型（如：天、月）。
+            event_col (str): 终点事件（Event），通常为 0 (删失 Censored) 或 1 (发生事件 Event)。
+            group_col (str, optional): 分组变量。如果提供，将计算组间 Log-rank 检验。
+
+        Returns:
+            dict: 包含绘图用的轨迹数据 (traces) 和差异显著性 P 值。
         """
         if time_col not in df.columns or event_col not in df.columns:
             raise ValueError("Time or Event column not found.")
@@ -188,10 +206,23 @@ class StatisticsService:
     @staticmethod
     def perform_psm(df, treatment, covariates):
         """
-        Performs Propensity Score Matching.
-        1. Logistic Regression for PS.
-        2. NN Matching (1:1).
-        3. Returns matched indices and balance stats.
+        执行倾向性评分匹配 (PSM, Propensity Score Matching)。
+        
+        用于观察性研究中减少混杂偏倚 (Confounding Bias)，通过模拟随机对照试验的效果，
+        使实验组和对照组在基线协变量上达到平衡。
+
+        Args:
+            df (pd.DataFrame): 原始数据集。
+            treatment (str): 处理变量（0/1），1 代表实验组，0 代表对照组。
+            covariates (list): 需要匹配的协变量（混杂因素）。
+
+        Algorithm:
+            1. 使用逻辑回归估算倾向性得分 (Propensity Score)。
+            2. 使用最近邻匹配 (Nearest Neighbor Matching) 进行 1:1 匹配。
+            3. 计算匹配前后的标准化均数差 (SMD) 以评估平衡性。
+
+        Returns:
+            dict: 匹配后的索引列表、平衡性统计指标及样本量变化。
         """
         if treatment not in df.columns:
              raise ValueError(f"Treatment '{treatment}' not found.")

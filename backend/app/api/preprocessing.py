@@ -1,3 +1,9 @@
+"""
+app.api.preprocessing.py
+
+数据预处理相关路由。
+提供缺失值填补 (Imputation) 和分类变量因子化 (Encoding) 的接口。
+"""
 from flask import Blueprint, jsonify, request
 from app.services.preprocessing_service import PreprocessingService
 from app.models.dataset import Dataset
@@ -8,6 +14,9 @@ preprocessing_bp = Blueprint('preprocessing', __name__)
 @preprocessing_bp.route('/impute', methods=['POST'])
 @token_required
 def impute(current_user):
+    """
+    缺失值填补接口。
+    """
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     strategies = data.get('strategies') # {col: method}

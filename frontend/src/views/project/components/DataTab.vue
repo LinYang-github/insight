@@ -37,6 +37,14 @@
 </template>
 
 <script setup>
+/**
+ * DataTab.vue
+ * 数据导入与元数据预览组件。
+ * 
+ * 职责：
+ * 1. 提供数据集上传接口。
+ * 2. 展示初步解析后的变量元数据（变量名、由于后端推断的类型、缺失值统计等）。
+ */
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 

@@ -1,13 +1,17 @@
+"""
+app.utils.formatter.py
 
+工具模块：负责统计结果的标准化格式化。
+确保 P 值、回归系数等在显示给用户前符合医学学术规范。
+"""
 import numpy as np
 
 class ResultFormatter:
     @staticmethod
     def format_p_value(p_value):
         """
-        Formats P-value according to APA style.
-        P < 0.001 -> "<0.001"
-        Otherwise 3 decimal places.
+        按照 APA 学术规范格式化 P 值。
+        P < 0.001 显示为 "<0.001"，其余保留 3 位小数。
         """
         if p_value is None or np.isnan(p_value):
             return "N/A"

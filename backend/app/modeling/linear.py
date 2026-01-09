@@ -1,4 +1,10 @@
+"""
+app.modeling.linear.py
 
+线性与逻辑回归模型策略。
+包含 OLS (普通最小二乘法) 和 Logit (逻辑回归) 的实现。
+结果输出包含 OR 值、VIF 诊断等学术核心指标。
+"""
 import statsmodels.api as sm
 import numpy as np
 import pandas as pd
@@ -6,6 +12,10 @@ from .base import BaseModelStrategy
 from app.utils.formatter import ResultFormatter
 
 class LinearRegressionStrategy(BaseModelStrategy):
+    """
+    线性回归策略 (OLS)。
+    用于分析连续型结局变量与特征变量之间的线性关系。
+    """
     def fit(self, df, target, features, params):
         X = df[features]
         X = sm.add_constant(X)
@@ -54,6 +64,11 @@ class LinearRegressionStrategy(BaseModelStrategy):
         }
 
 class LogisticRegressionStrategy(BaseModelStrategy):
+    """
+    逻辑回归策略 (Logistic Regression)。
+    用于分析二分类结局变量（如：发病/不发病）。
+    输出包含优势比 (OR, Odds Ratio) 及其 95% 置信区间。
+    """
     def fit(self, df, target, features, params):
         X = df[features]
         X = sm.add_constant(X)

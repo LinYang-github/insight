@@ -63,8 +63,14 @@
                 </div>
             </template>
             
+            <!-- ============================== -->
+            <!-- 提示信息区 (Info Alert)        -->
+            <!-- ============================== -->
             <el-alert title="勾选不仅是“分类”且目前是“文本”格式的变量，将其转换为数字编码。" type="info" show-icon style="margin-bottom: 10px" />
             
+            <!-- ============================== -->
+            <!-- 因子化变量选择区 (Config Panel) -->
+            <!-- ============================== -->
             <el-checkbox-group v-model="selectedEncodeCols">
                 <el-row :gutter="20">
                      <el-col :span="6" v-for="col in categoricalCols" :key="col.name">
@@ -82,6 +88,15 @@
 </template>
 
 <script setup>
+/**
+ * PreprocessingTab.vue
+ * 数据清洗与预处理组件。
+ * 
+ * 职责：
+ * 1. 识别并修补缺失值（Imputation）。
+ * 2. 文本变量数值化编码（One-Hot Encoding）。
+ * 3. 触发后端生成并持久化处理后的新数据集。
+ */
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
@@ -125,11 +140,17 @@ watch(() => props.metadata, (meta) => {
 }, { immediate: true })
 
 const handleSmartFix = async () => {
-    // 1. Auto select impute strategies
+    /**
+     * 智能修复逻辑：
+     * 1. 遍历变量元数据，识别缺失值大于 0 的项。
+     * 2. 根据变量统计学类型推断策略：
+     *    - 连续型 (Continuous): 使用均值填补 (Mean)。
+     *    - 分类型 (Categorical): 使用众数填补 (Mode)。
+     */
     const autoStrategies = {}
     let imputeCount = 0
     props.metadata.variables.forEach(v => {
-        // Fix: backend returns 'missing_count'
+        // 兼容后端元数据字段名
         const missing = v.missing !== undefined ? v.missing : v.missing_count
         if (missing > 0) {
             autoStrategies[v.name] = isNumeric(v.type) ? 'mean' : 'mode'
@@ -142,7 +163,7 @@ const handleSmartFix = async () => {
         return
     }
 
-    // 2. Execute Imputation
+    // 2. 调用后端执行填补
     processing.value = true
     try {
         const { data } = await api.post('/preprocessing/impute', {

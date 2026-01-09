@@ -1,3 +1,9 @@
+"""
+app.services.data_service.py
+
+负责基础数据操作。
+包含稳健的 CSV/Excel 加载、元数据自动提取以及 JSON 序列化前的脱敏处理。
+"""
 import pandas as pd
 import numpy as np
 import os
@@ -7,8 +13,10 @@ class DataService:
     @staticmethod
     def load_data(filepath):
         """
-        Robustly loads a dataset from CSV or Excel.
-        Handles encoding detection for CSVs.
+        稳健地加载数据（支持 CSV, Excel）。
+        
+        针对 CSV 格式，自动尝试 utf-8, gb18030 等多种编码，确保中文无乱码。
+        使用 low_memory=False 保证大文件解析的准确性。
         """
         if filepath.endswith('.csv'):
              # Roboust parsing with encoding detection
@@ -33,10 +41,13 @@ class DataService:
     @staticmethod
     def get_initial_metadata(filepath):
         """
-        Reads a CSV/Excel file and returns metadata:
-        - columns: list of column names
-        - types: inferred types (continuous, categorical)
-        - preview: first 5 rows
+        读取并生成数据集的初始元数据。
+
+        Args:
+            filepath (str): 数据文件路径。
+
+        Returns:
+            dict: 包含变量列表、类型推断、缺失值统计及数据预览的字典。
         """
         df = DataService.load_data(filepath)
             
@@ -45,25 +56,22 @@ class DataService:
             dtype = str(df[col].dtype)
             var_type = 'continuous' if 'int' in dtype or 'float' in dtype else 'categorical'
             
-            # Heuristic: if categorical has too many unique values, might be ID or text
+            # 启发式规则：如果分类变量唯一值过多，可能是 ID 或 文本
             if var_type == 'categorical' and df[col].nunique() > 50:
                  var_type = 'text/id'
             
-            # Heuristic: if numeric has few unique values (e.g. 0/1), might be categorical
+            # 启发式规则：如果数值变量唯一值很少（如 0/1），可能是分类变量
             if var_type == 'continuous' and df[col].nunique() < 10:
                 var_type = 'categorical'
 
             metadata.append({
                 'name': col,
-                'type': var_type, # continuous, categorical, ordinal, etc.
-                'role': 'covariate', # default role
+                'type': var_type,
+                'role': 'covariate',
                 'missing_count': int(df[col].isnull().sum()),
                 'unique_count': int(df[col].nunique())
             })
             
-            
-        # Replace NaN with None for valid JSON serialization
-        # Use a robust sanitization helper
         raw_result = {
             'variables': metadata,
             'row_count': len(df),
@@ -74,9 +82,11 @@ class DataService:
     @staticmethod
     def sanitize_for_json(obj):
         """
-        Recursively sanitizes values for JSON serialization:
-        - NaNs / Infs -> None
-        - Numpy ints/floats -> Python ints/floats
+        递归地对数据进行清洗，确保其可被 JSON 序列化。
+        
+        处理逻辑：
+        - 将 NaN / Inf 转换为 None。
+        - 将 Numpy 数值类型转换为 Python 原生类型。
         """
         if isinstance(obj, dict):
             return {k: DataService.sanitize_for_json(v) for k, v in obj.items()}
@@ -86,13 +96,13 @@ class DataService:
             if pd.isna(obj) or math.isinf(obj):
                 return None
             return float(obj)
-        elif isinstance(obj, int): # covers numpy integers if they inherit from int (some do)
+        elif isinstance(obj, int):
              return int(obj)
-        elif hasattr(obj, 'item'): # numpy types like np.int64, np.float32
+        elif hasattr(obj, 'item'): 
             val = obj.item()
             if isinstance(val, float) and (pd.isna(val) or math.isinf(val)):
                 return None
             return val
-        elif pd.isna(obj): # pd.NA, np.nan (if not caught by float)
+        elif pd.isna(obj): 
             return None
         return obj

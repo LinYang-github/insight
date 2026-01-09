@@ -86,6 +86,15 @@
 </template>
 
 <script setup>
+/**
+ * TableOneTab.vue
+ * 基线特征描述表 (Table 1) 组件。
+ * 
+ * 职责：
+ * 1. 提供变量选择和分组设置界面。
+ * 2. 展示统计描述结果（均值±标准差 或 频数/百分比）。
+ * 3. 自动计算组间差异的 P 值（T检验、ANOVA 或 卡方检验）。
+ */
 import { ref, computed, reactive } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'

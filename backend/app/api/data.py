@@ -1,3 +1,9 @@
+"""
+app.api.data.py
+
+数据管理接口。
+提供数据上传、元数据查询及结果文件下载功能。
+"""
 from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from app.api.projects import token_required
 from app.services.data_service import DataService
@@ -12,6 +18,11 @@ from app.models.dataset import Dataset
 @data_bp.route('/upload/<int:project_id>', methods=['POST'])
 @token_required
 def upload_data(current_user, project_id):
+    """
+    上传数据集文件。
+    
+    支持并发存入文件系统，并自动提取变量元数据存入数据库。
+    """
     project = Project.query.get_or_404(project_id)
     if project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403

@@ -126,17 +126,25 @@ const generatePlot = async () => {
     }
 }
 
+/**
+ * 将后端返回的 KM 数据绘制成图表。
+ * 
+ * @param {Array} plotData - 后端返回的分组数据 [{name: 'GroupA', times: [], probs: []}, ...]
+ * @description
+ * KM 曲线是阶梯状 (Step Function)，因此 line.shape 必须设为 'hv' (Horizontal-Vertical)。
+ * Log-rank 检验用于比较两个或多个组的生存曲线是否存在显著差异。
+ */
 const renderPlot = (plotData) => {
     const traces = []
     
     plotData.forEach(g => {
-        // Main Line
+        // 主曲线
         traces.push({
             x: g.times,
             y: g.probs,
             mode: 'lines',
             name: g.name,
-            line: { shape: 'hv' }, // Step shape for KM
+            line: { shape: 'hv' }, // 关键配置：阶梯线
             type: 'scatter'
         })
         

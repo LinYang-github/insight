@@ -272,6 +272,16 @@
 </template>
 
 <script setup>
+/**
+ * ModelingTab.vue
+ * 核心建模与评估主组件。
+ * 
+ * 职责：
+ * 1. 提供多种统计/机器学习模型的配置界面（线性、逻辑、Cox、随机森林、XGBoost）。
+ * 2. 调度后端建模服务并展示详细的模型参数（Coef, P-value, OR, HR）。
+ * 3. 实现“智能解读”逻辑，将数值指标转化为医学研究可理解的文字结论。
+ * 4. 渲染并集成 Plotly 图表进行模型评估（ROC, 校准曲线, DCA等）。
+ */
 import { ref, computed, watch, reactive, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'

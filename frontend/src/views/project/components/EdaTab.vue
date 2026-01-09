@@ -92,6 +92,15 @@
 </template>
 
 <script setup>
+/**
+ * EdaTab.vue
+ * 探索性数据分析 (Exploratory Data Analysis) 组件。
+ * 
+ * 职责：
+ * 1. 展示各变量的基础统计指标（均值、标准差、缺失率等）。
+ * 2. 渲染变量间的相关性热力图，帮助用户识别共线性。
+ * 3. 渲染单变量分布图（直方图/条形图），识别异常值或偏偏态分布。
+ */
 import { ref, onMounted, watch } from 'vue'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'

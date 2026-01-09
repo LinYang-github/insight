@@ -1,4 +1,11 @@
+"""
+app.modeling.tree.py
 
+机器学习树模型策略。
+包含 随机森林 (Random Forest) 和 XGBoost。
+集成 SHAP (SHapley Additive exPlanations) 用于模型可解释性分析，
+并提供 5 折交叉验证 (5-Fold CV) 以评估模型泛化能力。
+"""
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
@@ -9,6 +16,14 @@ from .base import BaseModelStrategy
 from app.utils.formatter import ResultFormatter
 
 class TreeModelStrategy(BaseModelStrategy):
+    """
+    树模型抽象策略。
+    
+    特点：
+    - 自动处理分类变量转换（Label Encoding）。
+    - 自动区分二分类 (Classification) 与回归 (Regression) 任务。
+    - 使用 SHAP 值评估特征重要性，符合当前机器学习解释性的主流标准。
+    """
     def __init__(self, model_type):
         self.model_type = model_type
 

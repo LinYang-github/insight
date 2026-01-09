@@ -1,4 +1,9 @@
+"""
+app.utils.evaluation.py
 
+工具模块：评估模型预测性能。
+包含分类指标（ROC/AUC）、校准曲线（Calibration Curve）和决策曲线分析（DCA）。
+"""
 import numpy as np
 from sklearn.metrics import roc_curve, auc, accuracy_score, confusion_matrix, precision_score, recall_score, f1_score
 from sklearn.calibration import calibration_curve
@@ -8,11 +13,15 @@ class ModelEvaluator:
     @staticmethod
     def evaluate_classification(y_true, y_prob, y_pred=None):
         """
-        Calculates classification metrics and plot data.
-        :param y_true: True labels (0/1)
-        :param y_prob: Predicted probabilities for class 1
-        :param y_pred: Predicted labels (optional, can be derived from prob>0.5)
-        :return: (metrics_dict, plots_dict)
+        计算分类模型的评估指标及其绘图数据。
+
+        Args:
+            y_true (np.array): 结局变量真实值 (0/1)。
+            y_prob (np.array): 模型预测的概率（Class 1 的概率）。
+            y_pred (np.array, optional): 模型预测的分类标签。如果未提供，默认以 0.5 为阈值。
+
+        Returns:
+            tuple: (metrics_dict, plots_dict) 包含准确率、召回率、AUC及ROC/校准曲线数据。
         """
         if y_pred is None:
             y_pred = (y_prob >= 0.5).astype(int)
@@ -57,7 +66,17 @@ class ModelEvaluator:
     @staticmethod
     def calculate_dca(y_true, y_prob):
         """
-        Calculate Decision Curve Analysis (Net Benefit).
+        计算决策曲线分析 (DCA, Decision Curve Analysis)。
+        
+        DCA 不仅考量模型的预测准确性，更关注模型在临床决策中的“净获益” (Net Benefit)。
+        通过对比“全部干预”、“全不干预”与“模型指导下干预”的净获益，评估模型的临床实用价值。
+
+        Args:
+            y_true (np.array): 结局变量真实值 (0/1)。
+            y_prob (np.array): 模型预测的概率。
+
+        Returns:
+            dict: 包含不同阈值概率下的净获益数据，用于前端 Plotly 绘图。
         """
         thresholds = np.arange(0.01, 1.0, 0.01)
         net_benefit_model = []

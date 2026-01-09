@@ -1,4 +1,9 @@
+"""
+app.api.statistics.py
 
+医学统计分析相关路由。
+提供基线特征表 (Table 1)、Kaplan-Meier 生存曲线及倾向性评分匹配 (PSM) 的 API 支持。
+"""
 from flask import Blueprint, jsonify, request
 from app.services.statistics_service import StatisticsService
 from app.models.dataset import Dataset
@@ -12,6 +17,9 @@ statistics_bp = Blueprint('statistics', __name__)
 @statistics_bp.route('/table1', methods=['POST'])
 @token_required
 def generate_table1(current_user):
+    """
+    获取基线特征统计数据。
+    """
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     group_by = data.get('group_by') # Optional
@@ -34,6 +42,9 @@ def generate_table1(current_user):
 @statistics_bp.route('/km', methods=['POST'])
 @token_required
 def generate_km(current_user):
+    """
+    生成 Kaplan-Meier 生存曲线数据。
+    """
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     time_col = data.get('time')
@@ -57,6 +68,9 @@ def generate_km(current_user):
 @statistics_bp.route('/psm', methods=['POST'])
 @token_required
 def perform_psm(current_user):
+    """
+    执行倾向性评分匹配 (PSM)。
+    """
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     treatment = data.get('treatment')
@@ -116,6 +130,9 @@ def perform_psm(current_user):
 @statistics_bp.route('/table1/export', methods=['POST'])
 @token_required
 def export_table1(current_user):
+    """
+    导出学术标准的三线表 (Table 1) 为 CSV 文件。
+    """
     from flask import Response
     data = request.get_json()
     dataset_id = data.get('dataset_id')

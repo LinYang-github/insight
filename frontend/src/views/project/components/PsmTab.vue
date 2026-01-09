@@ -82,9 +82,24 @@
 </template>
 
 <script setup>
+/**
+ * PsmTab.vue
+ * 倾向性评分匹配 (PSM) 组件。
+ * 
+ * 职责：
+ * 1. 提供处理变量 (Treatment) 和协变量 (Covariates) 的选择。
+ * 2. 执行 1:1 最近邻匹配。
+ * 3. 展示匹配前后的均衡性诊断（SMD, 标准化均数差）。
+ */
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
+
+/**
+ * 评估匹配后的均衡性。
+ * @description
+ * 临床研究中，SMD < 0.1 通常被认为组间达到良好均衡。
+ */
 
 const props = defineProps({
     datasetId: Number,

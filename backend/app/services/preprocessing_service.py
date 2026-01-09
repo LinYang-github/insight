@@ -1,3 +1,9 @@
+"""
+app.services.preprocessing_service.py
+
+数据预处理服务。
+提供缺失值填补 (Imputation) 和分类变量编码 (Encoding) 功能。
+"""
 import pandas as pd
 import numpy as np
 from app.services.data_service import DataService
@@ -9,10 +15,14 @@ class PreprocessingService:
     @staticmethod
     def impute_data(df, strategies):
         """
-        Impute missing values.
-        :param df: pandas DataFrame
-        :param strategies: Dict { "col_name": "mean"|"median"|"mode"|"drop" }
-        :return: Processed DataFrame
+        根据指定策略填补缺失值。
+
+        Args:
+            df (pd.DataFrame): 原始数据集。
+            strategies (dict): 策略映射，格式如 { "变量名": "mean"|"median"|"mode"|"drop" }。
+
+        Returns:
+            pd.DataFrame: 处理后的新 DataFrame。
         """
         # copy to avoid mutating original if needed (though here we want to return new one)
         df = df.copy()
@@ -41,11 +51,17 @@ class PreprocessingService:
     @staticmethod
     def encode_data(df, columns):
         """
-        One-Hot Encode nominal variables (get_dummies) to ensure statistical accuracy.
-        Drop first level to avoid dummy variable trap (multicollinearity).
-        :param df: pandas DataFrame
-        :param columns: List of column names to encode
-        :return: Processed DataFrame
+        对分类变量进行独热编码 (One-Hot Encoding/Dummy Encoding)。
+        
+        通过 pd.get_dummies 实现。
+        NOTE: 设置 drop_first=True 以避免“虚拟变量陷阱” (Dummy Variable Trap)，即多重共线性问题，这对于线性/逻辑回归至关重要。
+
+        Args:
+            df (pd.DataFrame): 原始数据。
+                columns (list): 需要编码的列名列表。
+
+        Returns:
+            pd.DataFrame: 编码后的数据集。
         """
         df = df.copy()
         
@@ -62,7 +78,7 @@ class PreprocessingService:
     @staticmethod
     def save_processed_dataset(original_dataset_id, new_df, suffix, user_id):
         """
-        Save the processed DF as a new Dataset entry.
+        将处理后的 DataFrame 保存为新的数据集记录并生成物理文件。
         """
         original = Dataset.query.get(original_dataset_id)
         if not original:

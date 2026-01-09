@@ -1,3 +1,9 @@
+"""
+app.api.modeling.py
+
+统计建模相关路由。
+提供模型训练、结果导出等 API 支持。
+"""
 from flask import Blueprint, request, jsonify
 from app.api.projects import token_required
 from app.services.modeling_service import ModelingService
@@ -11,6 +17,11 @@ modeling_bp = Blueprint('modeling', __name__)
 @modeling_bp.route('/run', methods=['POST'])
 @token_required
 def run_model(current_user):
+    """
+    运行统计模型。
+    
+    接收数据集、结局变量 (Outcome) 和协变量 (Covariates)，执行指定的统计建模任务。
+    """
     data = request.get_json()
     
     project_id = data.get('project_id')

@@ -1,3 +1,9 @@
+"""
+app.services.export_service.py
+
+导出服务。
+负责将统计分析与建模结果导出为 Excel 格式，便于用户撰写论文或进行离线分析。
+"""
 import pandas as pd
 import os
 from flask import current_app
@@ -6,10 +12,14 @@ class ExportService:
     @staticmethod
     def export_results_to_excel(results, filename):
         """
-        Export modeling results to Excel.
-        :param results: dict of results (summary, metrics) from ModelingService
-        :param filename: desired filename
-        :return: absolute path to saved file
+        将模型结果导出为 Excel 文件。
+
+        Args:
+            results (dict): ModelingService 返回的模型结果字典。
+            filename (str): 目标文件名。
+
+        Returns:
+            str: 导出文件的绝对路径。
         """
         filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
         

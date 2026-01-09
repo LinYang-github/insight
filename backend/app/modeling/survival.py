@@ -1,4 +1,10 @@
+"""
+app.modeling.survival.py
 
+生存分析模型策略。
+包含 Cox 比例风险模型 (Cox Proportional Hazards Model)。
+输出包含风险比 (HR, Hazard Ratio) 及 PH 假定校验结果。
+"""
 from lifelines import CoxPHFitter
 import numpy as np
 import pandas as pd
@@ -6,6 +12,15 @@ from .base import BaseModelStrategy
 from app.utils.formatter import ResultFormatter
 
 class CoxStrategy(BaseModelStrategy):
+    """
+    Cox 比例风险模型策略。
+    用于生存数据分析，探究协变量（Covariates）对终点事件（Event）发生风险的影响。
+    
+    结果说明：
+    - HR > 1: 风险增加因素。
+    - HR < 1: 保护性因素。
+    - ph_test_p: PH 假定校验 P 值。如果 P < 0.05，可能违反比例风险假定，需谨慎解释。
+    """
     def fit(self, df, target, features, params):
         time_col = target['time']
         event_col = target['event']
