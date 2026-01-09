@@ -51,4 +51,28 @@ describe('InterpretationPanel.vue', () => {
 
         expect(wrapper.text()).toContain('差异显著')
     })
+
+    it('interprets Effect Size > 1 (Risk Increased)', () => {
+        const wrapper = mount(InterpretationPanel, {
+            props: {
+                pValue: 0.01,
+                effectSize: 2.5
+            }
+        })
+        const html = wrapper.find('.summary-text').html()
+        expect(html).toContain('风险增加 2.50 倍')
+        expect(html).toContain('class="risk-inc"')
+    })
+
+    it('interprets Effect Size < 1 (Risk Reduced)', () => {
+        const wrapper = mount(InterpretationPanel, {
+            props: {
+                pValue: 0.01,
+                effectSize: 0.6
+            }
+        })
+        const html = wrapper.find('.summary-text').html()
+        expect(html).toContain('风险降低 40.0%')
+        expect(html).toContain('class="risk-dec"')
+    })
 })

@@ -37,7 +37,15 @@ const props = defineProps({
     default: ''
   },
   // Optional: difference description (e.g. "Mean A > Mean B")
-  direction: String
+  direction: String,
+  effectSize: {
+    type: Number,
+    default: null
+  },
+  ci: {
+    type: Array, // [lower, upper]
+    default: () => []
+  }
 })
 
 const isValid = computed(() => {
@@ -56,12 +64,23 @@ const summaryHtml = computed(() => {
   if (isNaN(p)) return ''
 
   if (p < 0.05) {
+    let effectText = ''
+    if (props.effectSize !== null && !isNaN(props.effectSize)) {
+          if (props.effectSize > 1) {
+              effectText = ` <span class="risk-inc">风险增加 ${(props.effectSize).toFixed(2)} 倍 (Risk Increased)</span>。`
+          } else if (props.effectSize < 1 && props.effectSize > 0) {
+              const reduction = ((1 - props.effectSize) * 100).toFixed(1)
+              effectText = ` <span class="risk-dec">风险降低 ${reduction}% (Risk Reduced)</span>。`
+          }
+    }
+    
     return `<span class="significant">差异显著 (P < 0.05)。</span>` + 
+           effectText +
            (props.direction ? ` ${props.direction}` : '') + 
-           ` 统计学分析表明，组间存在显著性关联，该结果不太可能是偶然发生的。`
+           ` 统计学分析表明，组间存在显著性关联。`
   } else {
     return `<span class="non-significant">无显著差异 (P > 0.05)。</span>` +
-           ` 目前的证据尚不足以证明组间存在差异。`
+           ` 目前的证据尚不足以证明存在统计学关联。`
   }
 })
 </script>
@@ -124,5 +143,21 @@ const summaryHtml = computed(() => {
 
 :deep(.non-significant) {
   color: #616161;
+}
+
+:deep(.risk-inc) {
+    color: #D32F2F;
+    background-color: #FFEBEE;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+:deep(.risk-dec) {
+    color: #2E7D32;
+    background-color: #E8F5E9;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
 }
 </style>

@@ -27,8 +27,8 @@ class LinearRegressionStrategy(BaseModelStrategy):
         rank = np.linalg.matrix_rank(X)
         cols = X.shape[1]
         if rank < cols:
-             # print(f"DEBUG: Raising ValueError for Singular Matrix. Rank={rank}, Cols={cols}")
-             raise ValueError("Linear Algebra Error: Singular matrix detected. Please check for perfect multi-collinearity among your variables.")
+             # Raise LinAlgError so ModelingService can catch and diagnose it
+             raise np.linalg.LinAlgError("Singular matrix detected")
              
         res = model.fit()
         
@@ -89,14 +89,14 @@ class LogisticRegressionStrategy(BaseModelStrategy):
             res = model.fit(disp=0)
             
             # Check for convergence and perfect separation signs
-            # Check for convergence and perfect separation signs
-            # Check commented out due to flakiness in CI environment
             # if np.abs(res.params).max() > 20 or np.any(np.isnan(res.bse)):
             #       raise ValueError("Model failed to converge (Perfect Separation detected).")
                   
         except Exception as e:
-            if 'Perfect separation' in str(e) or 'singular matrix' in str(e).lower():
-                 raise ValueError("Model failed to converge. Possible reasons: Perfect separation or Singular Matrix.")
+            if 'singular matrix' in str(e).lower():
+                 raise np.linalg.LinAlgError("Singular matrix detected")
+            if 'Perfect separation' in str(e):
+                 raise ValueError("Model failed to converge. Possible reasons: Perfect separation.")
             raise e
             
         # Evaluation

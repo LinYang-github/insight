@@ -86,9 +86,48 @@ class ModelingService:
             
             results = strategy.fit(df_processed, target, new_features, model_params)
         except np.linalg.LinAlgError:
-              raise ValueError("Linear Algebra Error: Singular matrix detected. Please check for perfect multi-collinearity among your variables.")
+            # Diagnose the issue
+            diagnosis = ModelingService._diagnose_singularity(df_processed, new_features)
+            raise ValueError(diagnosis)
         except Exception as e:
             if isinstance(e, ValueError): raise e
             raise RuntimeError(f"Model execution failed: {str(e)}")
 
         return DataService.sanitize_for_json(results)
+
+    @staticmethod
+    def _diagnose_singularity(df, features):
+        """
+        Diagnose why the matrix is singular (usually high correlation).
+        Returns a user-friendly error message.
+        """
+        # Calculate correlation matrix
+        try:
+            # Select numeric features only
+            numeric_df = df[features].select_dtypes(include=[np.number])
+            if numeric_df.empty or numeric_df.shape[1] < 2:
+                return "Singular matrix detected. Please check if your data contains enough variance or if sample size is too small."
+            
+            corr_matrix = numeric_df.corr().abs()
+            
+            # Find pairs with high correlation (>0.95)
+            # Iterate upper triangle
+            high_corr_pairs = []
+            cols = corr_matrix.columns
+            for i in range(len(cols)):
+                for j in range(i+1, len(cols)):
+                    if corr_matrix.iloc[i, j] > 0.95:
+                        high_corr_pairs.append(f"{cols[i]} & {cols[j]} (r={corr_matrix.iloc[i, j]:.2f})")
+            
+            if high_corr_pairs:
+                return (
+                    f"模型计算失败：检测到严重的多重共线性 (Singular Matrix)。\n"
+                    f"以下变量高度相关，导致信息冗余：\n"
+                    f"{', '.join(high_corr_pairs[:3])}" 
+                    f"{' 等' if len(high_corr_pairs) > 3 else ''}。\n"
+                    f"建议：移除其中一个相关变量后重试。"
+                )
+            
+            return "模型计算失败：检测到奇异矩阵 (Singular Matrix)。可能是因为变量间存在完全线性关系或样本量不足。"
+        except Exception:
+            return "模型计算失败：检测到奇异矩阵 (Singular Matrix)。请检查数据是否存在重复变量。"
