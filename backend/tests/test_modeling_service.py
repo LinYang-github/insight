@@ -87,3 +87,17 @@ class TestModelingService:
         assert 'plots' in res
         assert 'roc' in res['plots']
         assert 'confusion_matrix' in res['metrics']
+
+    def test_run_linear_regression_singular_matrix(self, regression_df):
+        """
+        Test that singular matrix (perfect multicollinearity) raises a clear ValueError.
+        """
+        # Create perfect collinearity: f2 = 2 * f1
+        df = regression_df.copy()
+        df['f2'] = 2 * df['f1']
+        
+        # This will cause singular matrix in OLS
+        with pytest.raises(ValueError, match="Singular matrix"):
+            ModelingService.run_model(
+                df, 'linear', 'target', ['f1', 'f2']
+            )

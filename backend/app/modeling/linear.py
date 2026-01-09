@@ -22,6 +22,12 @@ class LinearRegressionStrategy(BaseModelStrategy):
         y = df[target]
         
         model = sm.OLS(y, X)
+        
+        # Explicitly check for Singular Matrix (Multicollinearity)
+        # Verify if rank < number of features (including constant)
+        if np.linalg.matrix_rank(X) < X.shape[1]:
+             raise ValueError("Linear Algebra Error: Singular matrix detected. Please check for perfect multi-collinearity among your variables.")
+             
         res = model.fit()
         
         return self._format_results(res, df, features)
