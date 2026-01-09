@@ -10,47 +10,92 @@ from app.services.data_service import DataService
 
 class ModelingService:
     @staticmethod
+    def check_data_integrity(df, features, target):
+        """
+        Checks for NaNs, Infs in features and target.
+        """
+        # Check features
+        if df[features].isnull().any().any():
+            missing_cols = df[features].columns[df[features].isnull().any()].tolist()
+            raise ValueError(f"Feature variables contain missing values (NaN): {', '.join(missing_cols)}. Please impute missing values in 'Data Cleaning' first.")
+            
+        if np.isinf(df[features].select_dtypes(include=np.number)).values.any():
+             raise ValueError("Feature variables contain infinite values. Please check your data.")
+
+        # Check target
+        if isinstance(target, str):
+            if df[target].isnull().any():
+                raise ValueError(f"Target variable '{target}' contains missing values.")
+        elif isinstance(target, dict): # Cox time/event
+            if df[target['time']].isnull().any() or df[target['event']].isnull().any():
+                 raise ValueError("Target variables (Time/Event) contain missing values.")
+
+    @staticmethod
     def run_model(df, model_type, target, features, model_params=None):
         """
         Run statistical or ML model.
         """
         model_params = model_params or {}
         
-        # Robust encoding read is handled by caller (api) getting dataframe via robust method, 
-        # but here we receive a DF directly.
+        # 1. Integrity Check
+        ModelingService.check_data_integrity(df, features, target)
         
         X = df[features]
-        
         results = {}
         
-        if model_type in ['linear', 'logistic']:
-             X = sm.add_constant(X)
-             # ... existing statsmodels logic ...
-             if model_type == 'linear':
-                y = df[target]
-                model = sm.OLS(y, X)
-                res = model.fit()
-                results = ModelingService._format_statsmodels(res)
-             elif model_type == 'logistic':
-                y = df[target]
-                model = sm.Logit(y, X)
-                res = model.fit()
-                results = ModelingService._format_statsmodels(res, logistic=True)
+        try:
+            if model_type in ['linear', 'logistic']:
+                 X = sm.add_constant(X)
+                 if model_type == 'linear':
+                    y = df[target]
+                    model = sm.OLS(y, X)
+                    res = model.fit()
+                    results = ModelingService._format_statsmodels(res)
+                 elif model_type == 'logistic':
+                    y = df[target]
+                    model = sm.Logit(y, X)
+                    try:
+                        res = model.fit(disp=0) # disp=0 to silence stdout
+                    except Exception as e:
+                        if 'Perfect separation' in str(e) or 'singular matrix' in str(e).lower():
+                             raise ValueError("Model failed to converge. Possible reasons: Perfect separation (data classes are too easy to separate) or Singular Matrix (variables are highly correlated).")
+                        raise e
+                        
+                    results = ModelingService._format_statsmodels(res, logistic=True)
 
-        elif model_type == 'cox':
-            time_col = target['time']
-            event_col = target['event']
-            cph = CoxPHFitter()
-            data = df[features + [time_col, event_col]]
-            cph.fit(data, duration_col=time_col, event_col=event_col)
-            results = ModelingService._format_lifelines(cph)
+            elif model_type == 'cox':
+                time_col = target['time']
+                event_col = target['event']
+                cph = CoxPHFitter()
+                
+                # Check for low variance in event column
+                if df[event_col].nunique() < 2:
+                     raise ValueError(f"Event column '{event_col}' must have at least 2 unique values (0 and 1).")
+                     
+                data = df[features + [time_col, event_col]]
+                try:
+                    cph.fit(data, duration_col=time_col, event_col=event_col)
+                except Exception as e:
+                    if 'singular matrix' in str(e).lower():
+                        raise ValueError("LinAlgError: Singular matrix detected. This usually means two or more variables are perfectly correlated (multi-collinearity). Please remove redundant variables.")
+                    raise e
+                    
+                results = ModelingService._format_lifelines(cph)
 
-        elif model_type in ['random_forest', 'xgboost']:
-             results = ModelingService._run_ml_model(df, model_type, target, features, model_params)
+            elif model_type in ['random_forest', 'xgboost']:
+                 results = ModelingService._run_ml_model(df, model_type, target, features, model_params)
 
-        else:
-            raise ValueError(f"Unknown model type: {model_type}")
-            
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+                
+        except np.linalg.LinAlgError:
+             raise ValueError("Linear Algebra Error: Singular matrix detected. Please check for perfect multi-collinearity among your variables.")
+        except Exception as e:
+            # Re-raise known ValueErrors, wrap others
+            if isinstance(e, ValueError):
+                raise e
+            raise RuntimeError(f"Model execution failed: {str(e)}")
+
         return DataService.sanitize_for_json(results)
 
     @staticmethod
@@ -73,21 +118,42 @@ class ModelingService:
         else:
              is_classification = True
 
-        # encode y if classification and not numeric
         if is_classification and not pd.api.types.is_numeric_dtype(y):
              y = pd.Categorical(y).codes
         
+        # Robustly handle categorical features in X for Sklearn/XGB
+        X = X.copy()
+        for col in X.columns:
+            if not pd.api.types.is_numeric_dtype(X[col]):
+                # Fill NaN for categorical with a placeholder if present (though check_integrity might catch it)
+                # But to be safe for encoding:
+                X[col] = X[col].astype(str)
+                X[col] = pd.Categorical(X[col]).codes
+        
+        # Extract params with defaults
+        n_estimators = int(params.get('n_estimators', 100))
+        max_depth = params.get('max_depth', None)
+        if max_depth is not None and str(max_depth).strip() != '':
+             max_depth = int(max_depth)
+        else:
+             max_depth = None # None for RF means unlimited, for XGB it means 6 (default) usually
+             
+        learning_rate = float(params.get('learning_rate', 0.1))
+
         model = None
         if model_type == 'random_forest':
             if is_classification:
-                model = RandomForestClassifier(n_estimators=100, max_depth=None, random_state=42)
+                model = RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
             else:
-                model = RandomForestRegressor(n_estimators=100, max_depth=None, random_state=42)
+                model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
         elif model_type == 'xgboost':
+            # XGBoost default max_depth is 6 if None is passed? Usually we set a default.
+            if max_depth is None: max_depth = 6
+            
             if is_classification:
-                model = xgb.XGBClassifier(n_estimators=100, max_depth=6, random_state=42, use_label_encoder=False, eval_metric='logloss')
+                model = xgb.XGBClassifier(n_estimators=n_estimators, max_depth=max_depth, learning_rate=learning_rate, random_state=42, use_label_encoder=False, eval_metric='logloss')
             else:
-                model = xgb.XGBRegressor(n_estimators=100, max_depth=6, random_state=42)
+                model = xgb.XGBRegressor(n_estimators=n_estimators, max_depth=max_depth, learning_rate=learning_rate, random_state=42)
         
         model.fit(X, y)
         

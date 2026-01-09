@@ -5,15 +5,13 @@ import math
 
 class DataService:
     @staticmethod
-    def get_initial_metadata(filepath):
+    def load_data(filepath):
         """
-        Reads a CSV/Excel file and returns metadata:
-        - columns: list of column names
-        - types: inferred types (continuous, categorical)
-        - preview: first 5 rows
+        Robustly loads a dataset from CSV or Excel.
+        Handles encoding detection for CSVs.
         """
         if filepath.endswith('.csv'):
-            # Roboust parsing with encoding detection
+             # Roboust parsing with encoding detection
             encodings = ['utf-8', 'gb18030', 'latin1']
             df = None
             for encoding in encodings:
@@ -26,10 +24,21 @@ class DataService:
             
             if df is None:
                 raise ValueError("Failed to parse CSV file with supported encodings (utf-8, gb18030, latin1)")
+            return df
         elif filepath.endswith('.xlsx') or filepath.endswith('.xls'):
-            df = pd.read_excel(filepath)
+            return pd.read_excel(filepath)
         else:
-            raise ValueError("Unsupported file format")
+            raise ValueError("Unsupported file format (only .csv, .xlsx, .xls)")
+
+    @staticmethod
+    def get_initial_metadata(filepath):
+        """
+        Reads a CSV/Excel file and returns metadata:
+        - columns: list of column names
+        - types: inferred types (continuous, categorical)
+        - preview: first 5 rows
+        """
+        df = DataService.load_data(filepath)
             
         metadata = []
         for col in df.columns:

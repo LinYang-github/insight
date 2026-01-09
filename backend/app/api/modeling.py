@@ -33,11 +33,10 @@ def run_model(current_user):
         
     try:
         # Load data
-        # TODO: Handle file formats robustly. For now assume CSV/Excel work with pandas
-        if dataset.filepath.endswith('.csv'):
-            df = pd.read_csv(dataset.filepath)
-        else:
-            df = pd.read_excel(dataset.filepath)
+        # Load data
+        # Use robust loading from DataService
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
             
         # Run model
         results = ModelingService.run_model(df, model_type, target, features)
@@ -67,10 +66,9 @@ def export_model(current_user):
     
     try:
         # Load data
-        if dataset.filepath.endswith('.csv'):
-            df = pd.read_csv(dataset.filepath)
-        else:
-            df = pd.read_excel(dataset.filepath)
+        # Load data
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
             
         # Run model
         results = ModelingService.run_model(df, model_type, target, features)

@@ -1,24 +1,33 @@
 <template>
   <div class="project-wrapper">
-     <el-tabs type="border-card">
-        <el-tab-pane label="数据管理">
+    <div class="steps-container">
+        <el-steps :active="activeStep" finish-status="success" simple style="margin-bottom: 20px; cursor: pointer">
+            <el-step title="上传数据" icon="Upload" @click="activeTabName = 'data'" />
+            <el-step title="数据清洗" icon="Brush" @click="activeTabName = 'preprocessing'" />
+            <el-step title="探索分析" icon="DataLine" @click="activeTabName = 'eda'" />
+            <el-step title="统计建模" icon="TrendCharts" @click="activeTabName = 'modeling'" />
+        </el-steps>
+    </div>
+
+     <el-tabs type="border-card" v-model="activeTabName" @tab-change="handleTabChange" class="wizard-tabs">
+        <el-tab-pane label="数据管理" name="data">
             <DataTab 
                 :projectId="route.params.id" 
                 :dataset="dataset"
                 @dataset-updated="handleDatasetUpdate"
             />
         </el-tab-pane>
-        <el-tab-pane label="数据探索 (EDA)">
-            <EdaTab :datasetId="dataset?.dataset_id" />
-        </el-tab-pane>
-        <el-tab-pane label="数据清洗 (Cleaning)">
+        <el-tab-pane label="数据清洗 (Cleaning)" name="preprocessing">
             <PreprocessingTab 
                 :datasetId="dataset?.dataset_id" 
                 :metadata="dataset?.metadata"
                 @dataset-created="handleDatasetCreated"
             />
         </el-tab-pane>
-        <el-tab-pane label="统计建模">
+        <el-tab-pane label="数据探索 (EDA)" name="eda">
+            <EdaTab :datasetId="dataset?.dataset_id" />
+        </el-tab-pane>
+        <el-tab-pane label="统计建模" name="modeling">
             <ModelingTab 
                 :projectId="route.params.id"
                 :datasetId="dataset?.dataset_id"
@@ -30,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import DataTab from './components/DataTab.vue'
 import ModelingTab from './components/ModelingTab.vue'
@@ -38,31 +47,48 @@ import EdaTab from './components/EdaTab.vue'
 import PreprocessingTab from './components/PreprocessingTab.vue'
 import api from '../../api/client'
 
+import { Upload, Brush, DataLine, TrendCharts } from '@element-plus/icons-vue'
+
 const route = useRoute()
 const dataset = ref(null)
+const activeTabName = ref('data')
+
+const activeStep = computed(() => {
+    switch (activeTabName.value) {
+        case 'data': return 0
+        case 'preprocessing': return 1
+        case 'eda': return 2
+        case 'modeling': return 3
+        default: return 0
+    }
+})
+
+const handleTabChange = (name) => {
+    // Logic if needed
+}
 
 const fetchProjectData = async () => {
     try {
         const { data } = await api.get(`/data/metadata/${route.params.id}`)
         dataset.value = data
+        // If we have data, maybe we want to be at least at preprocessing or eda?
+        // But for consistency let's stay where we are or default to data.
     } catch (error) {
-        // No dataset yet, ignore
+        // No dataset yet
     }
 }
 
 const handleDatasetUpdate = (newDataset) => {
     dataset.value = newDataset
+    // Auto advance to cleaning
+    activeTabName.value = 'preprocessing'
 }
 
 const handleDatasetCreated = (newDatasetId) => {
-    // Refresh to switch to new dataset, or just notify user.
-    // Ideally we reload project data. 
-    // For MVP, we might need to emit up or just re-fetch if dataset is just a prop.
-    // The dataset prop comes from fetchProjectData. So calling it again refreshes.
-    // But fetchProjectData gets the *active* or *latest* dataset? 
-    // Currently backend get_metadata returns the Project's "primary" dataset or list?
-    // Let's check fetchProjectData logic.
-    fetchProjectData()
+    fetchProjectData().then(() => {
+         // Auto advance to EDA after cleaning
+         activeTabName.value = 'eda'
+    })
 }
 
 onMounted(() => {
@@ -73,5 +99,8 @@ onMounted(() => {
 <style scoped>
 .project-wrapper {
     /* Padding handled by MainLayout */
+}
+:deep(.wizard-tabs .el-tabs__header) {
+    display: none;
 }
 </style>
