@@ -6,6 +6,19 @@
             <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <el-alert
+                             title="什么是 RCS?"
+                             type="info"
+                             :closable="false"
+                             show-icon
+                             style="margin-bottom: 20px"
+                         >
+                             <div>
+                                 <b>限制性立方样条 (RCS)</b> 用于探索<b>非线性关系</b>（如 J 型曲线）。
+                                 <br/>
+                                 <li><b>Knots (节点)</b>: 决定曲线灵活性。一般推荐 3 或 4。</li>
+                             </div>
+                         </el-alert>
                          <el-form label-position="top">
                              <el-form-item label="模型类型 (Model Type)">
                                  <el-select v-model="rcsParams.model_type">
@@ -59,6 +72,19 @@
              <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <el-alert
+                             title="交互作用检验"
+                             type="success"
+                             :closable="false"
+                             show-icon
+                             style="margin-bottom: 20px"
+                         >
+                             <div>
+                                 <b>P-interaction &lt; 0.05</b> 意味着治疗效果在不同亚组间存在显著差异（效应修饰）。
+                                 <br/>
+                                 例如：新药在男性中有效 (HR&lt;1)，但在女性中无效 (HR=1)。
+                             </div>
+                         </el-alert>
                          <el-form label-position="top">
                              <el-form-item label="模型类型">
                                  <el-select v-model="subgroupParams.model_type">
@@ -112,12 +138,21 @@
              <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
-                         <div class="tip-box" style="margin-bottom: 15px; background: #fdf6ec; padding: 10px; border-radius: 4px; font-size: 12px; color: #e6a23c;">
-                            <el-icon><InfoFilled /></el-icon>
-                            CIF 比 1-KM 更能准确估计竞争事件发生率。
-                            <br/>
-                            event=1 为主要事件，event=2+ 为竞争事件。
-                         </div>
+                         <el-alert
+                             title="为什么不用 Kaplan-Meier?"
+                             type="warning"
+                             :closable="false"
+                             show-icon
+                             style="margin-bottom: 20px"
+                         >
+                            <div>
+                                当存在<b>竞争事件</b>（如死于其他原因）时，KM 会高估主要事件的风险。
+                                <br/>
+                                此时应使用 <b>CIF (累积发生率)</b>。
+                                <br/>
+                                <i>注: Event 1=主要事件, 2=竞争事件, 0=删失。</i>
+                            </div>
+                         </el-alert>
                          <el-form label-position="top">
                              <el-form-item label="时间变量 (Time)" required>
                                  <el-select v-model="cifParams.time_col" filterable placeholder="Select Time">

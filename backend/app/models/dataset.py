@@ -11,7 +11,7 @@ class Dataset(db.Model):
     # Metadata stored as JSON string
     _metadata_json = db.Column("metadata", db.Text)
     
-    project = db.relationship('Project', backref=db.backref('datasets', lazy=True, cascade="all, delete-orphan"))
+    project = db.relationship('Project', foreign_keys=[project_id], backref=db.backref('datasets', lazy=True, cascade="all, delete-orphan"))
 
     @property
     def meta_data(self):

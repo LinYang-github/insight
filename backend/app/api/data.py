@@ -52,6 +52,8 @@ def upload_data(current_user, project_id):
             )
             new_dataset.meta_data = metadata
             db.session.add(new_dataset)
+            db.session.flush() # Get ID
+            project.active_dataset_id = new_dataset.id
             db.session.commit()
             
             return jsonify({
@@ -69,8 +71,15 @@ def get_metadata(current_user, project_id):
     if project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403
     
-    # for MVP, assume one dataset per project or get the latest
-    dataset = Dataset.query.filter_by(project_id=project.id).order_by(Dataset.created_at.desc()).first()
+    # Prioritize active_dataset_id
+    if project.active_dataset_id:
+        dataset = Dataset.query.get(project.active_dataset_id)
+        if dataset and dataset.project_id != project.id:
+            dataset = None # Safety check
+            
+    if not project.active_dataset_id or not dataset:
+        # Fallback to latest
+        dataset = Dataset.query.filter_by(project_id=project.id).order_by(Dataset.created_at.desc()).first()
     
     if not dataset:
          return jsonify({'message': 'No dataset found for this project'}), 404

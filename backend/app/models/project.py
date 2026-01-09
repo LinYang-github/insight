@@ -7,6 +7,11 @@ class Project(db.Model):
     description = db.Column(db.Text)
     created_at = db.Column(db.DateTime, index=True, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    active_dataset_id = db.Column(db.Integer, db.ForeignKey('dataset.id'), nullable=True)
+    
+    # Relationships
+    active_dataset = db.relationship('Dataset', foreign_keys=[active_dataset_id])
+    
     # Future fields: study_design, data_path, status, etc.
 
     def __repr__(self):

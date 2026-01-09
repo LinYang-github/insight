@@ -82,13 +82,20 @@
               <el-tab-pane label="在线计算器 (Web Calculator)" name="calculator">
                 <div class="calculator-container">
                   <el-alert
-                    title="交互式风险预测"
+                    title="交互式风险预测 (Interactive Calculator)"
                     type="success"
                     :closable="false"
-                    description="输入患者特征，实时计算预测概率。"
                     show-icon
                     style="margin-bottom: 20px"
-                  />
+                  >
+                        <div>
+                            输入患者临床指标，实时计算预测概率。
+                            <br/>
+                            <span style="color:#67C23A">• 绿色 (Low Risk &lt; 10%)</span> | 
+                            <span style="color:#E6A23C">• 橙色 (Moderate)</span> | 
+                            <span style="color:#F56C6C">• 红色 (High Risk &gt; 50%)</span>
+                        </div>
+                  </el-alert>
                   
                   <el-row :gutter="40">
                       <el-col :span="12">
@@ -120,6 +127,21 @@
 
               <!-- Tab 2: Nomogram Plot -->
               <el-tab-pane label="列线图 (Nomogram)" name="nomogram">
+                 <el-alert
+                    title="如何阅读列线图?"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                    style="margin-bottom: 10px"
+                  >
+                    <div>
+                        1. 在每个变量轴上找到患者的数值，向上投射到 <b>Points (分值)</b> 轴。
+                        <br/>
+                        2. 将所有变量的分值相加得到 <b>Total Points</b>。
+                        <br/>
+                        3. 在 Total Points 轴找到对应值，向下投射到 <b>Risk</b> 轴读取概率。
+                    </div>
+                  </el-alert>
                  <div id="nomogram-plot" style="width: 100%; height: 600px;"></div>
               </el-tab-pane>
             </el-tabs>

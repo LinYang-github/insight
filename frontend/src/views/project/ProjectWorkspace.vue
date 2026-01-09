@@ -1,6 +1,17 @@
 <template>
   <el-container class="project-container">
     <el-aside width="240px" class="project-sidebar">
+        <div class="project-info-header" v-if="dataset">
+            <div class="info-label">当前数据集 (Active Dataset)</div>
+            <div class="info-value" :title="dataset.name">
+                <el-icon><Document /></el-icon>
+                <span>{{ dataset.name }}</span>
+            </div>
+            <div class="info-meta" v-if="dataset.metadata">
+                {{ dataset.metadata.row_count }} Rows • {{ dataset.metadata.variables?.length }} Vars
+            </div>
+        </div>
+
         <el-menu
             :default-active="activeTabName"
             class="el-menu-vertical"
@@ -132,7 +143,7 @@ import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
 import ClinicalVizTab from './components/ClinicalVizTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)
@@ -181,11 +192,27 @@ const fetchDatasetList = async () => {
 }
 
 
+const persistActiveDataset = async (dsId) => {
+    if (!dsId) return
+    try {
+        await api.put(`/projects/${route.params.id}`, { active_dataset_id: dsId })
+    } catch(e) {
+        console.error("Failed to persist active dataset", e)
+    }
+}
+
 const handleDatasetUpdate = (newDataset) => {
     dataset.value = newDataset
+    persistActiveDataset(newDataset.dataset_id || newDataset.id)
     fetchDatasetList()
-    // Auto advance to cleaning
-    activeTabName.value = 'preprocessing'
+    // Auto advance locally, or stay? Usually stay if clinical tool.
+    // But original code advanced to preprocessing?
+    // Only if it's import? 
+    // Logic: If activeTab is 'data', move to 'preprocessing'. 
+    // If 'clinical', stay in 'clinical'.
+    if (activeTabName.value === 'data') {
+        activeTabName.value = 'preprocessing'
+    }
 }
 
 const handleDatasetCreated = (newDatasetId) => {
@@ -194,10 +221,8 @@ const handleDatasetCreated = (newDatasetId) => {
 }
 
 const handleSwitchDataset = async (targetDataset) => {
-    // Switch active dataset context
-    // In backend, "active" might be stateful or just frontend context.
-    // Here we just update frontend Ref.
     dataset.value = targetDataset
+    await persistActiveDataset(targetDataset.id || targetDataset.dataset_id)
 }
 
 onMounted(() => {
@@ -239,4 +264,33 @@ onMounted(() => {
 .status-dot.green { background-color: #67C23A; }
 .status-dot.red { background-color: #F56C6C; }
 .status-dot.gray { background-color: #E4E7ED; }
+
+.project-info-header {
+    padding: 15px 20px;
+    background: #f0f9eb;
+    border-bottom: 1px solid #e1f3d8;
+}
+.info-label {
+    font-size: 11px;
+    color: #67C23A;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+.info-value {
+    font-size: 13px;
+    font-weight: 600;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.info-meta {
+    font-size: 11px;
+    color: #909399;
+    margin-top: 4px;
+}
 </style>

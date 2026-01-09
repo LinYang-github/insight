@@ -70,7 +70,10 @@
                     style="margin-bottom: 20px"
                 >
                     <div v-if="egfrMethod === 'egfr_ckdepi2021'">
-                        <b>CKD-EPI 2021 (New Standard)</b>: 去种族化公式，适用于所有成年人群。如果不确定，请首选此公式。
+                        <b>CKD-EPI 2021 (New Standard)</b>: 去种族化公式，适用于所有成年人群。
+                        <div style="margin-top:5px; color:#E6A23C">
+                             <el-icon><InfoFilled /></el-icon> <b>为什么首选?</b> 2021版公式移除了种族系数，消除了医疗中的潜在种族偏见，被 ASN/NKF 权威指南列为当前推荐公式。
+                        </div>
                         <br/>需映射: <code>血肌酐 (Scr)</code>, <code>年龄 (Age)</code>, <code>性别 (Sex)</code>
                     </div>
                     <div v-else-if="egfrMethod === 'egfr_ckdepi2009'">
@@ -202,9 +205,15 @@
                 
                 <el-tabs v-model="slopeMode">
                     <el-tab-pane label="步骤 1: 宽表转长表" name="melt">
-                        <div class="form-helper" style="margin-bottom: 15px">
-                            将每个时间点一列 (eGFR_0m, eGFR_6m...) 转换为每行一个时间点 (Time, Value) 格式。
-                        </div>
+                        <el-alert title="什么是宽表转长表?" type="info" :closable="false" style="margin-bottom: 20px">
+                             <div style="line-height: 1.6">
+                                 纵向分析（如计算斜率、线性混合模型）需要数据处于<b>长格式 (Long Format)</b>。
+                                 <br/>
+                                 <b>转换前 (宽表)</b>: 每个患者一行，不同时间点为不同列 (e.g. <code>eGFR_0m</code>, <code>eGFR_6m</code>)。
+                                 <br/>
+                                 <b>转换后 (长表)</b>: 每个患者多行，由 <code>Time</code> 列标记时间点。
+                             </div>
+                        </el-alert>
                          <el-form label-position="top">
                              <el-form-item label="病人 ID列 (Patient ID)" required>
                                 <el-select v-model="meltParams.id_col" placeholder="选择ID列" filterable>
@@ -241,9 +250,17 @@
                     </el-tab-pane>
                     
                     <el-tab-pane label="步骤 2: 计算斜率" name="calc">
-                        <div class="form-helper" style="margin-bottom: 15px">
-                            对每个 ID 进行线性回归 (Value ~ Time)，计算 eGFR 年下降率。需使用长表格式数据。
-                        </div>
+                        <el-alert title="如何解读斜率 (Slope)?" type="success" :closable="false" style="margin-bottom: 20px">
+                             <div>
+                                 <b>定义</b>: eGFR 随时间变化的速率 (ml/min/1.73m²/year)。
+                                 <br/>
+                                 <b>解读</b>: 
+                                 <li><b>负值 (e.g. -5.0)</b>: 代表肾功能下降。数值越小（负得越多），进展越快。</li>
+                                 <li><b>正值</b>: 代表肾功能改善（较少见）。</li>
+                                 <br/>
+                                 <i>注: 计算基于普通最小二乘法 (OLS) 回归。</i>
+                             </div>
+                        </el-alert>
                         <el-form label-position="top">
                              <el-row :gutter="20">
                                 <el-col :span="8">
