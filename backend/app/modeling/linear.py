@@ -73,9 +73,14 @@ class LogisticRegressionStrategy(BaseModelStrategy):
                  raise ValueError("Model failed to converge. Possible reasons: Perfect separation or Singular Matrix.")
             raise e
             
-        return self._format_results(res)
+        # Evaluation
+        y_prob = res.predict(X)
+        from app.utils.evaluation import ModelEvaluator
+        metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob)
+            
+        return self._format_results(res, metrics, plots)
 
-    def _format_results(self, res):
+    def _format_results(self, res, metrics=None, plots=None):
         summary = []
         params = res.params
         bse = res.bse
@@ -95,13 +100,16 @@ class LogisticRegressionStrategy(BaseModelStrategy):
                 'or_ci_upper': ResultFormatter.format_float(np.exp(conf.loc[name][1]), 2)
             }
             summary.append(row)
+            
+        metrics = metrics or {}
+        # Add basic statsmodels metrics if not present?
+        metrics['prsquared'] = ResultFormatter.format_float(res.prsquared, 4)
+        metrics['aic'] = ResultFormatter.format_float(res.aic, 2)
+        metrics['bic'] = ResultFormatter.format_float(res.bic, 2)
 
         return {
             'model_type': 'logistic',
             'summary': summary,
-            'metrics': {
-                'prsquared': ResultFormatter.format_float(res.prsquared, 4),
-                'aic': ResultFormatter.format_float(res.aic, 2),
-                'bic': ResultFormatter.format_float(res.bic, 2)
-            }
+            'metrics': metrics,
+            'plots': plots
         }

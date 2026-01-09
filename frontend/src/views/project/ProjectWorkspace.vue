@@ -5,6 +5,9 @@
             <el-step title="上传数据" icon="Upload" @click="activeTabName = 'data'" />
             <el-step title="数据清洗" icon="Brush" @click="activeTabName = 'preprocessing'" />
             <el-step title="探索分析" icon="DataLine" @click="activeTabName = 'eda'" />
+            <el-step title="统计描述" icon="List" @click="activeTabName = 'table1'" />
+            <el-step title="生存分析" icon="Timer" @click="activeTabName = 'survival'" />
+            <el-step title="倾向匹配" icon="Connection" @click="activeTabName = 'psm'" />
             <el-step title="统计建模" icon="TrendCharts" @click="activeTabName = 'modeling'" />
         </el-steps>
     </div>
@@ -27,6 +30,25 @@
         <el-tab-pane label="数据探索 (EDA)" name="eda">
             <EdaTab :datasetId="dataset?.dataset_id" />
         </el-tab-pane>
+        <el-tab-pane label="统计描述 (Table 1)" name="table1">
+            <TableOneTab 
+                :datasetId="dataset?.dataset_id"
+                :metadata="dataset?.metadata"
+            />
+        </el-tab-pane>
+        <el-tab-pane label="生存分析 (Survival)" name="survival">
+            <SurvivalTab 
+                :datasetId="dataset?.dataset_id"
+                :metadata="dataset?.metadata"
+            />
+        </el-tab-pane>
+        <el-tab-pane label="倾向性匹配 (PSM)" name="psm">
+            <PsmTab 
+                :datasetId="dataset?.dataset_id"
+                :metadata="dataset?.metadata"
+                @dataset-created="handleDatasetCreated"
+            />
+        </el-tab-pane>
         <el-tab-pane label="统计建模" name="modeling">
             <ModelingTab 
                 :projectId="route.params.id"
@@ -45,9 +67,12 @@ import DataTab from './components/DataTab.vue'
 import ModelingTab from './components/ModelingTab.vue'
 import EdaTab from './components/EdaTab.vue'
 import PreprocessingTab from './components/PreprocessingTab.vue'
+import TableOneTab from './components/TableOneTab.vue'
+import SurvivalTab from './components/SurvivalTab.vue'
+import PsmTab from './components/PsmTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)
@@ -58,7 +83,10 @@ const activeStep = computed(() => {
         case 'data': return 0
         case 'preprocessing': return 1
         case 'eda': return 2
-        case 'modeling': return 3
+        case 'table1': return 3
+        case 'survival': return 4
+        case 'psm': return 5
+        case 'modeling': return 6
         default: return 0
     }
 })

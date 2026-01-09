@@ -98,81 +98,87 @@
                     </el-descriptions-item>
                 </el-descriptions>
 
-                   <!-- ML Results -->
-                <div v-if="results.importance">
-                    <el-descriptions title="模型指标 (Metrics)" :column="2" border size="small" style="margin-bottom: 20px">
-                        <el-descriptions-item v-for="(val, key) in results.metrics" :key="key">
-                            <template #label>
-                                <span>{{ key }}</span>
-                                <el-tooltip v-if="metricTooltips[key]" :content="metricTooltips[key]" placement="top">
-                                    <el-icon style="margin-left: 4px; color: #909399; cursor: pointer"><QuestionFilled /></el-icon>
-                                </el-tooltip>
-                            </template>
-                            <template v-if="typeof val === 'number'">{{ val.toFixed(4) }}</template>
-                            <template v-else>{{ val }}</template>
-                        </el-descriptions-item>
-                    </el-descriptions>
-                    
-                    <h3>特征重要性 (Feature Importance - SHAP)</h3>
-                    <el-table :data="results.importance" style="width: 100%" height="400" stripe border size="small">
-                        <el-table-column prop="feature" label="变量名" />
-                        <el-table-column prop="importance" label="重要性 (SHAP mean)">
-                            <template #default="scope">
-                                <el-progress :percentage="Math.min(scope.row.importance * 100 / maxImportance, 100)" :show-text="false" />
-                                {{ scope.row.importance.toFixed(5) }}
-                            </template>
-                        </el-table-column>
-                    </el-table>
-                </div>
+                <!-- Result Tabs -->
+                <el-tabs type="border-card">
+                    <el-tab-pane label="模型详情 (Details)">
+                        <!-- ML Results (Importance) -->
+                        <div v-if="results.importance">
+                             <h3>特征重要性 (Feature Importance - SHAP)</h3>
+                             <el-table :data="results.importance" style="width: 100%" height="400" stripe border size="small">
+                                <el-table-column prop="feature" label="变量名" />
+                                <el-table-column prop="importance" label="重要性 (SHAP mean)">
+                                    <template #default="scope">
+                                        <el-progress :percentage="Math.min(scope.row.importance * 100 / maxImportance, 100)" :show-text="false" />
+                                        {{ scope.row.importance.toFixed(5) }}
+                                    </template>
+                                </el-table-column>
+                             </el-table>
+                        </div>
 
-                <!-- Statistical Summary Table -->
-                <el-table v-else :data="results.summary" style="width: 100%" height="400" stripe border size="small">
-                    <el-table-column prop="variable" label="变量" />
-                    <el-table-column prop="coef" label="系数 (Coef)">
-                        <template #header>
-                             <span>系数 (Coef)</span>
-                             <el-tooltip content="正值代表正相关（风险增加），负值代表负相关（风险降低）" placement="top">
-                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                             </el-tooltip>
-                        </template>
-                        <template #default="scope">{{ scope.row.coef.toFixed(4) }}</template>
-                    </el-table-column>
-                    <el-table-column prop="p_value" label="P值">
-                        <template #header>
-                             <span>P值</span>
-                             <el-tooltip content="P < 0.05 通常认为具有统计学显著意义" placement="top">
-                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                             </el-tooltip>
-                        </template>
-                        <template #default="scope">
-                            <span :style="{ fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit' }">
-                                {{ scope.row.p_value < 0.001 ? '<0.001' : scope.row.p_value.toFixed(4) }}
-                            </span>
-                        </template>
-                    </el-table-column>
-                    <el-table-column v-if="config.model_type === 'logistic'" label="OR (95% CI)">
-                        <template #header>
-                             <span>OR (95% CI)</span>
-                             <el-tooltip content="优势比 (Odds Ratio)。OR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
-                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                             </el-tooltip>
-                        </template>
-                        <template #default="scope">
-                            {{ scope.row.or.toFixed(2) }} ({{ scope.row.or_ci_lower.toFixed(2) }}-{{ scope.row.or_ci_upper.toFixed(2) }})
-                        </template>
-                    </el-table-column>
-                    <el-table-column v-if="config.model_type === 'cox'" label="HR (95% CI)">
-                        <template #header>
-                             <span>HR (95% CI)</span>
-                             <el-tooltip content="风险比 (Hazard Ratio)。HR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
-                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                             </el-tooltip>
-                        </template>
-                        <template #default="scope">
-                            {{ scope.row.hr.toFixed(2) }} ({{ scope.row.hr_ci_lower.toFixed(2) }}-{{ scope.row.hr_ci_upper.toFixed(2) }})
-                        </template>
-                    </el-table-column>
-                </el-table>
+                        <!-- Statistical Summary Table -->
+                        <el-table v-else :data="results.summary" style="width: 100%" height="400" stripe border size="small">
+                            <el-table-column prop="variable" label="变量" />
+                            <el-table-column prop="coef" label="系数 (Coef)">
+                                <template #header>
+                                     <span>系数 (Coef)</span>
+                                     <el-tooltip content="正值代表正相关（风险增加），负值代表负相关（风险降低）" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                                <template #default="scope">{{ scope.row.coef.toFixed(4) }}</template>
+                            </el-table-column>
+                            <el-table-column prop="p_value" label="P值">
+                                <template #header>
+                                     <span>P值</span>
+                                     <el-tooltip content="P < 0.05 通常认为具有统计学显著意义" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                                <template #default="scope">
+                                    <span :style="{ fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit' }">
+                                        {{ scope.row.p_value < 0.001 ? '<0.001' : typeof scope.row.p_value === 'number' ? scope.row.p_value.toFixed(4) : scope.row.p_value }}
+                                    </span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column v-if="config.model_type === 'logistic'" label="OR (95% CI)">
+                                <template #header>
+                                     <span>OR (95% CI)</span>
+                                     <el-tooltip content="优势比 (Odds Ratio)。OR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                                <template #default="scope">
+                                    {{ scope.row.or.toFixed(2) }} ({{ scope.row.or_ci_lower.toFixed(2) }}-{{ scope.row.or_ci_upper.toFixed(2) }})
+                                </template>
+                            </el-table-column>
+                            <el-table-column v-if="config.model_type === 'cox'" label="HR (95% CI)">
+                                <template #header>
+                                     <span>HR (95% CI)</span>
+                                     <el-tooltip content="风险比 (Hazard Ratio)。HR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                                <template #default="scope">
+                                    {{ scope.row.hr.toFixed(2) }} ({{ scope.row.hr_ci_lower.toFixed(2) }}-{{ scope.row.hr_ci_upper.toFixed(2) }})
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="评估图表 (Evaluation Plots)" v-if="results.plots">
+                        <el-row :gutter="20">
+                            <el-col :span="12" v-if="results.plots.roc" style="margin-bottom: 20px;">
+                                <div id="roc-plot" style="width: 100%; height: 400px;"></div>
+                            </el-col>
+                            <el-col :span="12" v-if="results.plots.calibration" style="margin-bottom: 20px;">
+                                <div id="calibration-plot" style="width: 100%; height: 400px;"></div>
+                            </el-col>
+                             <el-col :span="12" v-if="results.plots.dca" style="margin-bottom: 20px;">
+                                <div id="dca-plot" style="width: 100%; height: 400px;"></div>
+                            </el-col>
+                        </el-row>
+                    </el-tab-pane>
+                </el-tabs>
            </el-card>
        </el-col>
     </el-row>
@@ -180,9 +186,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, reactive } from 'vue'
+import { ref, computed, watch, reactive, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
+import Plotly from 'plotly.js-dist-min'
 
 import { QuestionFilled } from '@element-plus/icons-vue'
 
@@ -289,10 +296,92 @@ const runModel = async () => {
         })
         results.value = data.results
         ElMessage.success('模型运行成功')
+        
+        if (results.value.plots) {
+            await nextTick()
+            renderEvaluationPlots(results.value.plots)
+        }
     } catch (error) {
         ElMessage.error(error.response?.data?.message || '模型运行失败')
     } finally {
         loading.value = false
+    }
+}
+
+const renderEvaluationPlots = (plots) => {
+    // ROC Curve
+    if (plots.roc) {
+        const trace = {
+            x: plots.roc.fpr,
+            y: plots.roc.tpr,
+            mode: 'lines',
+            name: `AUC = ${plots.roc.auc.toFixed(3)}`,
+            line: { color: 'blue' }
+        }
+        const diagonal = {
+            x: [0, 1], y: [0, 1],
+            mode: 'lines',
+            name: 'Random',
+            line: { dash: 'dash', color: 'gray' }
+        }
+        Plotly.newPlot('roc-plot', [trace, diagonal], {
+            title: 'ROC Curve',
+            xaxis: { title: 'False Positive Rate' },
+            yaxis: { title: 'True Positive Rate' }
+        }, {responsive: true})
+    }
+
+    // Calibration Curve
+    if (plots.calibration) {
+        const trace = {
+            x: plots.calibration.prob_pred,
+            y: plots.calibration.prob_true,
+            mode: 'lines+markers',
+            name: 'Model',
+            line: { color: 'red' }
+        }
+        const perfect = {
+            x: [0, 1], y: [0, 1],
+            mode: 'lines',
+            name: 'Perfectly Calibrated',
+            line: { dash: 'dash', color: 'gray' }
+        }
+        Plotly.newPlot('calibration-plot', [trace, perfect], {
+            title: 'Calibration Plot',
+            xaxis: { title: 'Mean Predicted Probability', range: [0, 1] },
+            yaxis: { title: 'Fraction of Positives', range: [0, 1] }
+        }, {responsive: true})
+    }
+
+    // DCA Plot
+    if (plots.dca) {
+        const traceModel = {
+            x: plots.dca.thresholds,
+            y: plots.dca.net_benefit_model,
+            mode: 'lines',
+            name: 'Model',
+            line: { color: 'red', width: 2 }
+        }
+        const traceAll = {
+            x: plots.dca.thresholds,
+            y: plots.dca.net_benefit_all,
+            mode: 'lines',
+            name: 'Treat All',
+            line: { color: 'gray', dash: 'dash' }
+        }
+        const traceNone = {
+            x: plots.dca.thresholds,
+            y: plots.dca.net_benefit_none,
+            mode: 'lines',
+            name: 'Treat None',
+            line: { color: 'black' }
+        }
+    
+        Plotly.newPlot('dca-plot', [traceModel, traceAll, traceNone], {
+            title: 'Decision Curve Analysis',
+            xaxis: { title: 'Threshold Probability', range: [0, 1] },
+            yaxis: { title: 'Net Benefit', range: [-0.05, Math.max(...plots.dca.net_benefit_model, ...plots.dca.net_benefit_all) + 0.05] }
+        }, {responsive: true})
     }
 }
 

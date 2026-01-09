@@ -1,3 +1,4 @@
+
 from flask import Blueprint
 from .auth import auth_bp
 from .projects import projects_bp
@@ -5,6 +6,7 @@ from .data import data_bp
 from .modeling import modeling_bp
 from .eda import eda_bp
 from .preprocessing import preprocessing_bp
+from .statistics import statistics_bp
 
 main_bp = Blueprint('api', __name__)
 
@@ -15,3 +17,4 @@ def register_blueprints(app):
     app.register_blueprint(modeling_bp, url_prefix='/api/modeling')
     app.register_blueprint(eda_bp, url_prefix='/api/eda')
     app.register_blueprint(preprocessing_bp, url_prefix='/api/preprocessing')
+    app.register_blueprint(statistics_bp, url_prefix='/api/statistics')

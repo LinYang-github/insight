@@ -85,13 +85,8 @@ class TreeModelStrategy(BaseModelStrategy):
         
         if is_clf:
             y_prob = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else y_pred
-            metrics['accuracy'] = ResultFormatter.format_float(accuracy_score(y, y_pred), 4)
-            if len(np.unique(y)) == 2:
-                 fpr, tpr, _ = roc_curve(y, y_prob)
-                 metrics['auc'] = ResultFormatter.format_float(auc(fpr, tpr), 4)
-                 plots['roc'] = {'fpr': fpr.tolist(), 'tpr': tpr.tolist()}
-            cm = confusion_matrix(y, y_pred)
-            metrics['confusion_matrix'] = cm.tolist()
+            from app.utils.evaluation import ModelEvaluator
+            metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob, y_pred)
         else:
             metrics['r2'] = ResultFormatter.format_float(r2_score(y, y_pred), 4)
             metrics['rmse'] = ResultFormatter.format_float(np.sqrt(mean_squared_error(y, y_pred)), 4)
