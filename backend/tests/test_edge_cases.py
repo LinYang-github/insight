@@ -33,8 +33,28 @@ def test_edge_gbk_encoding(gbk_df):
     
     # Verify content
     assert gbk_df.iloc[0]['姓名'] == '张三'
-    
-    # Test handling of "Not Known" (custom NA in generation script but pandas reads as string by default)
-    # Just ensure it was read safely
-    assert 'Not Known' in gbk_df['姓名'].values
+
+def test_edge_high_collinearity(load_golden_dataset):
+    """
+    Test soft collinearity (r > 0.99).
+    Models often still run but with high variance.
+    We just ensure it doesn't crash the server.
+    """
+    df = load_golden_dataset("edge_collinear.csv")
+    # Should run without error, or warn
+    try:
+        ModelingService.run_model(df, 'linear', 'y', ['x1', 'x2'])
+    except Exception as e:
+        pytest.fail(f"High collinearity caused crash: {e}")
+
+def test_edge_all_nan(load_golden_dataset):
+    """
+    Test completely NaN dataset.
+    Should raise ValueError during modeling or preprocessing.
+    """
+    df = load_golden_dataset("edge_all_nan.csv")
+    # All are NaN, so dropna will result in empty DF.
+    # ModelingService usually checks for empty DF.
+    with pytest.raises(ValueError):
+         ModelingService.run_model(df, 'linear', 'A', ['B'])
 

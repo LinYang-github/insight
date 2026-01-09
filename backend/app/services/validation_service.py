@@ -135,6 +135,22 @@ class ValidationService:
             
         return report
 
+        return report
+
+    @staticmethod
+    def _check_collinearity(df):
+        """Check for high condition number."""
+        # Simple heuristic: singular values
+        numeric = df.select_dtypes(include=[np.number]).dropna()
+        if numeric.empty:
+            return "No numeric data"
+        
+        # Check condition number
+        cond_num = np.linalg.cond(numeric)
+        if cond_num > 1e10: # High threshold for singularity
+            return f"High Multicollinearity (Condition Number: {cond_num:.2e})"
+        return "Normal"
+
     @staticmethod
     def run_robustness_checks():
         """
@@ -168,7 +184,7 @@ class ValidationService:
                     "case": "Perfect Multicollinearity",
                     "expected": "Singular Matrix Error",
                     "actual": str(e),
-                    "status": "WARN", # Caught error but maybe different one
+                    "status": "WARN", 
                     "message": f"Caught unexpected error: {e}"
                 })
         except Exception as e:
@@ -182,10 +198,8 @@ class ValidationService:
 
         # 2. GBK Encoding / Chinese
         try:
-            # We explicitly test if the Service can handle it (Preprocessing usually handles upload)
-            # But here we just test data loading capability of this service
-            df = ValidationService._load_data("edge_encoding_gbk.csv", encoding='gbk')
-            if '姓名' in df.columns:
+            df_gbk = ValidationService._load_data("edge_encoding_gbk.csv", encoding='gbk')
+            if '姓名' in df_gbk.columns:
                 report.append({
                     "case": "GBK/Chinese Character Support",
                     "expected": "Parse Success",
@@ -199,7 +213,7 @@ class ValidationService:
                     "expected": "Parse Success",
                     "actual": "Columns Mismatch",
                     "status": "FAIL",
-                    "message": f"Columns found: {df.columns.tolist()}"
+                    "message": f"Columns found: {df_gbk.columns.tolist()}"
                 })
         except Exception as e:
             report.append({
@@ -208,6 +222,65 @@ class ValidationService:
                 "actual": "Exception",
                 "status": "FAIL",
                 "message": str(e)
+            })
+
+        # 3. High Collinearity (Soft)
+        try:
+            df_coll = ValidationService._load_data("edge_collinear.csv")
+            # ModelingService might not fail, but we check if we can detect it.
+            # Here we just run linear model. Statsmodels might warn or return large StdErr.
+            res = ModelingService.run_model(df_coll, 'linear', 'y', ['x1', 'x2'])
+            
+            # Check if we can detect high condition number manually
+            # (In a real app, this logic might be inside ModelingService)
+            df_x = df_coll[['x1', 'x2']]
+            cond = np.linalg.cond(df_x)
+            
+            status = "PASS" if cond > 1000 else "WARN" # It relies on the generated data
+            
+            report.append({
+                "case": "High Multicollinearity (Soft)",
+                "expected": "Model Completes (Unstable)",
+                "actual": f"Completed (Cond: {cond:.1e})",
+                "status": status,
+                "message": "Model ran despite high collinearity (Robust)."
+            })
+        except Exception as e:
+             report.append({
+                "case": "High Multicollinearity (Soft)",
+                "expected": "Model Completes",
+                "actual": type(e).__name__,
+                "status": "WARN", # Maybe it failed due to matrix inversion
+                "message": str(e)
+            })
+
+        # 4. All NaN
+        try:
+            df_nan = ValidationService._load_data("edge_all_nan.csv")
+            # This should probably raise an error about empty data
+            ModelingService.run_model(df_nan, 'linear', 'A', ['B'])
+            report.append({
+                "case": "All NaN Data",
+                "expected": "Pre-check Error",
+                "actual": "No Error",
+                "status": "FAIL",
+                "message": "System attempted to run on empty data."
+            })
+        except ValueError as e:
+             report.append({
+                "case": "All NaN Data",
+                "expected": "ValueError (Empty/NaN)",
+                "actual": str(e),
+                "status": "PASS",
+                "message": "Correctly rejected NaN data."
+            })
+        except Exception as e:
+            report.append({
+                "case": "All NaN Data",
+                "expected": "ValueError",
+                "actual": type(e).__name__,
+                "status": "WARN",
+                "message": f"Rejected with unexpected error: {e}"
             })
             
         return report
