@@ -61,7 +61,7 @@ class StatisticsService:
                     group_data.append(sub_df[var].dropna())
                     
                 row['groups'] = group_stats
-                
+                    
                 # 假设检验选择逻辑 (Hypothesis Test Selection):
                 # 1. 数值型变量 (Numeric):
                 #    - 两组：使用 Welch's T-test (不假设方差相等)，比标准 T-test 更稳健。
@@ -85,7 +85,15 @@ class StatisticsService:
                     ct = pd.crosstab(df[var], df[group_by])
                     try:
                         stat, p, dof, expected = stats.chi2_contingency(ct)
-                        row['test'] = 'Chi-square'
+                        test_name = 'Chi-square'
+                        
+                        # Check Cochran's Rule: if expected < 5 in >20% cells (or simply if any < 5 for strictness)
+                        # For 2x2, if expected < 5, use Fisher
+                        if ct.shape == (2, 2) and (expected < 5).any():
+                             odds, p = stats.fisher_exact(ct)
+                             test_name = 'Fisher Exact Test'
+                             
+                        row['test'] = test_name
                     except Exception:
                         p = None
                         row['test'] = 'Error'

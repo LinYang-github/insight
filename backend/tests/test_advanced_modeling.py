@@ -1,42 +1,8 @@
-
 import pytest
 import pandas as pd
 import numpy as np
-import sys
-from unittest.mock import MagicMock
-
-# Mock imports
-sys.modules['app.api.auth'] = MagicMock()
-sys.modules['app.models.dataset'] = MagicMock()
-
-# Mock DataService properly to return DF
-data_service_mock = MagicMock()
-def identity_preprocess(df, *args, **kwargs):
-    return df
-data_service_mock.preprocess_for_formula.side_effect = identity_preprocess
-data_service_mock.preprocess_for_matrix.side_effect = identity_preprocess
-data_service_mock.load_data.side_effect = lambda x: pd.DataFrame() # Dummy
-sys.modules['app.services.data_service'] = MagicMock()
-sys.modules['app.services.data_service'].DataService = data_service_mock
-
-# Mock ModelingService because it relies on DB/App context usually
-modeling_service_mock = MagicMock()
-def mock_run_model(df, model_type, target, features):
-    # Return dummy result for Logistic
-    if model_type == 'logistic':
-        return {
-            'metrics': {'auc': 0.75, 'aic': 100},
-            'plots': {'roc_curve': [{'fpr': 0.1, 'tpr': 0.2}]}
-        }
-    return {}
-modeling_service_mock.run_model.side_effect = mock_run_model
-# Integrity check: pass
-modeling_service_mock.check_data_integrity.return_value = True
-
-sys.modules['app.services.modeling_service'] = MagicMock()
-sys.modules['app.services.modeling_service'].ModelingService = modeling_service_mock
-
 from app.services.advanced_modeling_service import AdvancedModelingService
+from app.services.modeling_service import ModelingService
 
 class TestAdvancedModeling:
     
@@ -321,8 +287,8 @@ class TestAdvancedModeling:
         # Base: 20 rows
         data = {
             'Y': [0, 1] * 10,
-            'A': [1] * 20,
-            'B': [1] * 20,
+            'A': np.linspace(0, 10, 20).tolist(),
+            'B': np.linspace(0, 5, 20).tolist(),
             'C': [1] * 20
         }
         # Introduce missing
@@ -352,3 +318,21 @@ class TestAdvancedModeling:
         # Both models should report n=18
         assert res[0]['n'] == 18
         assert res[1]['n'] == 18
+
+    def test_rcs_knots_stability(self, dummy_df):
+        """
+        Verify that RCS works for different knot numbers (3, 4, 5).
+        """
+        for k in [3, 4, 5]:
+            res = AdvancedModelingService.fit_rcs(
+                dummy_df, 
+                target='event', 
+                event_col=None, 
+                exposure='exposure', 
+                covariates=['age'], 
+                model_type='logistic', 
+                knots=k
+            )
+            assert 'plot_data' in res
+            assert len(res['plot_data']) > 0
+

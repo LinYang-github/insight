@@ -685,8 +685,8 @@ class AdvancedModelingService:
                     # Use ModelingService for standard Logistic
                     model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
                     metrics = model_res.get('metrics', {})
-                    if 'plots' in model_res and 'roc_curve' in model_res['plots']:
-                         roc_data = model_res['plots']['roc_curve'] 
+                    if 'plots' in model_res and 'roc' in model_res['plots']:
+                         roc_data = model_res['plots']['roc'] 
 
                 elif model_type == 'cox':
                     # Custom implementation for Cox ROC

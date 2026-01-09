@@ -1,15 +1,6 @@
-
 import pytest
 import pandas as pd
 import numpy as np
-import sys
-from unittest.mock import MagicMock
-
-# Mock imports to avoid App Context issues
-sys.modules['app.api.auth'] = MagicMock()
-sys.modules['app.models.dataset'] = MagicMock()
-sys.modules['app.services.data_service'] = MagicMock()
-
 from app.services.preprocessing_service import PreprocessingService
 
 class TestClinicalService:
@@ -110,3 +101,43 @@ class TestClinicalService:
         sub = res[res['ID'] == 1]
         assert len(sub) == 2
         assert 10 in sub['eGFR'].values
+
+    def test_egfr_2009_race_factor(self):
+        """
+        Verify that 2009 formula correctly applies race factor (1.159 for Black/African American).
+        Formula: 141 * min(Scr/k, 1)^a * max(Scr/k, 1)^-1.209 * 0.993^Age * 1.018 [if Female] * 1.159 [if Black]
+        """
+        # Case: Black Male, Age 50, Scr 1.0
+        # k=0.9, a=-0.411, Sex=1, Black=1.159
+        # min(1.11, 1) = 1
+        # max(1.11, 1) = 1.11
+        # 141 * (1.11^-1.209) * (0.993^50) * 1.159
+        # 1.11^-1.209 = 0.881
+        # 0.993^50 = 0.704
+        # 141 * 0.881 * 0.704 * 1.159 approx 101.3
+        
+        df = pd.DataFrame({
+            'Scr': [1.0],
+            'Age': [50],
+            'Sex': ['M'],
+            'Race': ['Black']
+        })
+        
+        params = {'scr': 'Scr', 'age': 'Age', 'sex': 'Sex', 'race': 'Race'}
+        # Note: derive_variable implementation for 2009 needs to support 'race' parameter mapping
+        # Assuming implementation supports it or we check default behavior if not
+        
+        # Check if 'egfr_ckdepi' (default usually 2009 or specified) supports race.
+        # Let's assume 'egfr_ckdepi' is 2009.
+        res = PreprocessingService.derive_variable(df, 'egfr_ckdepi2009', params)
+        
+        assert 'eGFR_CKDEPI_2009' in res.columns
+        val = res.iloc[0]['eGFR_CKDEPI_2009']
+        
+        # If logic correct, ~101. If race ignored, ~87.
+        # This test ensures race is processed if passed.
+        # If the current implementation doesn't support Race, this test might fail or need adjustment.
+        # Based on task requirement, we are VERIFYING it.
+        # If it fails, we know we need to fix implementation.
+        assert val > 95 # Expect > 95 if factor applied
+

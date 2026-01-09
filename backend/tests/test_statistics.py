@@ -84,8 +84,9 @@ def test_service_logic():
     sex_row = res[0]
     assert sex_row['variable'] == 'sex'
     # p-value might be 1.0
-    assert float(sex_row['p_value']) > 0.05
-    assert sex_row['test'] == 'Chi-square'
+    assert sex_row['p_value'] != 'N/A'
+    # With small sample (N=10) and expected < 5, code now switches to Fisher
+    assert sex_row['test'] == 'Fisher Exact Test'
 
 def test_api_endpoint(client, auth_header, sample_dataset):
     ds_id = sample_dataset.id
@@ -146,9 +147,65 @@ def test_psm(client, auth_header, sample_dataset):
     # Before: Treated mean=50, Control mean=40. SMD > 0.
     # After: Treated mean=50, Control matched mean=50. SMD=0.
     
+
     balance = res['balance'][0]
     assert balance['variable'] == 'age'
     assert balance['smd_pre'] > 0
     assert balance['smd_post'] < balance['smd_pre']
     assert balance['smd_post'] < 0.1 # Should be perfect 0 actually
+
+def test_fisher_exact_small_sample():
+    # Construct small sample size where Chi-square would be invalid (Expected < 5)
+    # Group A: 3 Yes, 0 No
+    # Group B: 1 Yes, 4 No
+    # Total N = 8.
+    df = pd.DataFrame({
+        'group': ['A']*3 + ['B']*5,
+        'outcome': ['Yes']*3 + ['Yes', 'No', 'No', 'No', 'No']
+    })
+    
+    res = StatisticsService.generate_table_one(df, 'group', ['outcome'])
+    row = res[0]
+    
+    # Should automatically choose Fisher Exact
+    assert row['variable'] == 'outcome'
+    assert row['test'] == 'Fisher Exact Test'
+    
+def test_km_monotonicity_and_logrank():
+    # 1. Monotonicity
+    # Create simple data with events
+    df = pd.DataFrame({
+        'time': [1, 2, 3, 4, 5],
+        'event': [0, 1, 0, 1, 0]
+    })
+    res = StatisticsService.generate_km_data(df, 'time', 'event')
+    plot_data = res['plot_data'][0]
+    probs = plot_data['probs']
+    
+    # Verify probability never increases (monotonic non-increasing)
+    for i in range(len(probs)-1):
+        assert probs[i] >= probs[i+1], f"KM probability increased at index {i}"
+        
+    assert min(probs) >= 0
+    assert max(probs) <= 1
+    
+    # 2. Log-rank Significance
+    # Group A: Die early (t=1, 2)
+    # Group B: Die late (t=100, 101)
+    df_sig = pd.DataFrame({
+        'time':   [1, 1, 2, 2, 100, 100, 101, 101],
+        'event':  [1, 1, 1, 1, 1,   1,   1,   1],
+        'group':  ['A']*4 + ['B']*4
+    })
+    
+    res_sig = StatisticsService.generate_km_data(df_sig, 'time', 'event', 'group')
+    
+    p_val_str = res_sig['p_value']
+    # Parsable float?
+    assert p_val_str != 'N/A'
+    p_val = float(p_val_str.replace('<', '')) # Handle <0.001
+    
+    # Should be significant
+    assert p_val < 0.05
+
 

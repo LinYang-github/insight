@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from app.services.data_service import DataService
 from app.models.dataset import Dataset
-from app.api.auth import db
+from app import db
 import os
 
 class PreprocessingService:
