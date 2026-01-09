@@ -13,6 +13,21 @@
       </el-upload>
     </div>
 
+    <el-alert
+        title="数据管理指南"
+        type="info"
+        show-icon
+        :closable="false"
+        style="margin-bottom: 20px"
+    >
+        <template #default>
+            <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+                <li><b>元数据</b>: 系统会自动识别变量类型（数值型、分类型）。若识别有误，可在“预处理”中修正。</li>
+                <li><b>数据安全</b>: 您的文件仅保存在本地服务器。任何处理操作都会生成带有时间戳的新版本，原始版本永不丢失。</li>
+            </div>
+        </template>
+    </el-alert>
+
     <el-card v-if="metadata" class="box-card" shadow="never" style="margin-top: 20px">
          <template #header>
             <div class="card-header">

@@ -11,6 +11,22 @@
                     </div>
                 </template>
                 <el-form label-position="top">
+                    <!-- Guidance Alert -->
+                    <el-alert
+                        title="基线表 (Table 1) 指南"
+                        type="info"
+                        show-icon
+                        :closable="false"
+                        style="margin-bottom: 20px"
+                    >
+                        <template #default>
+                            <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+                                <li><b>Overall</b>: 全人群的统计描述（均值±标准差 或 频数）。</li>
+                                <li><b>P-value</b>: 评估组间均衡性。若 <b>P < 0.05</b>，代表该变量在组间分布不均，建模时可能需要作为混杂因子校正。</li>
+                                <li><b>统计检验</b>: 系统根据数据分布自动选择：正态分布选 T检验/ANOVA，非正态选非参检验，分类变量选卡方检验。</li>
+                            </div>
+                        </template>
+                    </el-alert>
                     <el-form-item label="分组变量 (Group By)">
                         <el-select v-model="config.groupBy" placeholder="可选 (Optional)" clearable style="width: 100%">
                             <el-option v-for="opt in categoricalOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -71,7 +87,13 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column v-if="config.groupBy" prop="p_value" label="P-value" width="100" fixed="right">
+                    <el-table-column v-if="config.groupBy" prop="p_value" width="100" fixed="right">
+                         <template #header>
+                             <span>P-value</span>
+                             <el-tooltip content="显著性检验 P 值。系统根据变量类型自动选择检验方法（T检验/ANOVA/卡方）。" placement="top">
+                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                             </el-tooltip>
+                         </template>
                          <template #default="scope">
                              <el-tag :type="pValTag(scope.row.p_value)">{{ scope.row.p_value }}</el-tag>
                              <br/>
@@ -114,15 +136,11 @@ const config = reactive({
 })
 
 const variableOptions = computed(() => {
-    if (!props.metadata) return []
-    return Object.keys(props.metadata).map(k => ({
-        label: k,
-        value: k,
-        role: props.metadata[k] // 'target', 'feature', etc (from meta) - actually meta structure is distinct.
-        // wait, metadata format in ProjectWorkspace pass is actually simple dict? 
-        // Let's assume metadata is { col: type } or { col: {role:..} }. 
-        // Previous logs show metadata is a dict of col->type strings from initial inference?
-        // Actually Metadata is usually managed. Let's rely on keys for now.
+    if (!props.metadata || !props.metadata.variables) return []
+    return props.metadata.variables.map(v => ({
+        label: v.name,
+        value: v.name,
+        type: v.type
     }))
 })
 

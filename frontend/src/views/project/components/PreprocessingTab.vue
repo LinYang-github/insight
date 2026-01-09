@@ -25,6 +25,21 @@
                     </div>
                 </div>
             </template>
+            <!-- Guidance Alert -->
+            <el-alert
+                title="操作说明"
+                type="info"
+                show-icon
+                :closable="false"
+                class="mb-4"
+            >
+                <template #default>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #606266;">
+                        <li><b>一键智能修复</b>：自动为所有缺失变量选择最优策略（数值型用“均值”，分类/文本用“众数”）。</li>
+                        <li><b>应用策略</b>：任何提交的操作都将生成一个<b>新版本的数据集</b>，系统会自动切换至该版本。</li>
+                    </ul>
+                </template>
+            </el-alert>
             <el-table :data="missingData" style="width: 100%" stripe border size="small">
                  <el-table-column prop="name" label="变量名" />
                  <el-table-column prop="type" label="类型" width="100" />
@@ -170,7 +185,10 @@ const handleSmartFix = async () => {
             dataset_id: props.datasetId,
             strategies: autoStrategies
         })
-        ElMessage.success(`智能修复完成：已自动填补 ${imputeCount} 个变量的缺失值。`)
+        ElMessage.success({
+            message: `智能修复完成：已自动填补 ${imputeCount} 个变量。系统已为您切换至新生成的数据集版本。`,
+            duration: 5000
+        })
         
         emit('dataset-created', data.new_dataset_id)
         
@@ -201,7 +219,10 @@ const handleImpute = async () => {
             dataset_id: props.datasetId,
             strategies: activeStrategies
         })
-        ElMessage.success('缺失值处理成功，已保存为新数据集')
+        ElMessage.success({
+            message: '处理成功！已为您生成并切换至修复后的数据集版本。',
+            duration: 5000
+        })
         emit('dataset-created', data.new_dataset_id)
     } catch (error) {
         ElMessage.error(error.response?.data?.message || '处理失败')
@@ -222,7 +243,10 @@ const handleEncode = async () => {
             dataset_id: props.datasetId,
             columns: selectedEncodeCols.value
         })
-        ElMessage.success('因子化成功，已保存为新数据集')
+        ElMessage.success({
+            message: '因子化处理完成！已为您生成并切换至新版数据集。',
+            duration: 5000
+        })
         emit('dataset-created', data.new_dataset_id)
     } catch (error) {
         ElMessage.error(error.response?.data?.message || '处理失败')

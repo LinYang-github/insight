@@ -11,6 +11,22 @@
                     </div>
                 </template>
                 <el-form label-position="top">
+                    <!-- Guidance Alert -->
+                    <el-alert
+                        title="生存分析指南"
+                        type="info"
+                        show-icon
+                        :closable="false"
+                        style="margin-bottom: 20px"
+                    >
+                        <template #default>
+                            <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+                                <li><b>时间变量</b>: 随访时间（如：月、天）。</li>
+                                <li><b>事件变量</b>: 终点结局（通常 1=死亡/发病，0=删失/存活）。</li>
+                                <li><b>Log-rank P</b>: 评估各组生存曲线是否有显著差异。<b>P < 0.05</b> 代表差异有统计学意义。</li>
+                            </div>
+                        </template>
+                    </el-alert>
                     <el-form-item label="时间变量 (Time)">
                         <el-select v-model="config.time" placeholder="Select Time" filterable style="width: 100%">
                              <el-option v-for="opt in numericOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -89,17 +105,17 @@ const config = reactive({
 })
 
 const variableOptions = computed(() => {
-    if (!props.metadata) return []
-    // Assuming metadata is dict {col: type} or derived from it.
-    // If metadata structure is { variables: [{name, type}, ...] } from previous context
-    if (props.metadata.variables) {
-         return props.metadata.variables.map(v => ({ label: v.name, value: v.name, type: v.type }))
-    }
-    // Fallback if metadata is simple dict
-    return Object.keys(props.metadata).map(k => ({ label: k, value: k }))
+    if (!props.metadata || !props.metadata.variables) return []
+    return props.metadata.variables.map(v => ({ 
+        label: v.name, 
+        value: v.name, 
+        type: v.type 
+    }))
 })
 
-const numericOptions = computed(() => variableOptions.value) // Simplified for MVP
+const numericOptions = computed(() => {
+    return variableOptions.value.filter(v => v.type === 'continuous')
+})
 
 const generatePlot = async () => {
     if (!config.time || !config.event) {

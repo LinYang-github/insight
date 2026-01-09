@@ -11,6 +11,22 @@
                     </div>
                 </template>
                 <el-form label-position="top">
+                    <!-- Guidance Alert -->
+                    <el-alert
+                        title="PSM 操作指南"
+                        type="info"
+                        show-icon
+                        :closable="false"
+                        style="margin-bottom: 20px"
+                    >
+                        <template #default>
+                            <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+                                <li><b>处理组变量</b>: 分组因素（如：用药 vs 不用药），必须是 0/1 变量。</li>
+                                <li><b>协变量</b>: 您希望在组间达到均衡的混杂因素（如：年龄、性别、基线病史）。</li>
+                                <li><b>均衡性标准</b>: 匹配后 <b>SMD < 0.1</b> 代表两组达到临床认可的良好均衡。</li>
+                            </div>
+                        </template>
+                    </el-alert>
                     <el-form-item label="处理组变量 (Treatment)">
                         <el-select v-model="config.treatment" placeholder="Binary (0/1)" filterable style="width: 100%">
                              <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -55,9 +71,21 @@
                      <el-table :data="results.balance" style="width: 100%" border stripe>
                         <el-table-column prop="variable" label="协变量" />
                         <el-table-column prop="smd_pre" label="匹配前 SMD">
+                            <template #header>
+                                <span>匹配前 SMD</span>
+                                <el-tooltip content="Standardized Mean Difference (标准化均数差)，衡量原始组间的差异。" placement="top">
+                                    <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                </el-tooltip>
+                            </template>
                             <template #default="scope">{{ scope.row.smd_pre.toFixed(3) }}</template>    
                         </el-table-column>
                         <el-table-column prop="smd_post" label="匹配后 SMD">
+                            <template #header>
+                                <span>匹配后 SMD</span>
+                                <el-tooltip content="匹配后两组间的差异。理想情况下应 < 0.1，表明达到高度均衡。" placement="top">
+                                    <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                </el-tooltip>
+                            </template>
                             <template #default="scope">
                                 <span :style="{ fontWeight: 'bold', color: scope.row.smd_post < 0.1 ? 'green' : 'red' }">
                                     {{ scope.row.smd_post.toFixed(3) }}
@@ -118,11 +146,11 @@ const config = reactive({
 })
 
 const variableOptions = computed(() => {
-    if (!props.metadata) return []
-    if (props.metadata.variables) {
-         return props.metadata.variables.map(v => ({ label: v.name, value: v.name }))
-    }
-    return Object.keys(props.metadata).map(k => ({ label: k, value: k }))
+    if (!props.metadata || !props.metadata.variables) return []
+    return props.metadata.variables.map(v => ({ 
+        label: v.name, 
+        value: v.name 
+    }))
 })
 
 const runPSM = async () => {
@@ -144,7 +172,10 @@ const runPSM = async () => {
         
         if (data.new_dataset_id) {
             emit('dataset-created', data.new_dataset_id)
-            ElMessage.success("匹配后数据集已保存")
+            ElMessage.success({
+                message: "匹配成功！已为您生成并自动切换至匹配后的新数据集版本。",
+                duration: 5000
+            })
         }
         
     } catch (error) {

@@ -108,8 +108,16 @@
 
                 <!-- Metrics -->
                 <el-descriptions title="模型指标" :column="2" border size="small" style="margin-bottom: 20px">
-                    <el-descriptions-item v-for="(val, key) in results.metrics" :key="key" :label="key">
-                        {{ val.toFixed(4) }}
+                    <el-descriptions-item v-for="(val, key) in results.metrics" :key="key">
+                        <template #label>
+                            <div style="display: flex; align-items: center;">
+                                <span>{{ key }}</span>
+                                <el-tooltip v-if="metricTooltips[key]" :content="metricTooltips[key]" placement="top">
+                                    <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                </el-tooltip>
+                            </div>
+                        </template>
+                        {{ typeof val === 'number' ? val.toFixed(4) : val }}
                     </el-descriptions-item>
                 </el-descriptions>
 
@@ -311,7 +319,10 @@ const metricTooltips = {
     'r2': 'R平方：决定系数，表示模型解释了因变量方差的百分比。越接近1拟合越好。',
     'rmse': '均方根误差：预测值与真实值偏差的样本标准差。越小越好。',
     'cv_auc_mean': '5折交叉验证平均AUC：模型在未见数据上的平均表现，评估泛化能力。',
-    'cv_auc_std': '5折交叉验证AUC标准差：评估模型表现的稳定性，值越小越稳定。'
+    'cv_auc_std': '5折交叉验证AUC标准差：评估模型表现的稳定性，值越小越稳定。',
+    'aic': '赤池信息量：衡量模型拟合优度与参数复杂度的平衡，越小代表模型越精简有效。',
+    'bic': '贝叶斯信息量：类似AIC，但对参数数量惩罚更重，常用于模型筛选，越小越好。',
+    'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近1越好。'
 }
 
 const config = reactive({
