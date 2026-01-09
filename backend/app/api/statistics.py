@@ -110,6 +110,56 @@ def perform_psm(current_user):
             response['new_dataset_id'] = matched_dataset_id
             
         return jsonify(response), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@statistics_bp.route('/table1/export', methods=['POST'])
+@token_required
+def export_table1(current_user):
+    from flask import Response
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    group_by = data.get('group_by')
+    variables = data.get('variables')
+    
+    if not dataset_id or not variables:
+        return jsonify({'message': 'Missing arguments'}), 400
         
+    dataset = Dataset.query.get_or_404(dataset_id)
+    
+    try:
+        from app.services.data_service import DataService
+        df = DataService.load_data(dataset.filepath)
+        
+        # 1. Generate Table 1 data
+        result = StatisticsService.generate_table_one(df, group_by, variables)
+        
+        # 2. Convert to DataFrame for CSV
+        export_rows = []
+        for item in result:
+            row = {'Variable': item['variable']}
+            # Add overall
+            overall = item.get('overall', {})
+            row['Overall'] = f"{overall.get('mean', '')} ± {overall.get('std', '')}" if 'mean' in overall else overall.get('desc', '')
+            
+            # Add groups
+            for g_name, g_stats in item.get('groups', {}).items():
+                 row[g_name] = f"{g_stats.get('mean', '')} ± {g_stats.get('std', '')}" if 'mean' in g_stats else g_stats.get('desc', '')
+            
+            row['P-value'] = item['p_value']
+            row['Test'] = item['test']
+            export_rows.append(row)
+            
+        export_df = pd.DataFrame(export_rows)
+        
+        # 3. Stream CSV
+        # Use BOM for Excel compatibility (UTF-8-SIG)
+        csv_data = export_df.to_csv(index=False, encoding='utf-8-sig')
+        
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={"Content-disposition": "attachment; filename=table1_export.csv"}
+        )
     except Exception as e:
         return jsonify({'message': str(e)}), 500

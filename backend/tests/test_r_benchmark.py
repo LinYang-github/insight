@@ -103,7 +103,7 @@ def test_benchmark_logistic_modeling(mtcars_df):
     
     summary = res['summary']
     mpg_row = next(r for r in summary if r['variable'] == 'mpg')
-    const_row = next(r for r in summary if r['variable'] == 'const')
+    const_row = next(r for r in summary if r['variable'] == '截距 (Constant)')
     
     print(f"\n[DEBUG] Logistic MPG Coef: {mpg_row['coef']}, Expected: {R_Benchmarks.MTCARS_EXPECTED['coef_mpg']}")
     print(f"[DEBUG] Logistic Const Coef: {const_row['coef']}, Expected: {R_Benchmarks.MTCARS_EXPECTED['intercept']}")

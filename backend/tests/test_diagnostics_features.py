@@ -40,12 +40,11 @@ def test_linear_diagnostics_vif(linear_df):
     )
     
     assert 'summary' in results
-    # Check VIF presence
-    first_row = results['summary'][0]
-    assert 'vif' in first_row
-    assert first_row['vif'] != '-'
+    # Check VIF presence in a feature row (skip constant)
+    f0_row = next(r for r in results['summary'] if r['variable'] == 'f0')
+    assert f0_row['vif'] != '-'
     # SInce data is independent, VIF should be low (~1)
-    assert float(first_row['vif']) < 5.0
+    assert float(f0_row['vif']) < 5.0
 
 def test_logistic_diagnostics_vif(logistic_df):
     results = ModelingService.run_model(
@@ -56,9 +55,8 @@ def test_logistic_diagnostics_vif(logistic_df):
     )
     
     assert 'summary' in results
-    first_row = results['summary'][0]
-    assert 'vif' in first_row
-    assert first_row['vif'] != '-'
+    f0_row = next(r for r in results['summary'] if r['variable'] == 'f0')
+    assert f0_row['vif'] != '-'
 
 def test_cox_diagnostics_ph(survival_df):
     target_dict = {'time': 'time', 'event': 'event'}

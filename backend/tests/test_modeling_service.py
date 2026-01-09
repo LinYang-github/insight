@@ -42,7 +42,7 @@ class TestModelingService:
         # Check coefficients mostly
         # Intercept should be approx 3, f1 approx 2
         summary_map = {row['variable']: row['coef'] for row in res['summary']}
-        assert abs(summary_map['const'] - 3.0) < 0.2
+        assert abs(summary_map['截距 (Constant)'] - 3.0) < 0.2
         assert abs(summary_map['f1'] - 2.0) < 0.2
         assert 'rsquared' in res['metrics']
 

@@ -32,15 +32,14 @@ class LinearRegressionStrategy(BaseModelStrategy):
         conf = res.conf_int()
 
         for name in params.index:
-            if name == 'const': continue
             row = {
-                'variable': name,
+                'variable': "截距 (Constant)" if name == 'const' else name,
                 'coef': ResultFormatter.format_float(params[name], 3),
                 'se': ResultFormatter.format_float(bse[name], 3),
                 'p_value': pvalues[name],
                 'ci_lower': ResultFormatter.format_float(conf.loc[name][0], 3),
                 'ci_upper': ResultFormatter.format_float(conf.loc[name][1], 3),
-                'vif': vif_map.get(name, '-')
+                'vif': vif_map.get(name, '-') if name != 'const' else '-'
             }
             summary.append(row)
 
@@ -129,11 +128,8 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         vif_map = {item['variable']: item['vif'] for item in (vif_data or [])}
 
         for name in params.index:
-            if name == 'const': continue # Skip const for table usually, or keep? 
-            # Existing code kept const. Let's keep it but VIF is usually N/A for const.
-            
             row = {
-                'variable': name,
+                'variable': "截距 (Constant)" if name == 'const' else name,
                 'coef': ResultFormatter.format_float(params[name], 3),
                 'se': ResultFormatter.format_float(bse[name], 3),
                 'p_value': pvalues[name],
@@ -142,7 +138,7 @@ class LogisticRegressionStrategy(BaseModelStrategy):
                 'or': ResultFormatter.format_float(np.exp(params[name]), 2),
                 'or_ci_lower': ResultFormatter.format_float(np.exp(conf.loc[name][0]), 2),
                 'or_ci_upper': ResultFormatter.format_float(np.exp(conf.loc[name][1]), 2),
-                'vif': vif_map.get(name, '-')
+                'vif': vif_map.get(name, '-') if name != 'const' else '-'
             }
             summary.append(row)
             
