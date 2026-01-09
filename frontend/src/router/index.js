@@ -38,6 +38,11 @@ const routes = [
                 path: 'settings',
                 name: 'Settings',
                 component: () => import('../views/settings/Settings.vue')
+            },
+            {
+                path: 'validation',
+                name: 'ValidationCenter',
+                component: () => import('../views/validation/ValidationCenter.vue')
             }
         ]
     }

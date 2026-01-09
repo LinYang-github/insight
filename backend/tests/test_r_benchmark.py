@@ -61,29 +61,29 @@ def benchmark_logistic_df(load_golden_dataset):
 def benchmark_cox_df(load_golden_dataset):
     return load_golden_dataset("benchmark_cox.csv")
 
-def test_benchmark_logistic_modeling_golden(benchmark_logistic_df):
-    """
-    Verify Logistic Regression using Golden Dataset.
-    """
-    res = ModelingService.run_model(benchmark_logistic_df, 'logistic', 'grade', ['gpa', 'tuce', 'psi'])
-    summary = res['summary']
-    assert len(summary) > 0
-    # Sanity check: verify keys exist
-    assert 'or' in summary[0]
-    assert 'p_value' in summary[0]
 
-def test_benchmark_cox_modeling_golden(benchmark_cox_df):
+from app.services.validation_service import ValidationService
+
+def test_validation_service_scientific():
     """
-    Verify Cox Regression using Golden Dataset.
+    Verify ValidationService.run_scientific_validation() returns PASS for all items.
     """
-    res = ModelingService.run_model(
-        benchmark_cox_df, 
-        'cox', 
-        target={'time': 'week', 'event': 'arrest'}, 
-        features=['fin', 'age', 'prio']
-    )
-    summary = res['summary']
-    assert len(summary) > 0
-    # Sanity check
-    assert 'hr' in summary[0]
+    report = ValidationService.run_scientific_validation()
+    assert len(report) >= 2 # Logistic & Cox
+    
+    for item in report:
+        assert item['status'] == 'PASS', f"Failed validation: {item}"
+        
+def test_validation_service_robustness():
+    """
+    Verify ValidationService.run_robustness_checks() 
+    """
+    report = ValidationService.run_robustness_checks()
+    # Expect 2 tests: Singularity and GBK
+    singularity = next(r for r in report if r['case'] == "Perfect Multicollinearity")
+    gbk = next(r for r in report if r['case'] == "GBK/Chinese Character Support")
+    
+    assert singularity['status'] == 'PASS'
+    assert gbk['status'] == 'PASS'
+
 

@@ -13,6 +13,9 @@
             <el-link :underline="false" @click="router.push('/dashboard')" class="nav-item">
               <el-icon><Odometer /></el-icon> 首页
             </el-link>
+            <el-link :underline="false" @click="router.push('/validation')" class="nav-item">
+              <el-icon><CircleCheck /></el-icon> 质量与验证
+            </el-link>
           </div>
            <!-- Project Title Context could go here if needed, but we have breadcrumbs usually -->
            <!-- For now kept simple -->
@@ -47,7 +50,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { Platform, Odometer, Folder, List, Setting, ArrowDown } from '@element-plus/icons-vue'
+import { Platform, Odometer, Folder, List, Setting, ArrowDown, CircleCheck } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -97,11 +100,7 @@ const handleCommand = (command) => {
     cursor: pointer;
 }
 
-.logo-area {
-    display: flex; align-items: center;
-    margin-right: 40px;
-    cursor: pointer;
-}
+
 
 .header-right {
     display: flex;

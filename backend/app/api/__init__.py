@@ -25,3 +25,6 @@ def register_blueprints(app):
     
     from .advanced import advanced_bp
     app.register_blueprint(advanced_bp, url_prefix='/api/advanced')
+
+    from .validation import validation_bp
+    app.register_blueprint(validation_bp, url_prefix='/api/validation')
