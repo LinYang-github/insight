@@ -3,8 +3,8 @@
       <el-header class="layout-header">
         <div class="header-left">
            <div class="logo-area" @click="router.push('/dashboard')">
-              <el-icon :size="24" color="#409EFF" style="margin-right: 8px"><Platform /></el-icon>
-              <h3>Insight 平台</h3>
+              <img src="@/assets/logo.svg" alt="Insight Logo" style="height: 32px; width: 32px; margin-right: 8px;" />
+    <h3>Insight 平台</h3>
            </div>
         </div>
 
