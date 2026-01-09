@@ -32,3 +32,21 @@ def db_setup(app):
     yield
     db.session.remove()
     db.drop_all()
+
+@pytest.fixture
+def golden_data_path():
+    """Returns the path to the golden test data directory."""
+    import os
+    return os.path.join(os.path.dirname(__file__), 'test_data')
+
+@pytest.fixture
+def load_golden_dataset(golden_data_path):
+    """Helper to load a CSV from golden data directory."""
+    import pandas as pd
+    import os
+    def _load(filename, **kwargs):
+        path = os.path.join(golden_data_path, filename)
+        if not os.path.exists(path):
+            pytest.skip(f"Golden dataset {filename} not found.")
+        return pd.read_csv(path, **kwargs)
+    return _load
