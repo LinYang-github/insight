@@ -9,12 +9,20 @@
     </div>
 
     <div v-else>
-        <!-- Imputation Section -->
+        <!-- Data Repair Section -->
         <el-card shadow="hover" class="mb-4">
             <template #header>
                 <div class="card-header">
-                    <span>缺失值处理 (Missing Value Imputation)</span>
-                    <el-button type="primary" size="small" @click="handleImpute" :loading="processing">应用并另存为新数据集</el-button>
+                    <div style="display: flex; align-items: center;">
+                        <span>缺失值处理 (Data Repair)</span>
+                         <el-tooltip content="修补数据中的空缺值，避免模型运行报错。" placement="top">
+                            <el-icon style="margin-left: 5px; cursor: pointer;"><QuestionFilled /></el-icon>
+                        </el-tooltip>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <el-button type="warning" size="small" @click="handleSmartFix" :loading="processing" icon="MagicStick">一键智能修复 (Smart Fix)</el-button>
+                        <el-button type="primary" size="small" @click="handleImpute" :loading="processing">应用自定义策略</el-button>
+                    </div>
                 </div>
             </template>
             <el-table :data="missingData" style="width: 100%" stripe border size="small">
@@ -22,14 +30,16 @@
                  <el-table-column prop="type" label="类型" width="100" />
                  <el-table-column prop="missing" label="缺失数量" width="100">
                       <template #default="scope">
-                          <span :class="{ 'red-text': scope.row.missing > 0 }">{{ scope.row.missing }}</span>
+                          <span :class="{ 'red-text': (scope.row.missing || scope.row.missing_count) > 0 }">
+                            {{ scope.row.missing !== undefined ? scope.row.missing : scope.row.missing_count }}
+                          </span>
                       </template>
                  </el-table-column>
-                 <el-table-column label="处理策略" width="200">
+                 <el-table-column label="处理策略 (Strategy)" width="220">
                      <template #default="scope">
-                         <el-select v-model="imputeStrategies[scope.row.name]" placeholder="选择策略" size="small" :disabled="scope.row.missing === 0">
+                         <el-select v-model="imputeStrategies[scope.row.name]" placeholder="选择策略" size="small" :disabled="(scope.row.missing || scope.row.missing_count) === 0" style="width: 100%">
                              <el-option label="不处理 (Ignore)" value="ignore" />
-                             <el-option label="删除行 (Drop Rows)" value="drop" />
+                             <el-option label="剔除样本 (Drop Rows)" value="drop" />
                              <el-option v-if="isNumeric(scope.row.type)" label="均值填补 (Mean)" value="mean" />
                              <el-option v-if="isNumeric(scope.row.type)" label="中位数填补 (Median)" value="median" />
                              <el-option label="众数填补 (Mode)" value="mode" />
@@ -39,16 +49,21 @@
             </el-table>
         </el-card>
 
-        <!-- Encoding Section -->
+        <!-- Digitization Section -->
         <el-card shadow="hover">
             <template #header>
                  <div class="card-header">
-                    <span>变量因子化 (Factorization / Encoding)</span>
+                     <div style="display: flex; align-items: center;">
+                        <span>文本数值化 (Digitization)</span>
+                        <el-tooltip content="将文本/分类变量转换为计算机可读的数值 (0, 1, 2...)。" placement="top">
+                            <el-icon style="margin-left: 5px; cursor: pointer;"><QuestionFilled /></el-icon>
+                        </el-tooltip>
+                    </div>
                     <el-button type="success" size="small" @click="handleEncode" :loading="processing">应用并另存为新数据集</el-button>
                 </div>
             </template>
             
-            <el-alert title="将文本/分类变量转换为数值编码 (Label Encoding)，以便模型识别。" type="info" show-icon style="margin-bottom: 10px" />
+            <el-alert title="勾选不仅是“分类”且目前是“文本”格式的变量，将其转换为数字编码。" type="info" show-icon style="margin-bottom: 10px" />
             
             <el-checkbox-group v-model="selectedEncodeCols">
                 <el-row :gutter="20">
@@ -59,7 +74,7 @@
             </el-checkbox-group>
             
             <div v-if="categoricalCols.length === 0" class="empty-text">
-                没有检测到分类变量。
+                没有检测到需要转换的分类变量。
             </div>
         </el-card>
     </div>
@@ -69,6 +84,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 import api from '../../../api/client'
 
 const props = defineProps({
@@ -94,7 +110,7 @@ const categoricalCols = computed(() => {
 })
 
 const isNumeric = (type) => {
-    return ['int64', 'float64', 'int', 'float'].includes(type)
+    return ['int64', 'float64', 'int', 'float', 'continuous', 'numerical'].includes(type)
 }
 
 // Initialize strategies
@@ -108,6 +124,41 @@ watch(() => props.metadata, (meta) => {
     }
 }, { immediate: true })
 
+const handleSmartFix = async () => {
+    // 1. Auto select impute strategies
+    const autoStrategies = {}
+    let imputeCount = 0
+    props.metadata.variables.forEach(v => {
+        // Fix: backend returns 'missing_count'
+        const missing = v.missing !== undefined ? v.missing : v.missing_count
+        if (missing > 0) {
+            autoStrategies[v.name] = isNumeric(v.type) ? 'mean' : 'mode'
+            imputeCount++
+        }
+    })
+
+    if (imputeCount === 0) {
+        ElMessage.info('没有发现缺失值，无需修复。')
+        return
+    }
+
+    // 2. Execute Imputation
+    processing.value = true
+    try {
+        const { data } = await api.post('/preprocessing/impute', {
+            dataset_id: props.datasetId,
+            strategies: autoStrategies
+        })
+        ElMessage.success(`智能修复完成：已自动填补 ${imputeCount} 个变量的缺失值。`)
+        
+        emit('dataset-created', data.new_dataset_id)
+        
+    } catch (error) {
+         ElMessage.error(error.response?.data?.message || '智能修复失败')
+    } finally {
+        processing.value = false
+    }
+}
 
 const handleImpute = async () => {
     // Filter out 'ignore'

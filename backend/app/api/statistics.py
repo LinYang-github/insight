@@ -92,7 +92,10 @@ def perform_psm(current_user):
                 project_id=dataset.project_id
             )
             # Add metadata?
-            new_dataset.meta_data = dataset.meta_data # Copy metadata
+            try:
+                new_dataset.meta_data = DataService.get_initial_metadata(new_filepath)
+            except:
+                new_dataset.meta_data = dataset.meta_data # Fallback
             
             db.session.add(new_dataset)
             db.session.commit()

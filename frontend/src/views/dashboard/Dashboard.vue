@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-wrapper">
+  <div class="dashboard-container">
     <div class="header-actions">
       <h2>我的项目</h2>
       <el-button type="primary" :icon="Plus" @click="showModal = true">新建项目</el-button>

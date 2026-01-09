@@ -167,10 +167,27 @@ const pValTag = (info) => {
     return 'success' 
 }
 
-const exportExcel = () => {
-    // TODO: Implement export logic (calls /api/export endpoint which we might need to enhance for Table1)
-    // For MVP just show alert
-    ElMessage.info("导出功能将在下一阶段集成")
+const exportExcel = async () => {
+    try {
+        const response = await api.post('/statistics/table1/export', {
+            dataset_id: props.datasetId,
+            group_by: config.groupBy,
+            variables: config.variables,
+            format: 'csv'
+        }, { responseType: 'blob' })
+        
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', 'Table1_Baseline.csv')
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        
+        ElMessage.success("导出成功")
+    } catch (error) {
+         ElMessage.error("导出失败")
+    }
 }
 </script>
 

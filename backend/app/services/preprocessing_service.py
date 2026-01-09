@@ -79,13 +79,20 @@ class PreprocessingService:
         new_df.to_csv(new_filepath, index=False)
         
         # Create DB entry
+        # Create DB entry
         new_dataset = Dataset(
             project_id=original.project_id,
-            filename=new_filename,
-            filepath=new_filepath,
-            file_size=os.path.getsize(new_filepath),
-            uploaded_by=user_id
+            name=new_filename,
+            filepath=new_filepath
         )
+        # Generate metadata
+        try:
+            from app.services.data_service import DataService
+            meta = DataService.get_initial_metadata(new_filepath)
+            new_dataset.meta_data = meta
+        except Exception as e:
+            # print(f"Meta gen failed: {e}")
+            pass 
         db.session.add(new_dataset)
         db.session.commit()
         

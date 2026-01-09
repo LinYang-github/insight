@@ -1,51 +1,42 @@
 <template>
-  <el-container class="layout-container">
-    <el-aside width="220px" class="aside-menu">
-      <div class="logo-area">
-        <el-icon :size="24" color="#409EFF" style="margin-right: 8px"><Platform /></el-icon>
-        <h3>Insight 平台</h3>
-      </div>
-      
-      <el-menu
-        :default-active="activeMenu"
-        class="el-menu-vertical"
-        background-color="transparent"
-        text-color="#303133"
-        active-text-color="#409EFF"
-        router
-      >
-        <el-menu-item index="/dashboard">
-          <el-icon><Odometer /></el-icon>
-          <span>首页仪表盘</span>
-        </el-menu-item>
-        
-        <el-sub-menu index="projects">
-          <template #title>
-            <el-icon><Folder /></el-icon>
-            <span>项目管理</span>
-          </template>
-           <el-menu-item index="/projects/list">
-             <el-icon><List /></el-icon>
-             <span>我的项目</span>
-           </el-menu-item>
-        </el-sub-menu>
-
-        <el-menu-item index="/settings" disabled>
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
-
-    <el-container>
+  <el-container class="layout-container" direction="vertical">
       <el-header class="layout-header">
         <div class="header-left">
-           <h3 style="margin:0">{{ headerTitle }}</h3>
+           <div class="logo-area">
+              <el-icon :size="24" color="#409EFF" style="margin-right: 8px"><Platform /></el-icon>
+              <h3>Insight 平台</h3>
+           </div>
+           
+           <el-menu
+            :default-active="activeMenu"
+            mode="horizontal"
+            class="top-menu"
+            router
+            background-color="transparent"
+            text-color="#303133"
+            active-text-color="#409EFF"
+            :ellipsis="false" 
+           >
+             <el-menu-item index="/dashboard">
+                <el-icon><Odometer /></el-icon> 首页
+             </el-menu-item>
+             <el-menu-item index="/projects/list">
+                <el-icon><Folder /></el-icon> 项目列表
+             </el-menu-item>
+             <el-menu-item index="/settings" disabled>
+                <el-icon><Setting /></el-icon> 系统设置
+             </el-menu-item>
+           </el-menu>
         </div>
+
         <div class="header-right">
+           <!-- Project Title Context could go here if needed, but we have breadcrumbs usually -->
+           <!-- For now kept simple -->
+           
           <div class="user-info" v-if="userStore.user">
              <el-dropdown trigger="click" @command="handleCommand">
                 <span class="el-dropdown-link">
+                  <el-avatar :size="32" style="margin-right: 8px">{{ userStore.user.username[0].toUpperCase() }}</el-avatar>
                   {{ userStore.user.username }}<el-icon class="el-icon--right"><arrow-down /></el-icon>
                 </span>
                 <template #dropdown>
@@ -61,7 +52,6 @@
       <el-main class="layout-main">
         <router-view />
       </el-main>
-    </el-container>
   </el-container>
 </template>
 
@@ -96,30 +86,57 @@ const handleCommand = (command) => {
 
 <style scoped>
 .layout-container { height: 100vh; }
-.aside-menu {
-  background-color: #fff;
-  border-right: 1px solid #e6e6e6;
-  display: flex; flex-direction: column;
-}
-.logo-area {
-  height: 60px; display: flex; align-items: center; justify-content: center;
-  border-bottom: 1px solid #e6e6e6;
-  color: #303133;
-}
+
 .layout-header {
   background-color: #fff;
   border-bottom: 1px solid #e6e6e6;
-  display: flex; justify-content: space-between; align-items: center; height: 60px;
+  display: flex; justify-content: space-between; align-items: center; 
+  height: 60px;
   padding: 0 20px;
 }
+
+.header-left {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.logo-area {
+    display: flex; align-items: center;
+    margin-right: 40px;
+    cursor: pointer;
+}
+
+.top-menu {
+    border-bottom: none !important;
+    height: 60px;
+    min-width: 400px;
+}
+
 .layout-main { 
     background-color: #f5f7fa; 
-    padding: 20px; 
+    padding: 0; /* Let child components handle padding, e.g. ProjectWorkspace needs full height */
+    /* Check if Dashboard needs padding? Yes. */
+    overflow: hidden; /* ProjectWorkspace handles scrolling */
 }
+
+/* Fix for children that need padding */
+:deep(.dashboard-container) {
+    padding: 20px;
+    overflow-y: auto;
+    height: 100%;
+}
+/* Project List also needs padding */
+:deep(.project-list-container) {
+    padding: 20px;
+    overflow-y: auto;
+    height: 100%;
+}
+
 .el-dropdown-link {
   cursor: pointer;
   display: flex;
   align-items: center;
-  color: #409EFF;
+  color: #606266;
 }
 </style>

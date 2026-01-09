@@ -16,7 +16,13 @@
                        </el-select>
                    </el-form-item>
                    
-                   <el-form-item label="目标变量 (Outcome)">
+                   <el-form-item label="目标变量 / 结局 (Target / Outcome)">
+                       <template #label>
+                            <span>目标变量 / 结局 (Target / Outcome)</span>
+                            <el-tooltip content="您希望预测或研究的主要结果，例如“是否患病”、“生存时间”等。" placement="top">
+                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                       </template>
                        <template v-if="config.model_type !== 'cox'">
                            <el-select v-model="config.target" placeholder="选择目标变量" filterable style="width: 100%">
                                <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -39,6 +45,12 @@
                    </el-form-item>
                    
                    <el-form-item label="特征变量 (Covariates)">
+                        <template #label>
+                            <span>特征变量 (Covariates)</span>
+                            <el-tooltip content="可能会影响结局的变量，包括您主要关心的变量和需要校正的混杂因素。" placement="top">
+                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                       </template>
                        <el-select v-model="config.features" multiple placeholder="选择特征变量" filterable style="width: 100%">
                            <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                        </el-select>
