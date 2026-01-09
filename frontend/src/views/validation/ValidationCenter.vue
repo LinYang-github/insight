@@ -10,6 +10,12 @@
         </p>
       </div>
       <div class="header-actions">
+        <!-- Dataset Selector -->
+         <el-select v-model="validationScenario" placeholder="选择验证场景" style="width: 200px; margin-right: 12px">
+            <el-option label="标准场景 (Standard)" :value="false" />
+            <el-option label="大规模数据 (Large Scale)" :value="true" />
+         </el-select>
+
         <el-button 
             type="primary" 
             size="large" 
@@ -78,9 +84,21 @@
             <div v-for="(test, index) in reportData.scientific" :key="index" class="benchmark-block">
                 <div class="test-header">
                     <h3>{{ test.test_name }}</h3>
-                    <el-tag :type="test.status === 'PASS' ? 'success' : 'danger'">
-                        {{ test.status }}
-                    </el-tag>
+                    <div class="test-actions">
+                        <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic_large.csv')" v-if="test.test_name.includes('Large')">
+                           <el-icon><Download /></el-icon> 下载测试数据 (Large)
+                        </el-button>
+                         <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic.csv')" v-else-if="test.test_name.includes('Logistic')">
+                           <el-icon><Download /></el-icon> 下载测试数据
+                        </el-button>
+                         <el-button size="small" text bg @click="handleDownloadData('benchmark_cox.csv')" v-else-if="test.test_name.includes('Cox')">
+                           <el-icon><Download /></el-icon> 下载测试数据
+                        </el-button>
+
+                        <el-tag :type="test.status === 'PASS' ? 'success' : 'danger'" style="margin-left: 12px">
+                            {{ test.status }}
+                        </el-tag>
+                    </div>
                 </div>
                 <!-- Scientific Table -->
                 <el-table :data="test.metrics" border style="width: 100%" size="small">
@@ -145,13 +163,14 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { VideoPlay, Download } from '@element-plus/icons-vue'
-import { runValidation } from '@/api/validation'
+import { runValidation, downloadDataset } from '@/api/validation'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
 const activeTab = ref('scientific')
 const reportData = ref(null)
 const lastRunTime = ref('')
+const validationScenario = ref(false) // false = standard, true = large
 
 const overallStatus = computed(() => {
     return reportData.value?.summary?.status || 'UNKNOWN'
@@ -171,7 +190,7 @@ const totalTests = computed(() => {
 const handleRunValidation = async () => {
     loading.value = true
     try {
-        const res = await runValidation()
+        const res = await runValidation({ use_large_dataset: validationScenario.value })
         reportData.value = res.data
         lastRunTime.value = new Date().toLocaleString()
         ElMessage.success('验证完成，系统运行正常')
@@ -180,6 +199,22 @@ const handleRunValidation = async () => {
         ElMessage.error('验证执行失败，请检查后端服务')
     } finally {
         loading.value = false
+    }
+}
+
+const handleDownloadData = async (filename) => {
+    try {
+        const response = await downloadDataset(filename)
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', filename)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        ElMessage.success("下载已开始")
+    } catch (error) {
+        ElMessage.error("下载失败")
     }
 }
 
@@ -268,6 +303,11 @@ const downloadReport = () => {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
+}
+
+.test-actions {
+    display: flex;
+    align-items: center;
 }
 
 .test-header h3 {

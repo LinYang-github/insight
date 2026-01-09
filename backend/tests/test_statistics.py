@@ -77,7 +77,7 @@ def test_service_logic():
         assert True
     else:
         assert float(p_val_str) < 0.05
-    assert age_row['test'] == 'Welch T-test'
+    assert age_row['test'] == "Student's T-test"
 
     # Test Categorical (Chi-square) - Should be non-significant (perfectly balanced)
     res = StatisticsService.generate_table_one(df, 'group', ['sex'])
@@ -209,3 +209,35 @@ def test_km_monotonicity_and_logrank():
     assert p_val < 0.05
 
 
+
+    
+def test_metadata_injection():
+    """
+    Verify that the result contains _meta with decision logic.
+    """
+    # 1. Welch T-test Case (Unequal Variance)
+    # Group A: small variance (all 10)
+    # Group B: huge variance (0, 100)
+    df = pd.DataFrame({
+        'val': [10, 10, 10, 10, 10, 0, 100, 0, 100, 50],
+        'group': ['A']*5 + ['B']*5
+    })
+    
+    res = StatisticsService.generate_table_one(df, 'group', ['val'])
+    row = res[0]
+    
+    assert '_meta' in row
+    assert row['_meta']['test_name'] == "Welch's T-test"
+    assert "方差不相等" in row['_meta']['selection_reason']
+    
+    # 2. ANOVA Case (>2 groups)
+    df2 = pd.DataFrame({
+        'val': [1, 2, 3, 1, 2, 3, 1, 2, 3],
+        'group': ['A']*3 + ['B']*3 + ['C']*3
+    })
+    res2 = StatisticsService.generate_table_one(df2, 'group', ['val'])
+    row2 = res2[0]
+    
+    assert row2['test'] == 'ANOVA'
+    assert row2['_meta']['test_name'] == 'ANOVA'
+    assert "多组比较" in row2['_meta']['selection_reason']

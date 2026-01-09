@@ -7,6 +7,7 @@ from lifelines.statistics import multivariate_logrank_test
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import NearestNeighbors
 from app.utils.formatter import ResultFormatter
+from app.utils.metadata_builder import MetadataBuilder
 
 class StatisticsService:
     @staticmethod
@@ -50,7 +51,6 @@ class StatisticsService:
             # 1. Overall Stats
             row['overall'] = StatisticsService._calc_stats(df[var])
             
-            # 2. Group Stats & P-value
             if group_by:
                 group_stats = {}
                 group_data = [] # List of array-likes for hypothesis test
@@ -61,21 +61,39 @@ class StatisticsService:
                     group_data.append(sub_df[var].dropna())
                     
                 row['groups'] = group_stats
+                
+                # Metadata container
+                test_meta = {}
                     
                 # 假设检验选择逻辑 (Hypothesis Test Selection):
-                # 1. 数值型变量 (Numeric):
-                #    - 两组：使用 Welch's T-test (不假设方差相等)，比标准 T-test 更稳健。
-                #    - 多组：使用 ANOVA 单因素方差分析。
                 if row['type'] == 'numeric':
                     try:
                         if len(groups) == 2:
-                            # Independent T-test
-                            stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False) # Welch's T-test
-                            row['test'] = 'Welch T-test'
+                            # Levene's Test for Equal Variance
+                            # If p < 0.05, variances are not equal -> Use Welch
+                            # If p >= 0.05, equal -> Use Student T
+                            try:
+                                lev_stat, lev_p = stats.levene(group_data[0], group_data[1])
+                                equal_var = lev_p >= 0.05
+                            except:
+                                equal_var = False # Fallback to Welch if Levene fails
+                            
+                            if equal_var:
+                                stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=True)
+                                test_name = 'Student\'s T-test'
+                                reason = "方差齐性检验通过 (Levene's P>=0.05)，假设方差相等。"
+                            else:
+                                stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
+                                test_name = 'Welch\'s T-test'
+                                reason = "方差齐性检验显著 (Levene's P<0.05)，假设方差不相等。"
+                                
+                            test_meta = MetadataBuilder.build_test_meta(test_name, reason)
+                            row['test'] = test_name
                         else:
                             # ANOVA
                             stat, p = stats.f_oneway(*group_data)
                             row['test'] = 'ANOVA'
+                            test_meta = MetadataBuilder.build_test_meta('ANOVA', "多组比较，采用单因素方差分析。")
                     except Exception:
                         p = None
                         row['test'] = 'Error'
@@ -86,19 +104,23 @@ class StatisticsService:
                     try:
                         stat, p, dof, expected = stats.chi2_contingency(ct)
                         test_name = 'Chi-square'
+                        reason = "分类变量，采用卡方检验。"
                         
                         # Check Cochran's Rule: if expected < 5 in >20% cells (or simply if any < 5 for strictness)
                         # For 2x2, if expected < 5, use Fisher
                         if ct.shape == (2, 2) and (expected < 5).any():
-                             odds, p = stats.fisher_exact(ct)
-                             test_name = 'Fisher Exact Test'
-                             
+                                odds, p = stats.fisher_exact(ct)
+                                test_name = 'Fisher Exact Test'
+                                reason = "期望频数 < 5，不满足卡方条件，采用 Fisher 精确检验。"
+                                
                         row['test'] = test_name
+                        test_meta = MetadataBuilder.build_test_meta(test_name, reason)
                     except Exception:
                         p = None
                         row['test'] = 'Error'
 
                 row['p_value'] = ResultFormatter.format_p_value(p) if p is not None else 'N/A'
+                row['_meta'] = test_meta
                 
             results.append(row)
             

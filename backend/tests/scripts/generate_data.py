@@ -44,6 +44,20 @@ def generate_benchmark_logistic():
     df.to_csv(path, index=False)
     print(f"Generated {path}")
 
+def generate_benchmark_logistic_large():
+    """Simulate Large Logistic Data (N=1000)"""
+    np.random.seed(42)
+    n = 1000
+    df = pd.DataFrame({
+        'gpa': np.random.normal(3.0, 0.5, n),
+        'tuce': np.random.normal(20, 5, n),
+        'psi': np.random.randint(0, 2, n),
+        'grade': np.random.randint(0, 2, n) # Target
+    })
+    path = DATA_DIR / "benchmark_logistic_large.csv"
+    df.to_csv(path, index=False)
+    print(f"Generated {path} (Large)")
+
 def generate_edge_singular():
     """Perfectly collinear data"""
     df = pd.DataFrame({
@@ -111,6 +125,7 @@ def generate_stress_set():
 if __name__ == "__main__":
     generate_benchmark_cox()
     generate_benchmark_logistic()
+    generate_benchmark_logistic_large()
     generate_edge_singular()
     generate_edge_encoding_gbk()
     generate_edge_collinear()

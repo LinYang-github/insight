@@ -56,7 +56,15 @@
 
                 <el-empty v-if="results.length === 0" description="请配置参数并运行" />
 
-                <el-table v-else :data="results" style="width: 100%" border stripe>
+                <el-table 
+                    v-else 
+                    :data="results" 
+                    style="width: 100%" 
+                    border 
+                    stripe 
+                    highlight-current-row
+                    @row-click="(row) => selectedRow = row"
+                >
                     <el-table-column prop="variable" label="Variable" width="180" />
                     <el-table-column label="Overall">
                         <template #default="scope">
@@ -87,20 +95,40 @@
                         </template>
                     </el-table-column>
 
-                    <el-table-column v-if="config.groupBy" prop="p_value" width="100" fixed="right">
+                    <el-table-column v-if="config.groupBy" prop="p_value" width="150" fixed="right">
                          <template #header>
                              <span>P-value</span>
-                             <el-tooltip content="显著性检验 P 值。系统根据变量类型自动选择检验方法（T检验/ANOVA/卡方）。" placement="top">
+                             <el-tooltip content="显著性检验 P 值。系统根据数据分布自动选择检验方法（T检验/ANOVA/卡方）。" placement="top">
                                 <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                              </el-tooltip>
                          </template>
                          <template #default="scope">
                              <el-tag :type="pValTag(scope.row.p_value)">{{ scope.row.p_value }}</el-tag>
-                             <br/>
-                             <span style="font-size: 0.8em; color: gray">{{ scope.row.test }}</span>
+                             <div style="margin-top: 5px;">
+                                 <el-tooltip 
+                                    v-if="scope.row._meta && scope.row._meta.selection_reason"
+                                    :content="scope.row._meta.selection_reason"
+                                    placement="left"
+                                 >
+                                    <span style="font-size: 0.8em; color: gray; cursor: help; border-bottom: 1px dashed gray;">
+                                        {{ scope.row.test }}
+                                    </span>
+                                 </el-tooltip>
+                                 <span v-else style="font-size: 0.8em; color: gray">
+                                     {{ scope.row.test }}
+                                 </span>
+                             </div>
                          </template>
                     </el-table-column>
                 </el-table>
+                
+                <InterpretationPanel 
+                    v-if="selectedRow && selectedRow.p_value"
+                    :p-value="selectedRow.p_value"
+                    :test-name="selectedRow.test"
+                    :selection-reason="selectedRow._meta ? selectedRow._meta.selection_reason : ''"
+                />
+                <el-empty v-else-if="results.length > 0" description="点击表格行查看详细智能分析" :image-size="60" />
             </el-card>
         </el-col>
     </el-row>
@@ -120,6 +148,7 @@
 import { ref, computed, reactive } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'
+import InterpretationPanel from './InterpretationPanel.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -129,6 +158,7 @@ const props = defineProps({
 const loading = ref(false)
 const results = ref([])
 const groupNames = ref([])
+const selectedRow = ref(null)
 
 const config = reactive({
     groupBy: null,

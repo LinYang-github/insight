@@ -1,74 +1,81 @@
-
 <template>
   <div class="psm-container">
-    <el-row :gutter="20">
-        <!-- Config Panel -->
-        <el-col :span="6">
-            <el-card class="box-card">
-                <template #header>
-                    <div class="card-header">
-                        <span>参数配置</span>
-                    </div>
-                </template>
+    <StepWizard 
+        :steps="steps" 
+        v-model="activeStep" 
+        :loading="loading"
+        :disable-next="disableNext"
+        @finish="activeStep = 0"
+    >
+        <!-- Step 1: Treatment Selection -->
+        <template #step1>
+            <div class="wizard-step">
+                <h3>选择处理组变量 (Select Treatment)</h3>
+                <p class="step-desc">请选择区分"实验组"和"对照组"的二分类变量（0/1）。系统将基于此变量进行匹配。</p>
+                
                 <el-form label-position="top">
-                    <!-- Guidance Alert -->
-                    <el-alert
-                        title="PSM 操作指南"
-                        type="info"
-                        show-icon
-                        :closable="false"
-                        style="margin-bottom: 20px"
-                    >
-                        <template #default>
-                            <div style="font-size: 13px; color: #606266; line-height: 1.6;">
-                                <li><b>处理组变量</b>: 分组因素（如：用药 vs 不用药），必须是 0/1 变量。</li>
-                                <li><b>协变量</b>: 您希望在组间达到均衡的混杂因素（如：年龄、性别、基线病史）。</li>
-                                <li><b>均衡性标准</b>: 匹配后 <b>SMD < 0.1</b> 代表两组达到临床认可的良好均衡。</li>
-                            </div>
-                        </template>
-                    </el-alert>
-                    <el-form-item label="处理组变量 (Treatment)">
-                        <el-select v-model="config.treatment" placeholder="Binary (0/1)" filterable style="width: 100%">
+                    <el-form-item label="处理组变量 (Treatment Variable)">
+                        <el-select v-model="config.treatment" placeholder="Binary (0/1)" filterable size="large" style="width: 100%; max-width: 400px;">
                              <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
                     </el-form-item>
+                </el-form>
+                
+                <el-alert
+                    v-if="config.treatment"
+                    :title="`已选择: ${config.treatment}`"
+                    type="success"
+                    :closable="false"
+                    show-icon
+                >
+                    <div>请确认该变量中：Selected=1 (Experimental), Other=0 (Control)</div>
+                </el-alert>
+            </div>
+        </template>
 
-                    <el-form-item label="协变量 (Covariates)">
-                        <el-select v-model="config.covariates" multiple placeholder="Select Confounders" filterable style="width: 100%">
+        <!-- Step 2: Covariates Selection -->
+        <template #step2>
+            <div class="wizard-step">
+                <h3>选择协变量 (Select Covariates)</h3>
+                <p class="step-desc">请选择那些即影响分组、又影响结果的混杂因素。匹配后，两组在这些变量上将达到均衡。</p>
+                
+                <el-form label-position="top">
+                    <el-form-item label="协变量 (Confounders / Covariates)">
+                        <el-select v-model="config.covariates" multiple placeholder="Select Covariates" filterable size="large" style="width: 100%;">
                              <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
                     </el-form-item>
                     
-                    <el-form-item>
-                        <el-checkbox v-model="config.save">同时保存匹配后数据集</el-checkbox>
+                     <el-form-item>
+                        <el-checkbox v-model="config.save" border>匹配成功后，自动保存为新数据集</el-checkbox>
                     </el-form-item>
-
-                    <el-button type="primary" style="width: 100%" @click="runPSM" :loading="loading">开始匹配 (Run Matching)</el-button>
                 </el-form>
-            </el-card>
-        </el-col>
-
-        <!-- Result Panel -->
-        <el-col :span="18">
-            <el-card class="box-card" v-loading="loading">
-                 <template #header>
-                    <div class="card-header">
-                        <span>匹配效果评估 (Balance Diagnostics)</span>
-                    </div>
-                </template>
                 
+                <el-alert
+                    title="操作指南"
+                    type="info"
+                    show-icon
+                    :closable="false"
+                >
+                    <div style="font-size: 13px; color: #606266; line-height: 1.6;">
+                        <li><b>推荐策略</b>: 纳入所有基线特征（User Baseline），特别是已知对预后有影响的因素。</li>
+                        <li><b>避免</b>: 不要纳入受治疗影响的变量（中间变量）。</li>
+                    </div>
+                </el-alert>
+            </div>
+        </template>
+
+        <!-- Step 3: Result & Diagnostics -->
+        <template #step3>
+            <div class="wizard-step result-step" v-loading="loading">
                 <div v-if="results">
-                     <el-alert
-                        title="匹配成功"
-                        type="success"
-                        :description="`原始对照组 ${results.stats.n_control} 例，处理组 ${results.stats.n_treated} 例。匹配后共 ${results.stats.n_matched} 例。`"
-                        show-icon
-                        :closable="false"
-                        style="margin-bottom: 20px"
-                     />
+                     <el-result icon="success" title="匹配完成" :sub-title="`匹配成功！共匹配 ${results.stats.n_matched} 例。`">
+                     </el-result>
+
                      <el-alert v-if="results.new_dataset_id" title="新数据集已保存" type="info" show-icon style="margin-bottom: 20px" />
                      
-                     <el-table :data="results.balance" style="width: 100%" border stripe>
+                     <h4>均衡性诊断表 (Balance Table)</h4>
+                     <el-table :data="results.balance" style="width: 100%; margin-bottom: 20px;" border stripe>
                         <el-table-column prop="variable" label="协变量" />
                         <el-table-column prop="smd_pre" label="匹配前 SMD">
                             <template #header>
@@ -101,42 +108,28 @@
                         </el-table-column>
                      </el-table>
                      
-                     <!-- Love Plot -->
-                     <div style="margin-top: 30px;">
-                        <div class="card-header" style="margin-bottom: 15px; font-weight: bold;">
-                             <span>协变量平衡图 (Love Plot)</span>
-                        </div>
-                        <div id="love-plot" style="width: 100%; height: 500px;"></div>
-                     </div>
+                     <h4>协变量平衡图 (Love Plot)</h4>
+                     <div id="love-plot" style="width: 100%; height: 500px;"></div>
                 </div>
-                <el-empty v-else description="请配置参数并运行匹配" />
-                
-            </el-card>
-        </el-col>
-    </el-row>
+                <div v-else-if="!loading" style="text-align: center; color: gray;">
+                    准备就绪，系统正在进行匹配计算...
+                </div>
+            </div>
+        </template>
+    </StepWizard>
   </div>
 </template>
 
 <script setup>
 /**
  * PsmTab.vue
- * 倾向性评分匹配 (PSM) 组件。
- * 
- * 职责：
- * 1. 提供处理变量 (Treatment) 和协变量 (Covariates) 的选择。
- * 2. 执行 1:1 最近邻匹配。
- * 3. 展示匹配前后的均衡性诊断（SMD, 标准化均数差）。
+ * 倾向性评分匹配 (PSM) 组件 - 向导版。
  */
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
-
-/**
- * 评估匹配后的均衡性。
- * @description
- * 临床研究中，SMD < 0.1 通常被认为组间达到良好均衡。
- */
+import StepWizard from './StepWizard.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -147,12 +140,19 @@ const emit = defineEmits(['dataset-created'])
 
 const loading = ref(false)
 const results = ref(null)
+const activeStep = ref(0)
 
 const config = reactive({
     treatment: null,
     covariates: [],
     save: false
 })
+
+const steps = [
+    { title: '设定组别', description: '选择处理组变量', slot: 'step1' },
+    { title: '选择协变量', description: '选择需平衡的混杂因素', slot: 'step2' },
+    { title: '匹配诊断', description: '查看匹配效果与平衡性', slot: 'step3' }
+]
 
 const variableOptions = computed(() => {
     if (!props.metadata || !props.metadata.variables) return []
@@ -162,12 +162,21 @@ const variableOptions = computed(() => {
     }))
 })
 
-const runPSM = async () => {
-    if (!config.treatment || config.covariates.length === 0) {
-        ElMessage.warning("请选择处理变量和至少一个协变量")
-        return
-    }
+// Control next button
+const disableNext = computed(() => {
+    if (activeStep.value === 0) return !config.treatment
+    if (activeStep.value === 1) return config.covariates.length === 0
+    return false
+})
 
+// Watch step change to trigger calculation
+watch(activeStep, (newStep, oldStep) => {
+    if (newStep === 2 && oldStep === 1) {
+        runPSM()
+    }
+})
+
+const runPSM = async () => {
     loading.value = true
     results.value = null
     
@@ -189,11 +198,13 @@ const runPSM = async () => {
         
         // Render Love Plot
         nextTick(() => {
-            renderLovePlot(data.balance)
+            if (data.balance) renderLovePlot(data.balance)
         })
         
     } catch (error) {
         ElMessage.error(error.response?.data?.message || "匹配失败")
+        // Go back to prev step if failed?
+        activeStep.value = 1 
     } finally {
         loading.value = false
     }
@@ -201,8 +212,6 @@ const runPSM = async () => {
 
 const renderLovePlot = (balanceData) => {
     // balanceData: [{variable, smd_pre, smd_post}, ...]
-    // Sort logic? Usually by pre-match SMD desc? Or just natural order.
-    // Let's sort by Pre-match SMD for better visual
     const sorted = [...balanceData].sort((a,b) => Math.abs(a.smd_pre) - Math.abs(b.smd_pre));
     
     const vars = sorted.map(d => d.variable);
@@ -256,6 +265,14 @@ const renderLovePlot = (balanceData) => {
 
 <style scoped>
 .psm-container {
-    padding: 20px;
+    padding: 0;
+}
+.wizard-step {
+    max-width: 800px;
+    margin: 0 auto;
+}
+.step-desc {
+    color: #606266;
+    margin-bottom: 20px;
 }
 </style>

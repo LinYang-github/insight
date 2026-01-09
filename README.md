@@ -1,120 +1,115 @@
 # Insight Platform (Insight 平台)
 
-**简单、可解释的医学科研数据建模平台**
+**让医学科研统计不再是“黑盒”**
 
-Insight 是一个专为医学生和科研人员设计的低门槛统计建模工具。它允许用户通过直观的 Web 界面上传数据、配置模型参数，并获取符合论文发表要求的统计结果（包括三线表导出）。平台核心关注统计方法的正确性与结果的可解释性。
+Insight 是一个专为临床医生和医学生设计的**透明化 (White-box)** 科研数据分析平台。我们不仅仅提供 P 值，更提供直观的**自然语言解读**和**决策依据**，帮助非统计学背景的用户理解数据背后的故事。
 
 ---
 
-## 🌟 核心功能 (Features)
+## 🌟 核心亮点 (Highlights)
 
-*   **项目化管理**: 支持多项目并行管理，数据与模型配置隔离。
-*   **低代码建模**: 无需编写 Python/R 代码，通过交互式表单完成建模。
-*   **多格式支持**: 支持上传 `.csv`, `.xlsx`, `.xls` 文件，自动识别编码 (UTF-8, GBK, Latin1)。
-*   **核心统计模型**:
-    *   **Linear Regression**: 线性回归分析。
-    *   **Logistic Regression**: 逻辑回归 (输出 OR 值及 95% CI)。
-    *   **Cox Proportional Hazards**: 生存分析 (输出 HR 值及 95% CI)。
-*   **论文级导出**: 支持将模型结果直接导出为 Excel 文件，包含 P 值、系数、置信区间等关键指标。
-*   **交互式可视化**: (Post-MVP) 集成 Plotly 图表展示。
+### 1. 拒绝“黑盒”统计 (De-blackboxing)
+- **智能决策透明化**: 系统不仅告诉你 P 值，还会告诉你**“为什么选这个检验方法”**。
+  - *例如*: "选择了 Welch's T-test，因为 Levene 检验显示方差不齐 (P<0.05)。"
+- **自然语言结果解读**: 自动将晦涩的统计学术语翻译为临床语言。
+  - *例如*: <font color="green">"差异显著 (P=0.032): 实验组的恢复速度显著快于对照组。"</font>
 
-## 🛠 技术栈 (Tech Stack)
+### 2. 新手友好的向导 (Novice Friendly Wizards)
+- **Table 1 自动化**: 一键生成基线特征表，自动判断变量类型（连续/分类）并选择最合适的检验方法（T检验/ANOVA/卡方/Fisher）。
+- **PSM 分步向导**: 复杂的倾向性评分匹配 (Propensity Score Matching) 被拆解为简单的三步曲：
+  1.  **设定组别 (Treatment)**
+  2.  **选择协变量 (Covariates)**
+  3.  **诊断平衡性 (Diagnostics)**: 自动生成 Love Plot 和 SMD 平衡表。
 
-### Backend (后端)
-*   **Core**: Python 3.9+, Flask
-*   **Database**: SQLite (SQLAlchemy ORM)
-*   **Data Science**: Pandas, NumPy, Statsmodels, Lifelines
-*   **Authentication**: JWT (JSON Web Tokens)
+---
 
-### Frontend (前端)
-*   **Framework**: Vue 3 + Vite
-*   **UI Library**: Element Plus (Admin Layout)
-*   **State Management**: Pinia
-*   **HTTP Client**: Axios
+## 🛠 功能模块 (Modules)
+
+| 模块 | 功能描述 | 核心特性 |
+| :--- | :--- | :--- |
+| **Data Cleaning** | 数据清洗 | 缺失值插补、异常值标记、变量重命名 |
+| **Table 1** | 基线表生成 | 自动假设检验 (Auto-Testing)、三线表导出 |
+| **PSM** | 倾向性匹配 | 1:1 最近邻匹配、Love Plot、SMD 诊断、新数据集生成 |
+| **Survival** | 生存分析 | Kaplan-Meier 曲线、Log-rank 检验、Cox 回归模型 |
+| **Modeling** | 多因素回归 | Logistic / Linear Regression (支持 VIF 共线性检查) |
+
+---
+
+## 💻 技术栈 (Tech Stack)
+
+### Backend (Python / Flask)
+- **Framework**: Flask (轻量级 REST API)
+- **Analysis**: 
+  - `Pandas`: 数据处理核心
+  - `SciPy / Statsmodels`: 统计假设检验与回归模型
+  - `Lifelines`: 生存分析
+- **Testing**: Pytest (包含统计逻辑单元测试)
+
+### Frontend (Vue 3 / Vite)
+- **UI Library**: Element Plus (Admin Layout)
+- **Viz**: Plotly.js (交互式科研绘图)
+- **State**: Pinia
 
 ---
 
 ## 🚀 快速开始 (Quick Start)
 
 ### 1. 环境准备
-确保本地已安装：
-*   Python 3.9+
-*   Node.js 16+
-*   Git
+- Python 3.9+
+- Node.js 16+
 
 ### 2. 后端启动
 ```bash
-# 1. 克隆项目
-git clone https://github.com/your-repo/insight.git
-cd insight
+cd backend
 
-# 2. 创建并激活虚拟环境
-python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-# .venv\Scripts\activate   # Windows
-
-# 3. 安装依赖
+# 安装依赖
 pip install -r requirements.txt
 
-# 4. 初始化数据库
+# 初始化数据库
 flask db upgrade
 
-# 5. 启动服务 (默认端口 5000)
-export FLASK_APP=backend/run.py
-flask run
+# 启动服务 (默认端口 5000)
+python run.py
 ```
 
-### 3. 前端启动 (开发模式)
+### 3. 前端启动
 ```bash
 cd frontend
 
-# 1. 安装依赖
+# 安装依赖
 npm install
 
-# 2. 启动开发服务器
+# 启动开发服务器
 npm run dev
 ```
-
-> **注意**: 生产环境下，运行 `npm run build` 构建前端资源后，Flask 会自动托管 `frontend/dist` 目录下的静态文件，无需独立运行前端服务。
 
 ---
 
 ## 📂 目录结构
-
 ```text
 insight/
-├── backend/                # 后端代码
+├── backend/
 │   ├── app/
-│   │   ├── api/            # REST API 接口
-│   │   ├── services/       # 核心统计逻辑 (DataService, ModelingService)
-│   │   └── models/         # 数据库模型 (User, Project)
-│   ├── run.py              # 启动入口
-│   └── config.py           # 配置文件
-├── frontend/               # 前端代码
-│   ├── src/
-│   │   ├── layout/         # 通用布局 (Sidebar + Header)
-│   │   ├── views/          # 页面组件 (Dashboard, ModelingTab)
-│   │   └── stores/         # 状态管理
-│   └── vite.config.js
-└── requirements.txt        # Python 依赖
+│   │   ├── services/       # 核心业务逻辑
+│   │   │   ├── statistics_service.py # 统计检验核心 (含 Auto-Test 逻辑)
+│   │   │   └── modeling_service.py   # 回归建模
+│   │   └── utils/          # 工具类
+│   │       └── metadata_builder.py   # "白盒化"元数据构建器
+│   └── tests/              # 自动化测试用例
+├── frontend/
+│   ├── src/views/project/components/
+│   │   ├── PsmTab.vue      # PSM 向导组件
+│   │   ├── TableOneTab.vue # Table 1 组件 (含 InterpretationPanel)
+│   │   └── StepWizard.vue  # 通用分步向导
 ```
 
 ---
 
-## 📝 使用指南
-
-1.  **注册/登录**: 创建新账号并登录系统。
-2.  **创建项目**: 在仪表盘点击 "新建项目"。
-3.  **上传数据**: 进入项目 -> "数据管理" -> 上传 CSV/Excel 文件。
-4.  **运行模型**:
-    *   切换到 "统计建模" 标签页。
-    *   选择模型类型 (如 Logistic 回归)。
-    *   指定 **目标变量** (Y) 和 **特征变量** (X)。
-    *   点击 "运行模型"。
-5.  **导出结果**: 在结果面板点击 "导出 Excel" 下载分析报告。
+## 📝 开发规范
+- **Commit Message**: 遵循 `feat:`, `fix:`, `docs:` 规范。
+- **Code Style**: Python 代码遵循 PEP8，Vue 代码推荐使用 Composition API。
 
 ---
 
 ## 🛡️ License
-
 MIT License. Copyright (c) 2026 Insight Platform.

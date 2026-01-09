@@ -14,7 +14,8 @@ vi.mock('@element-plus/icons-vue', () => ({
 // Mock API
 vi.mock('@/api/validation', () => ({
     runValidation: vi.fn(),
-    getBenchmarks: vi.fn()
+    getBenchmarks: vi.fn(),
+    downloadDataset: vi.fn()
 }))
 
 // Mock global components
