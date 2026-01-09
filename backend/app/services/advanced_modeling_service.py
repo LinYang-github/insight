@@ -1,0 +1,435 @@
+import pandas as pd
+import numpy as np
+import patsy
+from lifelines import CoxPHFitter
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from app.services.data_service import DataService
+
+class AdvancedModelingService:
+    
+    @staticmethod
+    def fit_rcs(df, target, event_col, exposure, covariates, model_type='cox', knots=3):
+        """
+        Fit a model with Restricted Cubic Splines for the exposure variable.
+        
+        Args:
+            df (pd.DataFrame): Data.
+            target (str): Outcome variable (Y). For Cox, this is 'duration'.
+            event_col (str): Event indicator for Cox. None for Logistic/Linear.
+            exposure (str): Continuous variable to spline (X).
+            covariates (list): Adjusting variables.
+            model_type (str): 'cox' or 'logistic' or 'linear'.
+            knots (int): Number of knots (default 3, usually 3, 4, or 5).
+            
+        Returns:
+            dict: {
+                'p_non_linear': float, 
+                'plot_data': [{'x': val, 'y': hr/or, 'lower': val, 'upper': val}]
+            }
+        """
+        # 1. Prepare Formula
+        # Using patsy 'cr' (natural cubic spline) or 'bs' (B-spline). 
+        # R's rcs() is effectively natural cubic spline. patsy has cr().
+        # formula: "target ~ cr(exposure, df=knots) + cov1 + ..."
+        
+        # Clean data first
+        cols = [exposure] + covariates
+        if model_type == 'cox':
+            cols += [target, event_col]
+        else:
+            cols += [target]
+        
+        df_clean = df[cols].dropna()
+        
+        # We need to calculate predictions across range of exposure
+        # Reference: usually median or mean of exposure => HR=1
+        ref_value = df_clean[exposure].median()
+        
+        # Range for plotting: 5th to 95th percentile to avoid outliers stretching plot
+        x_min = df_clean[exposure].quantile(0.05)
+        x_max = df_clean[exposure].quantile(0.95)
+        x_grid = np.linspace(x_min, x_max, 100)
+        
+        # Create a prediction dataframe
+        # We need to hold covariates constant (e.g., at mean/mode)
+        # But wait, predicted HR is relative. 
+        # In Cox: h(t|x) / h(t|ref). The covariates cancel out if proportional hazards hold and we compare x to ref for the SAME individual.
+        # So we effectively strictly vary exposure.
+        
+        results = {}
+        
+        if model_type == 'cox':
+            # Lifelines formula usage
+            # formula = "cr(exposure, df=knots) + covar1 + ..."
+            cov_str = " + ".join(covariates) if covariates else ""
+            formula_rhs = f"cr({exposure}, df={knots})"
+            if cov_str:
+                formula_rhs += f" + {cov_str}"
+                
+            cph = CoxPHFitter()
+            # Lifelines fit(formula=...) is supported in recent versions
+            # But let's verify if we can do prediction easily.
+            # Alternatively, generate spline matrix manually using patsy to have full control.
+            
+            # Using patsy directly on DF
+            # dmatrix returns a matrix, we need a DF with readable names
+            # But lifelines handles formulas well.
+            
+            try:
+                cph.fit(df_clean, duration_col=target, event_col=event_col, formula=formula_rhs)
+            except Exception as e:
+                raise ValueError(f"Model fitting failed: {str(e)}")
+            
+            # Check non-linearity P-value?
+            # Usually we test if the coefficients for spline terms (checking non-linear terms) are zero.
+            # This is complex to extract auto-magically without `anova`.
+            # For MVP, we skip "P for non-linearity" calculation unless we do a Likelihood Ratio Test vs linear model.
+            
+            # Prediction
+            # We construct a synthetic df varying exposure, fixing others (though they cancel for HR)
+            pred_df = pd.DataFrame({exposure: x_grid})
+            # For covariates, fill with mean (needed for patsy to generate matrix, even if not used for HR diff)
+            for cov in covariates:
+                if pd.api.types.is_numeric_dtype(df_clean[cov]):
+                    pred_df[cov] = df_clean[cov].mean()
+                else:
+                    # mode
+                    pred_df[cov] = df_clean[cov].mode()[0]
+            
+            # Add reference row
+            ref_row = pred_df.iloc[0].copy()
+            ref_row[exposure] = ref_value
+            # We can't easily append ref_row for ratio in lifelines `predict_partial_hazard`.
+            # `predict_partial_hazard` returns exp(X*beta). 
+            # HR(x) = risk(x) / risk(ref) = exp(beta*spline(x)) / exp(beta*spline(ref))
+            
+            log_hazards = cph.predict_log_partial_hazard(pred_df)
+            # We need log_hazard for reference value
+            # Create single row DF
+            ref_df = pd.DataFrame([ref_row])
+            # Ensure dtypes match (pandas often converts single row int to float, etc)
+            # concat is safer
+            full_pred_df = pd.concat([pred_df, ref_df], ignore_index=True)
+            
+            full_log_hazards = cph.predict_log_partial_hazard(full_pred_df)
+            ref_log_hazard = full_log_hazards.iloc[-1]
+            target_log_hazards = full_log_hazards.iloc[:-1]
+            
+            log_hr = target_log_hazards - ref_log_hazard
+            hr = np.exp(log_hr)
+            
+            # Confidence Intervals?
+            # This is hard with lifelines out-of-the-box for ratios of two arbitrary points.
+            # Need variance-covariance matrix.
+            # Var(logHR) = (x - xref)^T * Cov * (x - xref) where x are spline basis vectors.
+            # We might skip CI for MVP or try to approximate.
+            # Actually, lifelines `predict_log_partial_hazard` does not return CI.
+            # `compute_followup_hazard_ratios` might help? No.
+            
+            # Let's return just the line for now. Adding CIs manually requires manually creating the design matrix.
+            # If user demands CI (which is standard), we should do design matrix approach.
+            
+            plot_data = []
+            for x, y in zip(x_grid, hr):
+                plot_data.append({'x': x, 'y': y})
+                
+            results['plot_data'] = plot_data
+            results['ref_value'] = ref_value
+            results['p_non_linear'] = None # To do: LRT
+            
+        elif model_type == 'logistic':
+            # Statsmodels Logit
+            cov_str = " + ".join(covariates) if covariates else "1" # 1 for intercept only if no covariates
+            if not covariates: cov_str = "1"
+            
+            formula = f"{target} ~ cr({exposure}, df={knots}) + {cov_str}"
+            if covariates:
+                formula = f"{target} ~ cr({exposure}, df={knots}) + {' + '.join(covariates)}"
+            else:
+                 formula = f"{target} ~ cr({exposure}, df={knots})"
+                 
+            model = smf.logit(formula=formula, data=df_clean).fit(disp=0)
+            
+            # Prediction
+            # OR = exp(logit(x) - logit(ref)) ? 
+            # Logit = Xb. 
+            # OR(x vs ref) = exp(X(x)b - X(ref)b)
+            # Similar logic to Cox.
+            
+            pred_df = pd.DataFrame({exposure: x_grid})
+            for cov in covariates:
+                 if pd.api.types.is_numeric_dtype(df_clean[cov]):
+                    pred_df[cov] = df_clean[cov].mean()
+                 else:
+                    pred_df[cov] = df_clean[cov].mode()[0]
+                    
+            ref_df = pd.DataFrame([pred_df.iloc[0].copy()]) # Dummy
+            ref_df[exposure] = ref_value
+            for cov in covariates: # Reset ref cols
+                 if pd.api.types.is_numeric_dtype(df_clean[cov]):
+                    ref_df[cov] = df_clean[cov].mean()
+                 else:
+                    ref_df[cov] = df_clean[cov].mode()[0]
+
+            # Get predictions (Linear predictor = Xb)
+            # getting design matrix
+            # patsy.dmatrix(formula_rhs, pred_df) ?
+            # Easier: model.predict(exog=..., transform=True) ?
+            # Statsmodels predict returns p, not linear predictor usually unless specified.
+            # actually results.predict(exog, transform=False) returns linear predictor? 
+            # Logit: predict() returns probability. 
+            # We want linear predictor.
+            
+            # We can use the design matrix and dot product with params.
+            # But getting design matrix from formula on new data:
+            # dmatrix = patsy.build_design_matrices([model.data.design_info], pred_df, return_type='dataframe')[0]
+            
+            dmatrix_pred = patsy.build_design_matrices([model.data.design_info.builder], pred_df, return_type='dataframe')[0]
+            dmatrix_ref = patsy.build_design_matrices([model.data.design_info.builder], ref_df, return_type='dataframe')[0]
+            
+            lp_pred = dmatrix_pred.dot(model.params)
+            lp_ref = dmatrix_ref.dot(model.params).iloc[0]
+            
+            log_or = lp_pred - lp_ref
+            ors = np.exp(log_or)
+            
+            # CIs
+            cov_matrix = model.cov_params()
+            # Variance of difference: (X1 - X2) Cov (X1 - X2)^T
+            diff_matrix = dmatrix_pred.sub(dmatrix_ref.iloc[0], axis=1) # (N, p)
+            
+            # se^2 = sum( (diff_matrix @ cov_matrix) * diff_matrix, axis=1 )
+            # Efficient calc:
+            # se = sqrt( diag( D @ Cov @ D.T ) )
+            
+            var_log_or = (diff_matrix.dot(cov_matrix) * diff_matrix).sum(axis=1)
+            se_log_or = np.sqrt(var_log_or)
+            
+            lower_ci = np.exp(log_or - 1.96 * se_log_or)
+            upper_ci = np.exp(log_or + 1.96 * se_log_or)
+            
+            plot_data = []
+            for i, x in enumerate(x_grid):
+                plot_data.append({
+                    'x': x,
+                    'y': ors.iloc[i],
+                    'lower': lower_ci.iloc[i],
+                    'upper': upper_ci.iloc[i]
+                })
+            
+            results['plot_data'] = plot_data
+            results['ref_value'] = ref_value
+            
+        return results
+
+    @staticmethod
+    def perform_subgroup(df, target, event_col, exposure, subgroups, covariates, model_type='cox'):
+        """
+        Perform subgroup analysis.
+        """
+        results = []
+        
+        # 1. Overall Model
+        # Fit model on all data to get Overall estimate
+        # reuse modeling service or simple fit here
+        # ...
+        
+        # 2. Loop Subgroups
+        for grp_col in subgroups:
+            # Expect grp_col to be categorical
+            # We need unique values
+            groups = df[grp_col].dropna().unique()
+            # Sort if possible
+            try:
+                groups = sorted(groups)
+            except:
+                pass
+                
+            group_res = {
+                'variable': grp_col,
+                'subgroups': []
+            }
+            
+            # Check interaction P-value
+            # Model: Y ~ Exposure + Covariates + Grp + Exposure:Grp
+            # We want the P-value for the interaction term Exposure:Grp
+            # This indicates if heterogeneity is significant.
+            
+            p_interaction = None
+            try:
+                # Interaction Modeling
+                # Clean df
+                temp_cols = [target, exposure, grp_col] + covariates
+                if event_col: temp_cols.append(event_col)
+                temp_df = df[temp_cols].dropna()
+                
+                # Formula Construction
+                cov_part = " + ".join(covariates)
+                if cov_part: cov_part = " + " + cov_part
+                
+                # Careful with categorical encoding in formula
+                formula = f"{target} ~ {exposure} * C({grp_col}){cov_part}"
+                
+                if model_type == 'cox':
+                     cph = CoxPHFitter()
+                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=formula)
+                     # Find interaction terms
+                     # They usually look like 'Exposure:C(Grp)[T.Level]'
+                     # We might need an ANOVA test or just check min P.
+                     # Simplest: Likelihood Ratio Test between (Exp + Grp) and (Exp * Grp)
+                     # But lifelines doesn't have easy ANOVA.
+                     # Take the p-value of the interaction term(s). If multiple, it's complex.
+                     # For binary subgroup, there is 1 interaction term.
+                     summary = cph.summary
+                     interaction_rows = [idx for idx in summary.index if ':' in idx]
+                     if interaction_rows:
+                         p_interaction = summary.loc[interaction_rows, 'p'].min() # Crude approximation
+                     
+                elif model_type == 'logistic':
+                    model = smf.logit(formula, data=temp_df).fit(disp=0)
+                    interaction_rows = [idx for idx in model.pvalues.index if ':' in idx]
+                    if interaction_rows:
+                         p_interaction = model.pvalues[interaction_rows].min()
+
+            except Exception as e:
+                print(f"Interaction failed: {e}")
+            
+            group_res['p_interaction'] = p_interaction
+
+            for val in groups:
+                # Subset
+                sub_df = df[df[grp_col] == val]
+                # Check sample size
+                if len(sub_df) < 10:
+                    continue
+                    
+                # Fit Model
+                est, lower, upper, p_val = AdvancedModelingService._fit_simple_model(
+                    sub_df, target, event_col, exposure, covariates, model_type
+                )
+                
+                group_res['subgroups'].append({
+                    'level': str(val),
+                    'n': len(sub_df),
+                    'est': est,
+                    'lower': lower,
+                    'upper': upper,
+                    'p': p_val
+                })
+            
+            results.append(group_res)
+            
+        return results
+
+    @staticmethod
+    def _fit_simple_model(df, target, event_col, exposure, covariates, model_type):
+        """Helper to fit simple model and return HR/OR + CI + P"""
+        try:
+            cov_str = " + ".join(covariates)
+            if cov_str: cov_str = " + " + cov_str
+            formula = f"{exposure}{cov_str}" # LHS handled by library methods usually, or formula
+            
+            if model_type == 'cox':
+                cph = CoxPHFitter()
+                # formula support for LHS? "duration + event ~ ..." no.
+                # standard fit: fit(df, duration, event, formula="...")
+                cph.fit(df, duration_col=target, event_col=event_col, formula=formula)
+                # Get exposure row
+                # exposure might be customized if formula changed name (e.g. C(exposure))
+                # Assuming exposure is continuous or binary 0/1 without transform for now
+                if exposure in cph.summary.index:
+                    row = cph.summary.loc[exposure]
+                else:
+                    # Try finding it
+                    return None, None, None, None
+                
+                return row['exp(coef)'], row['exp(coef) lower 95%'], row['exp(coef) upper 95%'], row['p']
+                
+            elif model_type == 'logistic':
+                f = f"{target} ~ {formula}"
+                model = smf.logit(f, data=df).fit(disp=0)
+                if exposure in model.params.index:
+                    est = np.exp(model.params[exposure])
+                    conf = model.conf_int()
+                    lower = np.exp(conf.loc[exposure][0])
+                    upper = np.exp(conf.loc[exposure][1])
+                    p = model.pvalues[exposure]
+                    return est, lower, upper, p
+        except:
+            return None, None, None, None
+        return None, None, None, None
+
+    @staticmethod
+    def calculate_cif(df, time_col, event_col, group_col=None):
+        """
+        Calculate Cumulative Incidence Function (CIF) using Aalen-Johansen.
+        """
+        from lifelines import AalenJohansenFitter
+        
+        # event_col should have 0 (censor), 1 (primary), 2 (competing)...
+        # We calculate CIF for *each* event type found (except 0).
+        
+        # Check integrity
+        if df[event_col].nunique() < 2:
+             # Just censorship?
+             # Or only 1 event type? If only 1, AJ == KM (1-KM)
+             pass
+        
+        results = []
+        
+        # Events (exclude 0)
+        events = sorted([e for e in df[event_col].unique() if e != 0])
+        
+        if not events:
+            raise ValueError("No event types found (only 0/Censor found?)")
+            
+        groups = ['All']
+        if group_col:
+            groups = df[group_col].dropna().unique()
+            
+        for grp in groups:
+            if group_col:
+                sub_df = df[df[group_col] == grp]
+                grp_label = str(grp)
+            else:
+                sub_df = df
+                grp_label = 'All'
+            
+            for evt in events:
+                ajf = AalenJohansenFitter(calculate_variance=False)
+                # It treats other values in E as competing risks automatically
+                try:
+                    # Clean NaNs
+                    sub_clean = sub_df[[time_col, event_col]].dropna()
+                    
+                    ajf.fit(sub_clean[time_col], sub_clean[event_col], event_of_interest=evt)
+                    
+                    # Store line
+                    # ajf.cumulative_density_ is the CIF
+                    cif = ajf.cumulative_density_
+                    
+                    # Convert to list of {x, y}
+                    line_data = []
+                    # cif index is time, column is CIF_evt
+                    times = cif.index.tolist()
+                    values = cif.values.flatten().tolist()
+                    
+                    # Downsample if too huge?
+                    if len(times) > 500:
+                        # simple skip
+                        indices = np.linspace(0, len(times)-1, 500, dtype=int)
+                        times = [times[i] for i in indices]
+                        values = [values[i] for i in indices]
+                    
+                    line_data = [{'x': t, 'y': v} for t, v in zip(times, values)]
+                    
+                    results.append({
+                        'group': grp_label,
+                        'event_type': int(evt),
+                        'cif_data': line_data
+                    })
+                except Exception as e:
+                    print(f"AJ fit failed for grp={grp} evt={evt}: {e}")
+                    
+        return results

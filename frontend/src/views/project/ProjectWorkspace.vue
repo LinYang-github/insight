@@ -12,11 +12,19 @@
                 <span>数据导入</span>
                 <span class="status-dot" :class="dataset ? 'green' : 'gray'"></span>
             </el-menu-item>
+             <el-menu-item index="data-mgmt" :disabled="!dataset">
+                 <el-icon><FolderOpened /></el-icon>
+                 <span>数据管理</span>
+             </el-menu-item>
             <el-menu-item index="preprocessing" :disabled="!dataset">
                 <el-icon><Brush /></el-icon>
                 <span>数据体检 (Health Check)</span>
                 <!-- TODO: Check missing values for status -->
                 <span class="status-dot green"></span> 
+            </el-menu-item>
+            <el-menu-item index="clinical" :disabled="!dataset">
+                <el-icon><FirstAidKit /></el-icon>
+                <span>专科工程 (Clinical)</span>
             </el-menu-item>
 
             <div class="menu-group-title">📊 基线特征 (Baseline)</div>
@@ -34,7 +42,7 @@
                 <el-icon><Timer /></el-icon>
                 <span>生存分析 (KM)</span>
             </el-menu-item>
-            <el-menu-item index="psm" :disabled="!dataset">
+             <el-menu-item index="psm" :disabled="!dataset">
                 <el-icon><Connection /></el-icon>
                 <span>倾向匹配 (PSM)</span>
             </el-menu-item>
@@ -43,6 +51,10 @@
             <el-menu-item index="modeling" :disabled="!dataset">
                 <el-icon><TrendCharts /></el-icon>
                 <span>回归建模 (Modeling)</span>
+            </el-menu-item>
+             <el-menu-item index="advanced" :disabled="!dataset">
+                <el-icon><Histogram /></el-icon>
+                <span>高级建模 (Advanced)</span>
             </el-menu-item>
         </el-menu>
     </el-aside>
@@ -53,14 +65,25 @@
          <div v-if="activeTabName === 'data'">
              <DataTab :projectId="route.params.id" :dataset="dataset" @dataset-updated="handleDatasetUpdate" />
          </div>
+         <div v-else-if="activeTabName === 'data-mgmt'">
+             <DataManagementTab 
+                :datasets="datasetList"
+                :activeDatasetId="dataset?.id"
+                @dataset-switched="handleSwitchDataset" 
+                @refresh-list="fetchDatasetList"
+             />
+         </div>
          <div v-else-if="activeTabName === 'preprocessing'">
              <PreprocessingTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" @dataset-created="handleDatasetCreated" />
          </div>
-         <div v-else-if="activeTabName === 'eda'">
-             <EdaTab :datasetId="dataset?.dataset_id" />
+         <div v-else-if="activeTabName === 'clinical'">
+             <ClinicalTab :dataset="dataset" :metadata="dataset?.metadata" @dataset-updated="handleDatasetUpdate" />
          </div>
          <div v-else-if="activeTabName === 'table1'">
              <TableOneTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+         </div>
+         <div v-else-if="activeTabName === 'eda'">
+             <EdaTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
          </div>
          <div v-else-if="activeTabName === 'survival'">
              <SurvivalTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
@@ -70,6 +93,9 @@
          </div>
          <div v-else-if="activeTabName === 'modeling'">
               <ModelingTab :projectId="route.params.id" :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+         </div>
+         <div v-else-if="activeTabName === 'advanced'">
+             <AdvancedModelingTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
          </div>
     </el-main>
   </el-container>
@@ -93,13 +119,16 @@ import EdaTab from './components/EdaTab.vue'
 import PreprocessingTab from './components/PreprocessingTab.vue'
 import TableOneTab from './components/TableOneTab.vue'
 import SurvivalTab from './components/SurvivalTab.vue'
-import PsmTab from './components/PsmTab.vue'
+import ClinicalTab from './components/ClinicalTab.vue'
+import DataManagementTab from './components/DataManagementTab.vue'
+import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)
+const datasetList = ref([]) // All datasets for list
 const activeTabName = ref('data')
 
 const handleTabChange = (name) => {
@@ -110,26 +139,57 @@ const fetchProjectData = async () => {
     try {
         const { data } = await api.get(`/data/metadata/${route.params.id}`)
         dataset.value = data
+        // Also fetch all datasets for management? 
+        // Currently metadata endpoint returns "latest".
+        // We probably need a LIST endpoint.
+        // For now, let's assume metadata endpoint is extended OR we add a list endpoint.
+        // Wait, current design is: 1 project = N datasets.
+        // Let's add GET /data/list/<project_id> later?
+        // Or reuse metadata endpoint if it returns list.
+        // Checking data.py... /metadata/<id> returns single Dataset metadata.
+        // We need a way to list ALL datasets. 
+        fetchDatasetList()
     } catch (error) {
         // No dataset yet
     }
 }
 
+const fetchDatasetList = async () => {
+    try {
+        const { data } = await api.get(`/projects/${route.params.id}`)
+         // Project response usually includes datasets relationship?
+         // Let's check project.py or just use what we have.
+         // Actually, let's add a specialized endpoint or just rely on Project details.
+         // For expediency, let's try to get list from project detail.
+         datasetList.value = data.datasets || []
+         
+         // Find active one if exists and set it?
+         if(dataset.value && datasetList.value.length > 0){
+             // ensure dataset.value matches one in list
+         }
+    } catch (e) {
+        console.error(e)
+    }
+}
+
+
 const handleDatasetUpdate = (newDataset) => {
     dataset.value = newDataset
+    fetchDatasetList()
     // Auto advance to cleaning
     activeTabName.value = 'preprocessing'
 }
 
 const handleDatasetCreated = (newDatasetId) => {
-    fetchProjectData().then(() => {
-         // Maybe stay on same tab or show success? 
-         // User requested flow: "After preprocessing -> Go to Modeling"
-         // But preprocessing emits this.
-         // Let's keep existing logic or update to stay.
-         // Actually user wants "Smart Fix" then go to Modeling.
-         // For now, let's just refresh data.
-    })
+    fetchProjectData()
+    fetchDatasetList()
+}
+
+const handleSwitchDataset = async (targetDataset) => {
+    // Switch active dataset context
+    // In backend, "active" might be stateful or just frontend context.
+    // Here we just update frontend Ref.
+    dataset.value = targetDataset
 }
 
 onMounted(() => {

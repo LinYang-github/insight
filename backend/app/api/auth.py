@@ -34,7 +34,7 @@ def login():
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
         }, Config.SECRET_KEY, algorithm='HS256')
         
-        return jsonify({'token': token, 'username': user.username}), 200
+        return jsonify({'token': token, 'username': user.username, 'settings': user.settings}), 200
     
     return jsonify({'message': 'Invalid credentials'}), 401
 @auth_bp.route('/change-password', methods=['POST'])

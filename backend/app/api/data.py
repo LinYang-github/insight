@@ -95,3 +95,47 @@ def download_file(filename):
         return jsonify({'message': 'File not found'}), 404
         
     return send_from_directory(directory, filename, as_attachment=True)
+    return send_from_directory(directory, filename, as_attachment=True)
+
+@data_bp.route('/<int:dataset_id>', methods=['DELETE'])
+@token_required
+def delete_dataset(current_user, dataset_id):
+    """
+    物理删除数据集。
+    """
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.project.author != current_user:
+        return jsonify({'message': 'Permission denied'}), 403
+        
+    try:
+        # File removal is handled by SQLAlchemy event listener in models/dataset.py:receive_after_delete
+        db.session.delete(dataset)
+        db.session.commit()
+        return jsonify({'message': 'Dataset deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 500
+
+@data_bp.route('/<int:dataset_id>/rename', methods=['PUT'])
+@token_required
+def rename_dataset(current_user, dataset_id):
+    """
+    重命名数据集 (仅修改显示名称).
+    """
+    data = request.get_json()
+    new_name = data.get('name')
+    
+    if not new_name:
+        return jsonify({'message': 'New name is required'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.project.author != current_user:
+        return jsonify({'message': 'Permission denied'}), 403
+        
+    try:
+        dataset.name = new_name
+        db.session.commit()
+        return jsonify({'message': 'Dataset renamed successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 500

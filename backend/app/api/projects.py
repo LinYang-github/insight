@@ -31,7 +31,30 @@ def create_project(current_user):
     db.session.add(new_project)
     db.session.commit()
     return jsonify({'message': 'Project created', 'id': new_project.id}), 201
+    return jsonify({'message': 'Project created', 'id': new_project.id}), 201
 
+@projects_bp.route('/<int:project_id>', methods=['GET'])
+@token_required
+def get_project(current_user, project_id):
+    project = Project.query.get_or_404(project_id)
+    if project.author != current_user:
+        return jsonify({'message': 'Permission denied'}), 403
+    
+    datasets = []
+    for ds in project.datasets:
+        datasets.append({
+            'id': ds.id,
+            'name': ds.name,
+            'created_at': ds.created_at,
+            'meta_data': ds.meta_data # Or just specific fields? frontend expects meta_data object
+        })
+        
+    return jsonify({
+        'id': project.id,
+        'name': project.name,
+        'description': project.description,
+        'datasets': datasets
+    }), 200
 @projects_bp.route('/<int:project_id>', methods=['DELETE'])
 @token_required
 def delete_project(current_user, project_id):

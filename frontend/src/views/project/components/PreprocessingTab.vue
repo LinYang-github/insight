@@ -19,7 +19,17 @@
                             <el-icon style="margin-left: 5px; cursor: pointer;"><QuestionFilled /></el-icon>
                         </el-tooltip>
                     </div>
-                    <div style="display: flex; gap: 10px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                         <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
+                            <template #reference>
+                                <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                            </template>
+                            <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
+                                <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                            </el-radio-group>
+                        </el-popover>
+                        <el-divider direction="vertical" />
                         <el-button type="warning" size="small" @click="handleSmartFix" :loading="processing" icon="MagicStick">一键智能修复 (Smart Fix)</el-button>
                         <el-button type="primary" size="small" @click="handleImpute" :loading="processing">应用自定义策略</el-button>
                     </div>
@@ -128,6 +138,10 @@ const loading = ref(false)
 const processing = ref(false)
 const imputeStrategies = ref({})
 const selectedEncodeCols = ref([])
+const saveMode = ref('new') // 'new' or 'overwrite'
+
+// Reusable Save Option Control (can be extracted if needed)
+// For now, let's just make sure we pass it.
 
 const missingData = computed(() => {
     if (!props.metadata) return []
@@ -183,7 +197,8 @@ const handleSmartFix = async () => {
     try {
         const { data } = await api.post('/preprocessing/impute', {
             dataset_id: props.datasetId,
-            strategies: autoStrategies
+            strategies: autoStrategies,
+            save_mode: saveMode.value
         })
         ElMessage.success({
             message: `智能修复完成：已自动填补 ${imputeCount} 个变量。系统已为您切换至新生成的数据集版本。`,
@@ -217,7 +232,8 @@ const handleImpute = async () => {
     try {
         const { data } = await api.post('/preprocessing/impute', {
             dataset_id: props.datasetId,
-            strategies: activeStrategies
+            strategies: activeStrategies,
+            save_mode: saveMode.value
         })
         ElMessage.success({
             message: '处理成功！已为您生成并切换至修复后的数据集版本。',
@@ -241,7 +257,8 @@ const handleEncode = async () => {
     try {
          const { data } = await api.post('/preprocessing/encode', {
             dataset_id: props.datasetId,
-            columns: selectedEncodeCols.value
+            columns: selectedEncodeCols.value,
+            save_mode: saveMode.value
         })
         ElMessage.success({
             message: '因子化处理完成！已为您生成并切换至新版数据集。',
