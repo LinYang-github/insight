@@ -50,6 +50,7 @@ flask_session/
 *.sl3
 
 # Backend Data / Uploads
+data/
 backend/data/
 backend/uploads/
 # Keep gitkeep if present to maintain folder structure

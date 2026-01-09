@@ -25,6 +25,13 @@ export const useUserStore = defineStore('user', {
             this.user = null
             localStorage.removeItem('token')
             location.reload()
+        },
+        applyTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark')
+            } else {
+                document.documentElement.classList.remove('dark')
+            }
         }
     }
 })

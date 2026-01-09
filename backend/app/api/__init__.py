@@ -7,6 +7,7 @@ from .modeling import modeling_bp
 from .eda import eda_bp
 from .preprocessing import preprocessing_bp
 from .statistics import statistics_bp
+from .settings import settings_bp
 
 main_bp = Blueprint('api', __name__)
 
@@ -18,3 +19,4 @@ def register_blueprints(app):
     app.register_blueprint(eda_bp, url_prefix='/api/eda')
     app.register_blueprint(preprocessing_bp, url_prefix='/api/preprocessing')
     app.register_blueprint(statistics_bp, url_prefix='/api/statistics')
+    app.register_blueprint(settings_bp, url_prefix='/api/settings')

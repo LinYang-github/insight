@@ -23,7 +23,7 @@
              <el-menu-item index="/projects/list">
                 <el-icon><Folder /></el-icon> 项目列表
              </el-menu-item>
-             <el-menu-item index="/settings" disabled>
+             <el-menu-item index="/settings">
                 <el-icon><Setting /></el-icon> 系统设置
              </el-menu-item>
            </el-menu>
