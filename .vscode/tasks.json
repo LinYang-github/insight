@@ -1,0 +1,211 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🚀 Insight: Start All (Full Stack)",
+            "dependsOn": [
+                "🐍 Backend: Start Server",
+                "⚡ Frontend: Start Dev Server"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "insight"
+            },
+            "icon": {
+                "id": "rocket",
+                "color": "terminal.ansiCyan"
+            }
+        },
+        {
+            "label": "🐍 Backend: Start Server",
+            "type": "shell",
+            "command": "python3 backend/run.py",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "python",
+                "pattern": {
+                    "regexp": "^\\s*File \"(.*)\", line (\\d+), in (.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "location": 3
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Starting backend server",
+                    "endsPattern": "Running on http"
+                }
+            },
+            "presentation": {
+                "group": "server",
+                "reveal": "always"
+            },
+            "icon": {
+                "id": "symbol-method",
+                "color": "terminal.ansiGreen"
+            }
+        },
+        {
+            "label": "⚡ Frontend: Start Dev Server",
+            "type": "shell",
+            "command": "npm run dev",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "vite v.* dev server running at",
+                    "endsPattern": "Local:"
+                }
+            },
+            "presentation": {
+                "group": "server",
+                "reveal": "always"
+            },
+            "icon": {
+                "id": "zap",
+                "color": "terminal.ansiYellow"
+            }
+        },
+        {
+            "label": "🧪 Analytics: Run Backend Tests",
+            "type": "shell",
+            "command": "export PYTHONPATH=$PYTHONPATH:${workspaceFolder}/backend && pytest backend/tests -v",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "beaker",
+                "color": "terminal.ansiMagenta"
+            }
+        },
+        {
+            "label": "📦 Insight: Install All Dependencies",
+            "type": "shell",
+            "command": "pip install -r requirements.txt && cd frontend && npm install",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "package",
+                "color": "terminal.ansiCyan"
+            }
+        },
+        {
+            "label": "🧹 Code: Format Backend (Black)",
+            "type": "shell",
+            "command": "black backend/app --line-length 120",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent"
+            },
+            "icon": {
+                "id": "code",
+                "color": "terminal.ansiBlue"
+            }
+        },
+        {
+            "label": "🛠️ DB: Initialize Migrations",
+            "type": "shell",
+            "command": "export FLASK_APP=backend/run.py && flask db init",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "database",
+                "color": "terminal.ansiYellow"
+            }
+        },
+        {
+            "label": "🛠️ DB: Generate Migration",
+            "type": "shell",
+            "command": "export FLASK_APP=backend/run.py && flask db migrate -m 'auto_migration'",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "database",
+                "color": "terminal.ansiYellow"
+            }
+        },
+        {
+            "label": "🛠️ DB: Upgrade Database",
+            "type": "shell",
+            "command": "export FLASK_APP=backend/run.py && flask db upgrade",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "database",
+                "color": "terminal.ansiYellow"
+            }
+        },
+        {
+            "label": "🌱 Project: Setup Environment",
+            "type": "shell",
+            "command": "mkdir -p data",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "folder-opened",
+                "color": "terminal.ansiGreen"
+            }
+        },
+        {
+            "label": "�️ Project: Clean Up Artifacts",
+            "type": "shell",
+            "command": "find . -type d -name '__pycache__' -exec rm -rf {} +; rm -rf .pytest_cache frontend/dist dist/",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "trash",
+                "color": "terminal.ansiRed"
+            }
+        },
+        {
+            "label": "🏗️ Frontend: Production Build",
+            "type": "shell",
+            "command": "npm run build",
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            },
+            "group": "build",
+            "icon": {
+                "id": "tools",
+                "color": "terminal.ansiCyan"
+            }
+        },
+        {
+            "label": "🎁 Insight: Package to Executable (PyInstaller)",
+            "type": "shell",
+            "command": "python3 package.py",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "icon": {
+                "id": "archive",
+                "color": "terminal.ansiBlue"
+            }
+        }
+    ]
+}

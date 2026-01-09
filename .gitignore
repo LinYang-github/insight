@@ -70,7 +70,7 @@ frontend/coverage/
 
 # IDEs
 .idea/
-.vscode/
+.vscode/*
 !.vscode/tasks.json
 *.swp
 *.swo

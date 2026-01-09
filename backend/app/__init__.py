@@ -8,14 +8,19 @@ db = SQLAlchemy()
 migrate = Migrate()
 
 import os
+import sys
 
 def create_app(config_class=Config):
     # Calculate absolute path to frontend/dist
-    # current file: backend/app/__init__.py
-    # we want: insight/frontend/dist
-    backend_app_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(backend_app_dir, '../..'))
-    static_folder = os.path.join(project_root, 'frontend', 'dist')
+    if getattr(sys, 'frozen', False):
+        # In a bundled executable, static files are usually added to the bundle root or a subdirectory
+        # PyInstaller extracts to sys._MEIPASS
+        static_folder = os.path.join(sys._MEIPASS, 'frontend/dist')
+    else:
+        # Development mode
+        backend_app_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(backend_app_dir, '../..'))
+        static_folder = os.path.join(project_root, 'frontend', 'dist')
     
     app = Flask(__name__, 
                 static_folder=static_folder,
