@@ -87,6 +87,16 @@ class TreeModelStrategy(BaseModelStrategy):
             y_prob = model.predict_proba(X)[:, 1] if hasattr(model, 'predict_proba') else y_pred
             from app.utils.evaluation import ModelEvaluator
             metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob, y_pred)
+            
+            # 5-Fold Cross Validation
+            try:
+                from sklearn.model_selection import cross_val_score
+                cv_scores = cross_val_score(model, X, y, cv=5, scoring='roc_auc')
+                metrics['cv_auc_mean'] = ResultFormatter.format_float(np.mean(cv_scores), 3)
+                metrics['cv_auc_std'] = ResultFormatter.format_float(np.std(cv_scores), 3)
+            except Exception as e:
+                print(f"CV Failed: {e}")
+                pass
         else:
             metrics['r2'] = ResultFormatter.format_float(r2_score(y, y_pred), 4)
             metrics['rmse'] = ResultFormatter.format_float(np.sqrt(mean_squared_error(y, y_pred)), 4)

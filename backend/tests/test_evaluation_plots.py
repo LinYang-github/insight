@@ -33,6 +33,10 @@ def test_logistic_plots(classification_df):
     # Check AUC value (should be reasonable for make_classification, > 0.5)
     assert float(results['metrics']['auc']) > 0.5
     
+    # Check CV Metrics
+    assert 'cv_auc_mean' in results['metrics']
+    assert 'cv_auc_std' in results['metrics']
+    
     # Check Calibration
     cal = plots['calibration']
     assert len(cal['prob_true']) == len(cal['prob_pred'])
@@ -55,3 +59,4 @@ def test_rf_plots(classification_df):
     assert 'plots' in results
     assert 'roc' in results['plots']
     assert 'calibration' in results['plots']
+    assert 'cv_auc_mean' in results['metrics']

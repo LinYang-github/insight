@@ -85,11 +85,14 @@
                     v-if="smartSummary"
                     title="智能解读 (Smart Insights)"
                     type="success"
-                    :description="smartSummary"
                     show-icon
                     :closable="false"
                     style="margin-bottom: 20px"
-                 />
+                 >
+                    <template #default>
+                        <div style="white-space: pre-wrap; line-height: 1.6;">{{ smartSummary }}</div>
+                    </template>
+                 </el-alert>
 
                 <!-- Metrics -->
                 <el-descriptions title="模型指标" :column="2" border size="small" style="margin-bottom: 20px">
@@ -162,18 +165,89 @@
                                     {{ scope.row.hr.toFixed(2) }} ({{ scope.row.hr_ci_lower.toFixed(2) }}-{{ scope.row.hr_ci_upper.toFixed(2) }})
                                 </template>
                             </el-table-column>
+                            
+                             <!-- Diagnostics -->
+                            <el-table-column v-if="['linear', 'logistic'].includes(config.model_type)" prop="vif" label="VIF" width="80">
+                                <template #header>
+                                     <span>VIF</span>
+                                     <el-tooltip content="方差膨胀因子。VIF > 5 提示可能存在多重共线性。" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                            </el-table-column>
+
+                             <el-table-column v-if="config.model_type === 'cox'" prop="ph_test_p" label="PH Test P" width="100">
+                                <template #header>
+                                     <span>PH Test P</span>
+                                     <el-tooltip content="PH 假设检验 P 值。P < 0.05 提示违反比例风险假设" placement="top">
+                                        <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
+                                     </el-tooltip>
+                                </template>
+                                <template #default="scope">
+                                    <span :style="{ fontWeight: scope.row.ph_test_p < 0.05 ? 'bold' : 'normal', color: scope.row.ph_test_p < 0.05 ? 'red' : 'inherit' }">
+                                         {{ scope.row.ph_test_p }}
+                                    </span>
+                                </template>
+                             </el-table-column>
                         </el-table>
                     </el-tab-pane>
 
                     <el-tab-pane label="评估图表 (Evaluation Plots)" v-if="results.plots">
                         <el-row :gutter="20">
+                            <!-- ROC -->
                             <el-col :span="12" v-if="results.plots.roc" style="margin-bottom: 20px;">
+                                <div class="chart-header">
+                                    <span>ROC Curve</span>
+                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('roc-plot', 'roc_curve', cmd)">
+                                        <el-button type="primary" link size="small">
+                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                                        </el-button>
+                                        <template #dropdown>
+                                            <el-dropdown-menu>
+                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
+                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                            </el-dropdown-menu>
+                                        </template>
+                                    </el-dropdown>
+                                </div>
                                 <div id="roc-plot" style="width: 100%; height: 400px;"></div>
                             </el-col>
+                            
+                            <!-- Calibration -->
                             <el-col :span="12" v-if="results.plots.calibration" style="margin-bottom: 20px;">
+                                <div class="chart-header">
+                                    <span>Calibration Plot</span>
+                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('calibration-plot', 'calibration_curve', cmd)">
+                                        <el-button type="primary" link size="small">
+                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                                        </el-button>
+                                        <template #dropdown>
+                                            <el-dropdown-menu>
+                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
+                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                            </el-dropdown-menu>
+                                        </template>
+                                    </el-dropdown>
+                                </div>
                                 <div id="calibration-plot" style="width: 100%; height: 400px;"></div>
                             </el-col>
+                            
+                            <!-- DCA -->
                              <el-col :span="12" v-if="results.plots.dca" style="margin-bottom: 20px;">
+                                <div class="chart-header">
+                                    <span>Decision Curve (DCA)</span>
+                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('dca-plot', 'dca_curve', cmd)">
+                                        <el-button type="primary" link size="small">
+                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                                        </el-button>
+                                        <template #dropdown>
+                                            <el-dropdown-menu>
+                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
+                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                            </el-dropdown-menu>
+                                        </template>
+                                    </el-dropdown>
+                                </div>
                                 <div id="dca-plot" style="width: 100%; height: 400px;"></div>
                             </el-col>
                         </el-row>
@@ -191,7 +265,7 @@ import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { QuestionFilled, ArrowDown } from '@element-plus/icons-vue'
 
 const props = defineProps({
     projectId: { type: String, required: true },
@@ -213,7 +287,9 @@ const metricTooltips = {
     'recall': '召回率：所有正例中被正确预测为正例的比例。',
     'f1': 'F1分数：精确率和召回率的调和平均数，综合衡量指标。',
     'r2': 'R平方：决定系数，表示模型解释了因变量方差的百分比。越接近1拟合越好。',
-    'rmse': '均方根误差：预测值与真实值偏差的样本标准差。越小越好。'
+    'rmse': '均方根误差：预测值与真实值偏差的样本标准差。越小越好。',
+    'cv_auc_mean': '5折交叉验证平均AUC：模型在未见数据上的平均表现，评估泛化能力。',
+    'cv_auc_std': '5折交叉验证AUC标准差：评估模型表现的稳定性，值越小越稳定。'
 }
 
 const config = reactive({
@@ -251,38 +327,77 @@ const variableOptions = computed(() => {
 const smartSummary = computed(() => {
     if (!results.value) return ''
     const res = results.value
+    const lines = []
 
-    // ML Models (RF, XGB)
+    // 1. Variable Significance & Impact
     if (res.importance) {
         const topFeats = res.importance.slice(0, 3).map(f => f.feature).join(', ')
-        return `模型最重要的前 3 个特征变量为：${topFeats}。该模型的 ${res.task === 'classification' ? '准确率(Accuracy)' : '拟合优度(R2)'} 为 ${res.metrics.accuracy?.toFixed(2) || res.metrics.r2?.toFixed(2)}。`
-    }
-
-    // Statistical Models
-    if (res.summary) {
+        lines.push(`Features: 模型最重要的前 3 个特征变量为：${topFeats}。`)
+    } else if (res.summary) {
         const sigVars = res.summary.filter(v => v.p_value < 0.05)
         if (sigVars.length === 0) {
-            return '未发现统计学显著 (P < 0.05) 的变量。模型可能需要更多样本或调整特征。'
-        }
-
-        const type = config.model_type
-        let msg = `发现 ${sigVars.length} 个显著变量。`
-        
-        // Find most impactful
-        let topVar = null
-        if (type === 'logistic') {
-            topVar = sigVars.reduce((prev, curr) => curr.or > prev.or ? curr : prev, sigVars[0])
-            msg += `其中 **${topVar.variable}** 风险增加最为显著 (OR=${topVar.or.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
-        } else if (type === 'cox') {
-            topVar = sigVars.reduce((prev, curr) => curr.hr > prev.hr ? curr : prev, sigVars[0])
-            msg += `其中 **${topVar.variable}** 风险增加最为显著 (HR=${topVar.hr.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
+            lines.push('Variables: 未发现统计学显著 (P < 0.05) 的变量。')
         } else {
-             topVar = sigVars.reduce((prev, curr) => Math.abs(curr.coef) > Math.abs(prev.coef) ? curr : prev, sigVars[0])
-             msg += `其中 **${topVar.variable}** 影响最大 (Coef=${topVar.coef.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
+             const type = config.model_type
+             let msg = `Variables: 发现 ${sigVars.length} 个显著变量。`
+             
+             let topVar = null
+             if (type === 'logistic') {
+                topVar = sigVars.reduce((prev, curr) => curr.or > prev.or ? curr : prev, sigVars[0])
+                msg += `其中 **${topVar.variable}** 风险增加最为显著 (OR=${topVar.or.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
+            } else if (type === 'cox') {
+                topVar = sigVars.reduce((prev, curr) => curr.hr > prev.hr ? curr : prev, sigVars[0])
+                msg += `其中 **${topVar.variable}** 风险增加最为显著 (HR=${topVar.hr.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
+            } else {
+                 topVar = sigVars.reduce((prev, curr) => Math.abs(curr.coef) > Math.abs(prev.coef) ? curr : prev, sigVars[0])
+                 msg += `其中 **${topVar.variable}** 影响最大 (Coef=${topVar.coef.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
+            }
+            lines.push(msg)
         }
-        return msg
     }
-    return ''
+
+    // 2. Model Performance
+    if (res.metrics) {
+        if (res.metrics.auc) {
+            const auc = parseFloat(res.metrics.auc)
+            let grade = '无法评估'
+            if (auc >= 0.9) grade = '极好 (Outstanding)'
+            else if (auc >= 0.8) grade = '优秀 (Excellent)'
+            else if (auc >= 0.7) grade = '良好 (Acceptable)'
+            else if (auc >= 0.5) grade = '一般 (Poor)'
+            else grade = '差 (Fail)'
+            
+            let perfMsg = `Performance: AUC = ${auc.toFixed(3)}，模型区分度 ${grade}。`
+            if (res.metrics.cv_auc_mean) {
+                perfMsg += ` 5折交叉验证平均 AUC = ${res.metrics.cv_auc_mean} (Std=${res.metrics.cv_auc_std})，泛化能力可靠。`
+            }
+            lines.push(perfMsg)
+        } else if (res.metrics.c_index) {
+             const cno = parseFloat(res.metrics.c_index)
+             lines.push(`Performance: C-index = ${cno.toFixed(3)}。`)
+        } else if (res.metrics.r2) {
+             lines.push(`Performance: R-squared = ${parseFloat(res.metrics.r2).toFixed(3)}。`)
+        }
+    }
+
+    // 3. Diagnostics Warnings
+    if (res.summary) {
+        // VIF Check
+        const highVif = res.summary.filter(v => v.vif && v.vif !== '-' && parseFloat(v.vif) > 5)
+        if (highVif.length > 0) {
+            const vars = highVif.map(v => v.variable).join(', ')
+            lines.push(`⚠️ Diagnostics: 检测到多重共线性 (VIF > 5): ${vars}。建议移除相关性过高的特征。`)
+        }
+        
+        // PH Assumption Check
+        const phFail = res.summary.filter(v => v.ph_test_p && v.ph_test_p !== '-' && parseFloat(v.ph_test_p) < 0.05)
+        if (phFail.length > 0) {
+             const vars = phFail.map(v => v.variable).join(', ')
+             lines.push(`⚠️ Diagnostics: 违反 PH 等比例风险假设 (P < 0.05): ${vars}。建议使用分层 Cox 模型或含时变协变量的 Cox 模型。`)
+        }
+    }
+
+    return lines.join('\n\n')
 })
 
 const runModel = async () => {
@@ -398,12 +513,40 @@ const exportResults = async () => {
         ElMessage.error('导出失败')
     }
 }
+
+const downloadPlot = async (divId, filename, format = 'png') => {
+    try {
+        const el = document.getElementById(divId)
+        if (!el) return
+        
+        await Plotly.downloadImage(el, {
+            format: format,
+            width: 1200,
+            height: 800,
+            filename: filename,
+            scale: format === 'png' ? 3 : 1 // High Res for PNG
+        })
+    } catch (error) {
+        console.error(error)
+        ElMessage.error('图片导出失败')
+    }
+}
 </script>
+
+
 
 <style scoped>
 .result-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-weight: bold;
+    color: #606266;
 }
 </style>

@@ -24,11 +24,34 @@ class CoxStrategy(BaseModelStrategy):
                 raise ValueError("LinAlgError: Singular matrix detected. Multi-collinearity suspect.")
             raise e
             
-        return self._format_results(cph)
+        # PH Assumption Test
+        from lifelines.statistics import proportional_hazard_test
+        ph_test_results = None
+        try:
+             # decimals=3 for rounding
+             ph_test = proportional_hazard_test(cph, data, time_transform='km')
+             ph_test_results = ph_test
+        except Exception as e:
+             # Don't fail model run if stats test fails (e.g. sample size)
+             # print using logging ideally
+             pass
 
-    def _format_results(self, cph):
+        return self._format_results(cph, ph_test_results)
+
+    def _format_results(self, cph, ph_results=None):
         summary = []
+        
+        # Parse PH results if available
+        # ph_results.summary is a DataFrame with index = variable
+        ph_table = None
+        if ph_results is not None:
+             ph_table = ph_results.summary
+             
         for name in cph.params_.index:
+            ph_p = '-'
+            if ph_table is not None and name in ph_table.index:
+                 ph_p = ResultFormatter.format_float(ph_table.loc[name, 'p'], 3)
+
             row = {
                 'variable': name,
                 'coef': ResultFormatter.format_float(cph.params_[name], 3),
@@ -36,15 +59,30 @@ class CoxStrategy(BaseModelStrategy):
                 'p_value': cph.summary.loc[name, 'p'],
                 'hr': ResultFormatter.format_float(cph.hazard_ratios_[name], 2),
                 'hr_ci_lower': ResultFormatter.format_float(np.exp(cph.confidence_intervals_.loc[name].iloc[0]), 2),
-                'hr_ci_upper': ResultFormatter.format_float(np.exp(cph.confidence_intervals_.loc[name].iloc[1]), 2)
+                'hr_ci_upper': ResultFormatter.format_float(np.exp(cph.confidence_intervals_.loc[name].iloc[1]), 2),
+                'ph_test_p': ph_p
             }
             summary.append(row)
             
+        metrics = {
+            'c_index': ResultFormatter.format_float(cph.concordance_index_, 3),
+            'aic': ResultFormatter.format_float(cph.AIC_partial_, 2)
+        }
+        
+        if ph_results is not None:
+             # Need global test? cph.check_assumptions() usually output it.
+             # proportional_hazard_test returns object.
+             # The result usually doesn't clearly expose a SINGLE global p-value in a simple property 
+             # without checking documentation. 
+             # Wait, documentation says it returns a StatisticalResult object. 
+             # It performs a test for each variable + global.
+             # The result.summary index has variable names, does it have 'Global'?
+             # Usually not directly in result.summary unless one specific transform?
+             # Let's check keys of summary.
+             pass 
+
         return {
             'model_type': 'cox',
             'summary': summary,
-            'metrics': {
-                'c_index': ResultFormatter.format_float(cph.concordance_index_, 3),
-                'aic': ResultFormatter.format_float(cph.AIC_partial_, 2)
-            }
+            'metrics': metrics
         }

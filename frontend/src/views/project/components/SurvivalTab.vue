@@ -38,11 +38,24 @@
         <el-col :span="18">
             <el-card class="box-card" v-loading="loading">
                  <template #header>
-                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>Survival Analysis (Kaplan-Meier)</span>
-                        <el-tag v-if="pValue" :type="pValue === 'N/A' ? 'info' : (parseFloat(pValue) < 0.05 ? 'danger' : 'success')">
-                            Log-Rank P: {{ pValue }}
-                        </el-tag>
+                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span>Survival Analysis (Kaplan-Meier)</span>
+                            <el-tag v-if="pValue" :type="pValue === 'N/A' ? 'info' : (parseFloat(pValue) < 0.05 ? 'danger' : 'success')">
+                                Log-Rank P: {{ pValue }}
+                            </el-tag>
+                        </div>
+                        <el-dropdown trigger="click" @command="downloadPlot">
+                            <el-button type="primary" size="small">
+                                导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                            </el-button>
+                            <template #dropdown>
+                                <el-dropdown-menu>
+                                    <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
+                                    <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                </el-dropdown-menu>
+                            </template>
+                        </el-dropdown>
                     </div>
                 </template>
                 
@@ -59,6 +72,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
+import { ArrowDown } from '@element-plus/icons-vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -139,6 +153,24 @@ const renderPlot = (plotData) => {
     }
     
     Plotly.newPlot('km-plot', traces, layout, {responsive: true})
+}
+
+
+const downloadPlot = async (format = 'png') => {
+    try {
+        const el = document.getElementById('km-plot')
+        if (!el) return
+        
+        await Plotly.downloadImage(el, {
+            format: format,
+            width: 1200,
+            height: 800,
+            filename: 'kaplan_meier_plot',
+            scale: format === 'png' ? 3 : 1
+        })
+    } catch (error) {
+        ElMessage.error('图片导出失败')
+    }
 }
 </script>
 
