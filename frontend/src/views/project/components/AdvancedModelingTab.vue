@@ -181,6 +181,11 @@
                 </el-col>
              </el-row>
         </el-tab-pane>
+
+        <!-- Tab 4: Model Comparison -->
+        <el-tab-pane label="📊 模型对比 (Comparison)" name="comparison">
+            <model-comparison-tab :dataset-id="datasetId" :metadata="metadata" />
+        </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -191,6 +196,7 @@ import { ElMessage } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import Plotly from 'plotly.js-dist-min'
 import api from '../../../api/client'
+import ModelComparisonTab from './ModelComparisonTab.vue'
 
 const props = defineProps({
     datasetId: Number,

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.api.auth import token_required
+from app.models.dataset import Dataset
 from app.services.data_service import DataService
 from app.services.advanced_modeling_service import AdvancedModelingService
 from app.services.modeling_service import ModelingService
@@ -13,8 +14,12 @@ def fit_rcs(current_user):
     dataset_id = data.get('dataset_id')
     
     # Load Data
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
     try:
-         df, dataset = DataService.load_data(dataset_id, current_user)
+         df = DataService.load_data(dataset.filepath)
     except Exception as e:
          return jsonify({'message': str(e)}), 404
          
@@ -56,8 +61,12 @@ def subgroup_analysis(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
     try:
-         df, dataset = DataService.load_data(dataset_id, current_user)
+         df = DataService.load_data(dataset.filepath)
     except Exception as e:
          return jsonify({'message': str(e)}), 404
          
@@ -85,8 +94,12 @@ def calculate_cif(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
     try:
-         df, dataset = DataService.load_data(dataset_id, current_user)
+         df = DataService.load_data(dataset.filepath)
     except Exception as e:
          return jsonify({'message': str(e)}), 404
          
@@ -110,8 +123,13 @@ def calculate_cif(current_user):
 def generate_nomogram(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
+    
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
     try:
-         df, dataset = DataService.load_data(dataset_id, current_user)
+         df = DataService.load_data(dataset.filepath)
     except Exception as e:
          return jsonify({'message': str(e)}), 404
     
@@ -139,3 +157,39 @@ def generate_nomogram(current_user):
         return jsonify(results), 200
     except Exception as e:
         return jsonify({'message': f"Nomogram generation failed: {str(e)}"}), 500
+
+@advanced_bp.route('/compare-models', methods=['POST'])
+@token_required
+def compare_models(current_user):
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    
+    dataset = Dataset.query.get(dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
+    try:
+         df = DataService.load_data(dataset.filepath)
+    except Exception as e:
+         return jsonify({'message': str(e)}), 404
+         
+    target = data.get('target')
+    event_col = data.get('event_col') # Optional (for Cox)
+    model_configs = data.get('models', [])
+    model_type = data.get('model_type', 'logistic')
+    
+    if not target or not model_configs:
+         return jsonify({'message': 'Target and Models are required'}), 400
+         
+    # Basic Config Validation
+    for conf in model_configs:
+        if 'name' not in conf or 'features' not in conf:
+             return jsonify({'message': 'Invalid model config format. Need name and features.'}), 400
+             
+    try:
+        results = AdvancedModelingService.compare_models(
+            df, target, model_configs, model_type, event_col
+        )
+        return jsonify(results), 200
+    except Exception as e:
+        return jsonify({'message': f"Model comparison failed: {str(e)}"}), 500

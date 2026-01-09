@@ -619,5 +619,134 @@ class AdvancedModelingService:
             'coeffs': {v: var_metas[v]['coef'] for v in predictors if v in var_metas},
             'model_type': model_type
         }
+        return results
+
+    @staticmethod
+    def compare_models(df, target, model_configs, model_type='logistic', event_col=None):
+        """
+        Compare multiple models on the SAME complete-case dataset (Incremental Value).
         
+        Args:
+            df (pd.DataFrame): Data.
+            target (str): Target variable (Y) or Time variable.
+            model_configs (list): List of dicts [{'name': 'M1', 'features': ['A']}, ...].
+            model_type (str): 'logistic' or 'cox'.
+            event_col (str): Event indicator (required for Cox).
+        
+        Returns:
+            list: List of model results with metrics.
+        """
+        from app.services.modeling_service import ModelingService
+        from lifelines import CoxPHFitter
+        from sklearn.metrics import roc_curve, auc as calc_auc
+        
+        # 1. Identify valid columns (Intersection)
+        all_features = set()
+        for config in model_configs:
+            all_features.update(config['features'])
+            
+        required_cols = list(all_features) + [target]
+        if event_col:
+            required_cols.append(event_col)
+        
+        # 2. Complete Case Analysis
+        # Ensure fairness by dropping missing values on union of cols
+        df_clean = df[required_cols].dropna()
+        
+        if len(df_clean) < 10:
+             raise ValueError("Sample size too small (<10) after handling missing values for all combined features.")
+
+        # Data Preview (Completeness)
+        n_samples = len(df_clean)
+        
+        # Logic for Cox ROC Proxy
+        median_time = None
+        if model_type == 'cox':
+            if not event_col:
+                raise ValueError("Event column is required for Cox model.")
+            median_time = df_clean[target].median()
+            # We will calculate Incidence cumulative ROC at median time.
+            # Simplified: Keep (Event=1 & Time<=Median) as Case=1
+            # Keep (Time > Median) as Control=0
+            # Drop (Event=0 & Time <= Median) (Unknown at Median)
+        
+        results = []
+        
+        # 3. Loop Models
+        for config in model_configs:
+            name = config['name']
+            feats = config['features']
+            
+            try:
+                metrics = {}
+                roc_data = []
+                
+                if model_type == 'logistic':
+                    # Use ModelingService for standard Logistic
+                    model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
+                    metrics = model_res.get('metrics', {})
+                    if 'plots' in model_res and 'roc_curve' in model_res['plots']:
+                         roc_data = model_res['plots']['roc_curve'] 
+
+                elif model_type == 'cox':
+                    # Custom implementation for Cox ROC
+                    # Data Preprocessing
+                    temp_df = df_clean[[target, event_col] + feats].copy()
+                    temp_df = DataService.preprocess_for_formula(temp_df)
+                    
+                    # Fit
+                    cph = CoxPHFitter()
+                    cph.fit(temp_df, duration_col=target, event_col=event_col, formula=" + ".join(feats))
+                    
+                    # C-Index
+                    c_index = cph.concordance_index_
+                    metrics['auc'] = c_index # Show C-index in AUC column for now
+                    metrics['auc_ci'] = f"C-idx"
+                    
+                    # Time-Dependent ROC Logic (at Median)
+                    # Get Partial Hazard (Risk Score)
+                    risk_score = cph.predict_partial_hazard(temp_df)
+                    
+                    # Define Binary Outcome at T=Median
+                    # Case: Event occurred at or before Median (Event=1, Time<=Med)
+                    # Control: Survived past Median (Time>Med)
+                    # Exclude: Censored before Median (Event=0, Time<=Med)
+                    
+                    mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= median_time)
+                    mask_control = (temp_df[target] > median_time)
+                    
+                    valid_mask = mask_case | mask_control
+                    y_binary = mask_case[valid_mask].astype(int)
+                    y_scores = risk_score[valid_mask]
+                    
+                    if len(y_binary.unique()) > 1:
+                        fpr, tpr, _ = roc_curve(y_binary, y_scores)
+                        roc_auc = calc_auc(fpr, tpr)
+                        # We might overwrite metrics['auc'] with this Time-Dep AUC or separate it
+                        # Let's keep C-index in table, but plot this ROC.
+                        # Actually standard practice: Plot this ROC, show this AUC in plot legend.
+                        # Table shows C-index? Or this AUC?
+                        # Let's update metrics['auc'] to this ROC AUC to match plot.
+                        metrics['auc'] = roc_auc
+                        metrics['auc_ci'] = f"at Median={median_time:.1f}"
+                        
+                        roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
+                    else:
+                        metrics['error'] = "Not enough events at median time for ROC"
+                
+                results.append({
+                    'name': name,
+                    'features': feats,
+                    'n': n_samples,
+                    'metrics': metrics,
+                    'roc_data': roc_data
+                })
+                
+            except Exception as e:
+                # If one fails (e.g. perfect separation on subset), we report it
+                results.append({
+                    'name': name,
+                    'error': str(e)
+                })
+                
         return results
