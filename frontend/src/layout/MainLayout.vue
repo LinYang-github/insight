@@ -24,7 +24,7 @@
             <el-icon><Folder /></el-icon>
             <span>项目管理</span>
           </template>
-           <el-menu-item index="/projects/list" disabled>
+           <el-menu-item index="/projects/list">
              <el-icon><List /></el-icon>
              <span>我的项目</span>
            </el-menu-item>

@@ -64,6 +64,13 @@ def get_metadata(current_user, project_id):
     if not dataset:
          return jsonify({'message': 'No dataset found for this project'}), 404
          
+    return jsonify({
+        'dataset_id': dataset.id,
+        'name': dataset.name,
+        'metadata': dataset.meta_data,
+        'created_at': dataset.created_at
+    }), 200
+         
 @data_bp.route('/download/<filename>', methods=['GET'])
 def download_file(filename):
     # Security: Ensure filename is safe (simple check for now)
