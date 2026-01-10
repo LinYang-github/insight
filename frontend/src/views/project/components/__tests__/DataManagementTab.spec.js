@@ -34,17 +34,27 @@ describe('DataManagementTab.vue', () => {
     it('renders list view by default', () => {
         const wrapper = mount(DataManagementTab, {
             props: { datasets: mockDatasets, activeDatasetId: 1 },
-            global: { stubs: globalStubs }
+            global: {
+                stubs: globalStubs,
+                directives: {
+                    loading: () => { }
+                }
+            }
         })
 
-        expect(wrapper.findComponent({ name: 'ElTable' }).exists()).toBe(true)
-        expect(wrapper.findComponent({ name: 'ElTree' }).exists()).toBe(false)
+        expect(wrapper.find('el-table-stub').exists()).toBe(true)
+        expect(wrapper.find('el-tree-stub').exists()).toBe(false)
     })
 
     it('switches to tree view', async () => {
         const wrapper = mount(DataManagementTab, {
             props: { datasets: mockDatasets, activeDatasetId: 1 },
-            global: { stubs: globalStubs }
+            global: {
+                stubs: globalStubs,
+                directives: {
+                    loading: () => { }
+                }
+            }
         })
 
         // Find radio group and simulate change (requires understanding how your toggle works, 
@@ -55,8 +65,8 @@ describe('DataManagementTab.vue', () => {
         wrapper.vm.viewMode = 'tree'
         await wrapper.vm.$nextTick()
 
-        expect(wrapper.findComponent({ name: 'ElTable' }).exists()).toBe(false)
-        expect(wrapper.findComponent({ name: 'ElTree' }).exists()).toBe(true)
+        expect(wrapper.find('el-table-stub').exists()).toBe(false)
+        expect(wrapper.find('el-tree-stub').exists()).toBe(true)
 
         // internal tree data structure check
         const treeData = wrapper.vm.lineageTreeData
@@ -68,7 +78,12 @@ describe('DataManagementTab.vue', () => {
     it('computes lineage tree correctly', () => {
         const wrapper = mount(DataManagementTab, {
             props: { datasets: mockDatasets },
-            global: { stubs: globalStubs }
+            global: {
+                stubs: globalStubs,
+                directives: {
+                    loading: () => { }
+                }
+            }
         })
 
         const tree = wrapper.vm.lineageTreeData
