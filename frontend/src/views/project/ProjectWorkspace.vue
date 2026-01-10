@@ -63,9 +63,13 @@
                 <el-icon><TrendCharts /></el-icon>
                 <span>回归建模 (Modeling)</span>
             </el-menu-item>
-             <el-menu-item index="advanced" :disabled="!dataset">
+            <el-menu-item index="advanced" :disabled="!dataset">
                 <el-icon><Histogram /></el-icon>
                 <span>高级建模 (Advanced)</span>
+            </el-menu-item>
+             <el-menu-item index="longitudinal" :disabled="!dataset">
+                <el-icon><Odometer /></el-icon>
+                <span>纵向分析 (Longitudinal)</span>
             </el-menu-item>
             <el-menu-item index="viz" :disabled="!dataset">
                 <el-icon><Cpu /></el-icon>
@@ -115,6 +119,9 @@
          <div v-else-if="activeTabName === 'viz'">
              <ClinicalVizTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
          </div>
+         <div v-else-if="activeTabName === 'longitudinal'">
+             <LongitudinalTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+         </div>
     </el-main>
   </el-container>
 </template>
@@ -141,9 +148,10 @@ import ClinicalTab from './components/ClinicalTab.vue'
 import DataManagementTab from './components/DataManagementTab.vue'
 import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
 import ClinicalVizTab from './components/ClinicalVizTab.vue'
+import LongitudinalTab from './components/LongitudinalTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)

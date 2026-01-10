@@ -28,3 +28,6 @@ def register_blueprints(app):
 
     from .validation import validation_bp
     app.register_blueprint(validation_bp, url_prefix='/api/validation')
+
+    from .longitudinal import longitudinal_bp
+    app.register_blueprint(longitudinal_bp, url_prefix='/api/longitudinal')
