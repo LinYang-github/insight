@@ -69,7 +69,9 @@ class DataService:
                 'type': var_type,
                 'role': 'covariate',
                 'missing_count': int(df[col].isnull().sum()),
-                'unique_count': int(df[col].nunique())
+                'unique_count': int(df[col].nunique()),
+                # Add categories for dropdowns (limit to 50 to avoid payload explosion)
+                'categories': df[col].unique().tolist() if var_type == 'categorical' and df[col].nunique() < 50 else None
             })
             
         raw_result = {
@@ -123,7 +125,7 @@ class DataService:
         return df_mod
 
     @staticmethod
-    def preprocess_for_matrix(df, features):
+    def preprocess_for_matrix(df, features, ref_levels=None):
         """
         Prepare dataframe for Matrix-based libraries.
         Explicitly performs One-Hot Encoding for categorical variables in 'features'.
@@ -132,6 +134,9 @@ class DataService:
         Args:
             df (pd.DataFrame): Input dataframe.
             features (list): List of feature names to use.
+            ref_levels (dict): Optional. Dict mapping col_name -> ref_category.
+                               If provided, the ref_category will be set as the first category 
+                               (and thus dropped by drop_first=True to serve as reference).
             
         Returns:
             tuple: (df_encoded, new_features_list)
@@ -141,36 +146,60 @@ class DataService:
         # Identify categorical cols in FEATURES only
         cat_cols = []
         for col in features:
-            if col in df_mod.columns and (df_mod[col].dtype == 'object' or str(df_mod[col].dtype) == 'category'):
-                cat_cols.append(col)
+            if col in df_mod.columns:
+                is_cat = df_mod[col].dtype == 'object' or str(df_mod[col].dtype) == 'category'
+                # Also treat low cardinality numerics as cat if in ref_levels
+                if ref_levels and col in ref_levels:
+                    is_cat = True
+                    
+                if is_cat:
+                    cat_cols.append(col)
+                    
+                    # Handle Reference Level Logic
+                    if ref_levels and col in ref_levels:
+                        ref_val = ref_levels[col]
+                        unique_vals = list(df_mod[col].unique())
+                        
+                        # Type conversion if needed (e.g. ref is string '0', val is int 0)
+                        if df_mod[col].dtype != 'object' and isinstance(ref_val, str):
+                            try:
+                                ref_val = type(unique_vals[0])(ref_val)
+                            except:
+                                pass
+                                
+                        if ref_val in unique_vals:
+                            # Move ref_val to front
+                            categories = [ref_val] + [x for x in unique_vals if x != ref_val]
+                            df_mod[col] = pd.Categorical(df_mod[col], categories=categories, ordered=True)
+                        else:
+                            # Warn or ignore? For now ignore, let get_dummies handle defaults
+                            pass
                 
         if not cat_cols:
             return df_mod, features
             
         # One-Hot Encoding
-        df_encoded = pd.get_dummies(df_mod, columns=cat_cols, drop_first=True)
+        df_encoded = pd.get_dummies(df_mod, columns=cat_cols, drop_first=True, dtype=int)
         
         # Update feature list
-        # Remove original cat_cols, add new dummy cols
         new_features = [f for f in features if f not in cat_cols]
-        # Find new columns that start with old name? 
-        # get_dummies(columns=cat_cols) replaces them.
-        # We need to find which columns were added.
-        # Heuristic: All columns in df_encoded that are NOT in (df_mod.columns - cat_cols)
-        # Or simply: df_encoded.columns intersection with derived names.
         
-        # Better: get_dummies returns known names if we trace it, but pandas just returns new DF.
-        # We can diff columns.
         original_cols = set(df_mod.columns)
         new_cols_set = set(df_encoded.columns)
         
-        # We want to identify the feature content of the new DF.
-        # Construct new features list order?
-        # Simply: features minus cat_cols plus (new_cols - (original_cols - cat_cols))
-        kept_original = original_cols - set(cat_cols)
-        generated_dummies = new_cols_set - kept_original
+        # Re-calculate generated dummies
+        # Note: df_mod might have changed due to Categorical conversion, so we trust new_cols_set
+        # Identify new columns that were NOT in original
         
-        # We need to append generated_dummies to new_features
-        new_features.extend(list(generated_dummies))
+        # Robust way: iterate new columns and check if they start with cat_col + separator
+        added_cols = []
+        for col in df_encoded.columns:
+            if col not in df_mod.columns:
+                 added_cols.append(col)
+            elif col in cat_cols:
+                 # Should not happen as columns=cat_cols drops them
+                 pass
+        
+        new_features.extend(added_cols)
         
         return df_encoded, new_features

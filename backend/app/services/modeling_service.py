@@ -80,9 +80,29 @@ class ModelingService:
             
         # 3. Execute
         try:
+            # Extract ref_levels from model_params if available
+            ref_levels = model_params.get('ref_levels', None)
+            
             # Add Robust Preprocessing for Matrix-based methods (all strategies here)
             # This ensures string/object columns are One-Hot Encoded
-            df_processed, new_features = DataService.preprocess_for_matrix(df, features)
+            # And respects Reference Level if provided
+            df_processed, new_features = DataService.preprocess_for_matrix(df, features, ref_levels=ref_levels)
+            
+            # --- Robust Target Encoding ---
+            # Statsmodels requires numeric target.
+            if model_type == 'logistic':
+                col = target
+                if df_processed[col].dtype == 'object' or str(df_processed[col].dtype) == 'category':
+                    # Auto-encode: sort=True ensures consistent mapping (e.g. No=0, Yes=1)
+                    codes, uniques = pd.factorize(df_processed[col], sort=True)
+                    df_processed[col] = codes
+            elif model_type == 'cox':
+                # Encode Event column
+                event_col = target['event']
+                if df_processed[event_col].dtype == 'object' or str(df_processed[event_col].dtype) == 'category':
+                    codes, uniques = pd.factorize(df_processed[event_col], sort=True)
+                    df_processed[event_col] = codes
+            # -------------------------------
             
             results = strategy.fit(df_processed, target, new_features, model_params)
         except np.linalg.LinAlgError:
@@ -127,6 +147,23 @@ class ModelingService:
                     f"{' 等' if len(high_corr_pairs) > 3 else ''}。\n"
                     f"建议：移除其中一个相关变量后重试。"
                 )
+            
+            # 2. VIF Diagnosis (For Multi-variable Collinearity)
+            try:
+                from app.utils.diagnostics import ModelDiagnostics
+                # VIF requires constant, and needs to handle NaNs/Infs
+                vif_data = ModelDiagnostics.calculate_vif(numeric_df, numeric_df.columns.tolist())
+                high_vif = [item['variable'] for item in vif_data if item['vif'] == 'inf' or (isinstance(item['vif'], (int, float)) and item['vif'] > 10)]
+                
+                if high_vif:
+                     return (
+                        f"模型计算失败：检测到隐蔽的多重共线性 (Singular Matrix)。\n"
+                        f"虽然变量间两两相关性不高，但存在多变量线性组合。以下变量 VIF 过高：\n"
+                        f"{', '.join(high_vif[:3])}...\n"
+                        f"建议：尝试移除 VIF 最高的变量。"
+                     )
+            except Exception:
+                pass
             
             return "模型计算失败：检测到奇异矩阵 (Singular Matrix)。可能是因为变量间存在完全线性关系或样本量不足。"
         except Exception:

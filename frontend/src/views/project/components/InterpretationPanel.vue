@@ -77,7 +77,7 @@ const summaryHtml = computed(() => {
     return `<span class="significant">差异显著 (P < 0.05)。</span>` + 
            effectText +
            (props.direction ? ` ${props.direction}` : '') + 
-           ` 统计学分析表明，组间存在显著性关联。`
+           ` 统计学分析表明，存在显著性关联。`
   } else {
     return `<span class="non-significant">无显著差异 (P > 0.05)。</span>` +
            ` 目前的证据尚不足以证明存在统计学关联。`

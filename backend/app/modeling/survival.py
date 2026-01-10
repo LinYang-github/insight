@@ -35,8 +35,16 @@ class CoxStrategy(BaseModelStrategy):
         try:
             cph.fit(data, duration_col=time_col, event_col=event_col)
         except Exception as e:
-            if 'singular matrix' in str(e).lower():
-                raise ValueError("LinAlgError: Singular matrix detected. Multi-collinearity suspect.")
+            err_msg = str(e).lower()
+            
+            # Diagnose specific variable causing separation
+            culprit = self._diagnose_separation(data, features, event_col)
+            culprit_msg = f"\n可能的问题变量：{culprit} (在某一组中方差极低或完全分离)" if culprit else ""
+
+            if 'singular matrix' in err_msg:
+                raise ValueError(f"模型计算失败：检测到严重的多重共线性 (Singular Matrix)。{culprit_msg}\n建议移除该变量后重试。")
+            if 'low variance' in err_msg or 'complete separation' in err_msg or 'converge' in err_msg or 'nan' in err_msg:
+                 raise ValueError(f"模型收敛失败：检测到完全分离 (Perfect Separation) 或数据异常。{culprit_msg}\n详细错误：{str(e)}\n建议：检查并移除样本量极少或分布极不平衡的特征变量。")
             raise e
             
         # PH Assumption Test
@@ -47,11 +55,32 @@ class CoxStrategy(BaseModelStrategy):
              ph_test = proportional_hazard_test(cph, data, time_transform='km')
              ph_test_results = ph_test
         except Exception as e:
-             # Don't fail model run if stats test fails (e.g. sample size)
-             # print using logging ideally
              pass
 
         return self._format_results(cph, ph_test_results)
+
+    def _diagnose_separation(self, df, features, event_col):
+        """
+        Check for variables that might cause perfect separation or low variance.
+        """
+        for feature in features:
+            try:
+                # 1. Check Variance in each group
+                # If a feature is constant within the Event=1 or Event=0 group, it causes separation.
+                groups = df.groupby(event_col)[feature]
+                for name, group in groups:
+                    if group.dropna().nunique() <= 1:
+                        return feature
+                
+                # 2. For Categorical with very unbalanced splits (e.g. 5 vs 0)
+                # Crosstab check
+                if df[feature].nunique() < 10: # Only check categorical-like
+                    ct = pd.crosstab(df[feature], df[event_col])
+                    if (ct == 0).any().any():
+                         return feature
+            except:
+                continue
+        return None
 
     def _format_results(self, cph, ph_results=None):
         summary = []

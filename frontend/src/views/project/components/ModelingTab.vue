@@ -10,6 +10,12 @@
                    <span>模型配置</span>
                </template>
                <el-form label-position="top">
+                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                       <span style="font-size: 14px; color: #606266; font-weight: 500;">变量配置 (Configuration)</span>
+                       <el-tooltip content="智能推荐变量角色 (Auto-Suggest Roles)" placement="top">
+                           <el-button type="primary" link @click="autoSuggestRoles" :icon="MagicStick">自动推荐</el-button>
+                       </el-tooltip>
+                   </div>
                    <el-form-item label="模型类型">
                        <el-select v-model="config.model_type" placeholder="选择模型" style="width: 100%">
                            <el-option v-for="opt in modelOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -55,6 +61,26 @@
                            <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                        </el-select>
                    </el-form-item>
+                   
+                   <!-- Reference Levels (Advanced) -->
+                   <el-collapse v-if="selectedCategoricalVars.length > 0" style="margin-bottom: 20px; border: 1px solid #EBEEF5;">
+                        <el-collapse-item title="基准组设置 (Reference Levels)" name="1">
+                            <template #title>
+                                <el-icon style="margin-right: 5px"><Setting /></el-icon> 基准组设置 (Reference Levels)
+                            </template>
+                            <div style="padding: 10px;">
+                                <div v-for="v in selectedCategoricalVars" :key="v.name" style="margin-bottom: 10px;">
+                                    <span style="font-size: 12px; color: #606266; display: block; margin-bottom: 4px;">{{ v.name }} Reference:</span>
+                                    <el-select v-model="config.ref_levels[v.name]" placeholder="Default (First)" size="small" style="width: 100%">
+                                        <el-option v-for="cat in v.categories" :key="cat" :label="cat" :value="cat" />
+                                    </el-select>
+                                </div>
+                                <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+                                    * 设置为基准的类别将在回归结果中作为对比参照（Intercept）。
+                                </div>
+                            </div>
+                        </el-collapse-item>
+                   </el-collapse>
 
                    <!-- Model Hyperparameters -->
                    <div v-if="['random_forest', 'xgboost'].includes(config.model_type)" style="background: #f5f7fa; padding: 10px; border-radius: 4px; margin-bottom: 18px;">
@@ -88,15 +114,28 @@
                 <template #header>
                     <div class="result-header">
                         <span>运行结果</span>
-                        <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
+                        <div>
+                             <el-button type="info" plain size="small" @click="copyMethodology" :icon="CopyDocument">复制方法学</el-button>
+                             <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
+                        </div>
                     </div>
                 </template>
 
-                 <!-- Smart Summary -->
+                 <!-- Smart Interpretation Component -->
+                 <InterpretationPanel
+                    v-if="topResult"
+                    :p-value="topResult.p_value"
+                    :test-name="config.model_type.toUpperCase() + ' Model'"
+                    :selection-reason="smartSummary"
+                    :effect-size="topResult.effectSize"
+                    :direction="topResult.desc"
+                 />
+                 
+                 <!-- Fallback or Additional Diagnostics -->
                  <el-alert
-                    v-if="smartSummary"
-                    title="智能解读 (Smart Insights)"
-                    type="success"
+                    v-if="smartSummary && !topResult"
+                    title="模型诊断"
+                    type="info"
                     show-icon
                     :closable="false"
                     style="margin-bottom: 20px"
@@ -272,6 +311,41 @@
                             </el-col>
                         </el-row>
                     </el-tab-pane>
+
+                    <el-tab-pane label="假设检验 (Assumptions)">
+                         <!-- Multicollinearity (Linear/Logistic) -->
+                         <div v-if="['linear', 'logistic'].includes(config.model_type)">
+                            <h3>多重共线性 (Multicollinearity) - VIF</h3>
+                            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                                <strong>标准:</strong> VIF < 5 为理想，VIF > 10 提示严重共线性。
+                            </p>
+                            <div id="vif-plot" style="width: 100%; height: 400px;"></div>
+                         </div>
+                         
+                         <!-- PH Assumption (Cox) -->
+                         <div v-if="config.model_type === 'cox'">
+                             <h3>PH 等比例风险假设 (Proportional Hazards Assumption)</h3>
+                             <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                                <strong>标准:</strong> P > 0.05 代表满足假设 (好)。P < 0.05 代表违反假设 (需注意)。
+                            </p>
+                            <el-table :data="results.summary" style="width: 100%" stripe border size="small">
+                                <el-table-column prop="variable" label="变量" />
+                                <el-table-column prop="ph_test_p" label="PH Test P-value">
+                                    <template #default="scope">
+                                        <el-tag :type="scope.row.ph_test_p >= 0.05 ? 'success' : 'danger'">
+                                            {{ scope.row.ph_test_p }}
+                                        </el-tag>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column label="结论">
+                                    <template #default="scope">
+                                        <span v-if="scope.row.ph_test_p >= 0.05" style="color: #67C23A">• 满足假设</span>
+                                        <span v-else style="color: #F56C6C">• 违反假设 (可能随时变)</span>
+                                    </template>
+                                </el-table-column>
+                            </el-table>
+                         </div>
+                    </el-tab-pane>
                 </el-tabs>
            </el-card>
        </el-col>
@@ -294,8 +368,11 @@ import { ref, computed, watch, reactive, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
+import InterpretationPanel from './InterpretationPanel.vue'
 
-import { QuestionFilled, ArrowDown } from '@element-plus/icons-vue'
+import MethodologyGenerator from '../utils/MethodologyGenerator.js'
+
+import { QuestionFilled, ArrowDown, Setting, CopyDocument, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps({
     projectId: { type: String, required: true },
@@ -305,6 +382,8 @@ const props = defineProps({
 
 const loading = ref(false)
 const results = ref(null)
+
+
 
 const maxImportance = computed(() => {
     if (!results.value || !results.value.importance) return 1
@@ -329,12 +408,69 @@ const config = reactive({
     model_type: 'logistic',
     target: null, 
     features: [],
+    ref_levels: {}, // { 'Sex': 'Female' }
     model_params: {
         n_estimators: 100,
         max_depth: null,
         learning_rate: 0.1
     }
 })
+
+const autoSuggestRoles = () => {
+    if (!props.metadata) return
+    const vars = props.metadata.variables
+    const lowerVars = vars.map(v => ({...v, lower: v.name.toLowerCase()}))
+    
+    // 1. Suggest Model Type (Default Logistic if 'status'/'outcome' exists)
+    // Keep current selection usually, or default to logistic if unknown.
+    
+    // 2. Identify Target
+    let target = null
+    let time = null
+    let event = null
+    
+    // Heuristic Patterns
+    const targetKeywords = ['status', 'event', 'outcome', 'death', 'died', 'recurrence', 'y', 'flag', 'label']
+    const timeKeywords = ['time', 'duration', 'days', 'month', 'year', 'os', 'pfs', 'rfs']
+    const idKeywords = ['id', 'no', 'code', 'name']
+    
+    if (config.model_type === 'cox') {
+        const timeVar = lowerVars.find(v => timeKeywords.some(k => v.lower.includes(k) && !v.lower.includes('id')))
+        if (timeVar) config.target.time = timeVar.name
+        
+        const eventVar = lowerVars.find(v => targetKeywords.some(k => v.lower.includes(k)))
+        if (eventVar) config.target.event = eventVar.name
+    } else {
+        const targetVar = lowerVars.find(v => targetKeywords.some(k => v.lower.includes(k)))
+        if (targetVar) config.target = targetVar.name
+    }
+    
+    // 3. Identify Features (Covariates)
+    // Exclude target(s), IDs, and likely non-covariates
+    const currentTargets = []
+    if (config.model_type === 'cox') {
+        if (config.target.time) currentTargets.push(config.target.time)
+        if (config.target.event) currentTargets.push(config.target.event)
+    } else {
+        if (config.target) currentTargets.push(config.target)
+    }
+    
+    config.features = vars.filter(v => 
+        !currentTargets.includes(v.name) && 
+        !idKeywords.some(k => v.name.toLowerCase().includes(k)) &&
+        v.unique_count > 1 // Exclude constants
+    ).map(v => v.name)
+    
+    ElMessage.success('已根据变量名为您自动推荐配置')
+}
+
+// Auto-trigger when metadata loads for the first time
+watch(() => props.metadata, (newVal) => {
+    if (newVal && (!config.target || !config.target.time)) {
+        // Only run if empty
+        autoSuggestRoles()
+    }
+}, { immediate: true })
 
 watch(() => config.model_type, (newType) => {
     if (newType === 'cox') {
@@ -355,6 +491,38 @@ const modelOptions = [
 const variableOptions = computed(() => {
     if (!props.metadata) return []
     return props.metadata.variables.map(v => ({ label: v.name, value: v.name }))
+})
+
+const topResult = computed(() => {
+    if (!results.value || !results.value.summary) return null
+    
+    // Find most significant variable
+    const sigVars = results.value.summary.filter(v => v.p_value < 0.05)
+    if (sigVars.length === 0) return null
+    
+    let top = null
+    const type = config.model_type
+    
+    // Logic to pick "best" one
+    if (type === 'logistic') {
+        top = sigVars.reduce((prev, curr) => curr.or > prev.or ? curr : prev, sigVars[0])
+    } else if (type === 'cox') {
+         top = sigVars.reduce((prev, curr) => curr.hr > prev.hr ? curr : prev, sigVars[0])
+    } else {
+         top = sigVars.reduce((prev, curr) => Math.abs(curr.coef) > Math.abs(prev.coef) ? curr : prev, sigVars[0])
+    }
+    
+    if (!top) return null
+    
+    let effect = null
+    if (type === 'logistic') effect = top.or
+    else if (type === 'cox') effect = top.hr
+    
+    return {
+        p_value: top.p_value,
+        effectSize: effect,
+        desc: `变量 **${top.variable}** 对结果影响最为显著。`
+    }
 })
 
 const smartSummary = computed(() => {
@@ -454,6 +622,25 @@ const runModel = async () => {
     } finally {
         loading.value = false
     }
+}
+
+const selectedCategoricalVars = computed(() => {
+    if (!props.metadata || !config.features || config.features.length === 0) return []
+    return props.metadata.variables.filter(v => 
+        config.features.includes(v.name) && 
+        v.type === 'categorical' && 
+        v.categories && v.categories.length > 0
+    )
+})
+
+const copyMethodology = () => {
+    // Generate text
+    const text = MethodologyGenerator.generate(config, results.value)
+    navigator.clipboard.writeText(text).then(() => {
+        ElMessage.success('方法学段落已复制到剪贴板')
+    }).catch(err => {
+        ElMessage.error('复制失败')
+    })
 }
 
 const renderEvaluationPlots = (plots) => {
