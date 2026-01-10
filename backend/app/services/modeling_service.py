@@ -63,7 +63,7 @@ class ModelingService:
                  raise ValueError("Target variables (Time/Event) contain missing values.")
 
     @staticmethod
-    def run_model(df: pd.DataFrame, model_type: str, target: str|dict, features: list, model_params: dict = None) -> dict:
+    def run_model(df: pd.DataFrame, model_type: str, target: "str | dict", features: list, model_params: dict = None) -> dict:
         """
         执行统计建模或机器学习任务 (Strategy Pattern Dispatcher)。
 

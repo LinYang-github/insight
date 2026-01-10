@@ -77,7 +77,7 @@ class CoxStrategy(BaseModelStrategy):
 
         return self._format_results(cph, ph_test_results)
 
-    def _diagnose_separation(self, df: pd.DataFrame, features: list, event_col: str) -> str|None:
+    def _diagnose_separation(self, df: pd.DataFrame, features: list, event_col: str) -> "str | None":
         """
         诊断导致完全分离 (Perfect Separation) 的具体变量。
 

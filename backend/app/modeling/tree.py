@@ -63,9 +63,18 @@ class TreeModelStrategy(BaseModelStrategy):
              max_depth = None if self.model_type == 'random_forest' else 6
              
         learning_rate = float(params.get('learning_rate', 0.1))
+        
+        # Extended Params
+        min_samples_split = int(params.get('min_samples_split', 2))
+        min_samples_leaf = int(params.get('min_samples_leaf', 1))
+        
+        # XGB specific
+        subsample = float(params.get('subsample', 1.0))
+        colsample_bytree = float(params.get('colsample_bytree', 1.0))
 
         # Model Init
-        model = self._init_model(is_classification, n_estimators, max_depth, learning_rate)
+        model = self._init_model(is_classification, n_estimators, max_depth, learning_rate, 
+                                 min_samples_split, min_samples_leaf, subsample, colsample_bytree)
         
         # Fit
         model.fit(X, y)
@@ -84,13 +93,25 @@ class TreeModelStrategy(BaseModelStrategy):
             'plots': plots
         }
     
-    def _init_model(self, is_clf, n_est, depth, lr):
+    def _init_model(self, is_clf, n_est, depth, lr, min_split, min_leaf, subsample, colsample):
         if self.model_type == 'random_forest':
-            if is_clf: return RandomForestClassifier(n_estimators=n_est, max_depth=depth, random_state=42)
-            else: return RandomForestRegressor(n_estimators=n_est, max_depth=depth, random_state=42)
+            if is_clf: 
+                return RandomForestClassifier(n_estimators=n_est, max_depth=depth, 
+                                            min_samples_split=min_split, min_samples_leaf=min_leaf,
+                                            random_state=42)
+            else: 
+                return RandomForestRegressor(n_estimators=n_est, max_depth=depth,
+                                           min_samples_split=min_split, min_samples_leaf=min_leaf,
+                                           random_state=42)
         elif self.model_type == 'xgboost':
-            if is_clf: return xgb.XGBClassifier(n_estimators=n_est, max_depth=depth, learning_rate=lr, random_state=42, use_label_encoder=False, eval_metric='logloss')
-            else: return xgb.XGBRegressor(n_estimators=n_est, max_depth=depth, learning_rate=lr, random_state=42)
+            if is_clf: 
+                return xgb.XGBClassifier(n_estimators=n_est, max_depth=depth, learning_rate=lr, 
+                                       subsample=subsample, colsample_bytree=colsample,
+                                       random_state=42, use_label_encoder=False, eval_metric='logloss')
+            else: 
+                return xgb.XGBRegressor(n_estimators=n_est, max_depth=depth, learning_rate=lr, 
+                                      subsample=subsample, colsample_bytree=colsample,
+                                      random_state=42)
         raise ValueError(f"Unknown model type {self.model_type}")
 
     def _evaluate(self, model, X, y, is_clf):
