@@ -126,8 +126,11 @@ class ModelingService:
             results = strategy.fit(df_processed, target, new_features, model_params)
             
             # --- Generate Interpretation (Decoupling) ---
-            results['interpretation'] = ModelingService._generate_interpretation(model_type, results['summary'])
+            results['interpretation'] = ModelingService._generate_interpretation(model_type, results)
             
+            # --- Generate Methodology (Decoupling Stage 3) ---
+            results['methodology'] = ModelingService._generate_methodology(model_type, model_params)
+
         except np.linalg.LinAlgError:
             # Diagnose the issue (奇异矩阵诊断)
             diagnosis_msg = ModelingService._diagnose_singularity(df_processed, new_features)
@@ -152,16 +155,72 @@ class ModelingService:
         return DataService.sanitize_for_json(results)
 
     @staticmethod
-    def _generate_interpretation(model_type: str, summary: list) -> dict:
+    def _generate_methodology(model_type, params):
+        """
+        Generate "Methods" section text for publications.
+        """
+        params = params or {}
+        
+        # 1. Type
+        type_text = ""
+        if model_type == 'logistic': type_text = "Multivariate logistic regression analysis"
+        elif model_type == 'linear': type_text = "Multivariate linear regression analysis"
+        elif model_type == 'cox': type_text = "Multivariate Cox proportional hazards regression analysis"
+        elif model_type == 'random_forest': type_text = "Random Forest machine learning model"
+        elif model_type == 'xgboost': type_text = "XGBoost (Extreme Gradient Boosting) model"
+        else: type_text = "Statistical analysis"
+        
+        lines = [f"{type_text} was performed to identify factors associated with the outcome."]
+        
+        # 2. Metrics
+        metric_text = ""
+        if model_type in ['logistic', 'cox']:
+            key = "Odds Ratios (OR)" if model_type == 'logistic' else "Hazard Ratios (HR)"
+            metric_text = f"Results were expressed as {key} with 95% confidence intervals (95% CI)."
+        elif model_type == 'linear':
+            metric_text = "Coefficients (Coef) with 95% confidence intervals were calculated."
+        
+        if metric_text: lines.append(metric_text)
+        
+        # 3. Significance
+        lines.append("A two-sided P-value < 0.05 was considered statistically significant.")
+        
+        # 4. Software
+        lines.append("All analyses were performed using the Insight Statistical Platform (v1.0).")
+        
+        # 5. Ref Levels
+        ref_levels = params.get('ref_levels')
+        if ref_levels:
+            refs = [f"{val} for {key}" for key, val in ref_levels.items()]
+            if refs:
+                lines.append(f"Reference groups for categorical variables were set as follows: {', '.join(refs)}.")
+                
+        return " ".join(lines)
+
+    @staticmethod
+    def _generate_interpretation(model_type: str, results: dict) -> dict:
         """
         Generate structured interpretation for frontend.
-        Returns:
-            {
-                "text_template": "Variable {var} ...",
-                "params": {...},
-                "level": "danger/success/info"
-            }
         """
+        # 1. Machine Learning Models (RF, XGBoost)
+        if model_type in ['random_forest', 'xgboost']:
+            importance = results.get('importance')
+            if not importance: return None
+            
+            # Top 3 features
+            top_features = importance[:3]
+            feat_names = ", ".join([f['feature'] for f in top_features])
+            
+            return {
+                "text_template": "模型识别出的最重要的前 3 个特征变量为：{vars}。",
+                "params": {
+                    "vars": feat_names
+                },
+                "level": "info"
+            }
+            
+        # 2. Statistical Models
+        summary = results.get('summary')
         if not summary:
             return None
             

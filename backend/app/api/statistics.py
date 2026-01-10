@@ -254,3 +254,22 @@ def check_collinearity(current_user):
     
     result = StatisticsService.check_multicollinearity(df, features)
     return jsonify(result), 200
+
+@statistics_bp.route('/recommend-model', methods=['POST'])
+@token_required
+def recommend_model(current_user):
+    """
+    智能推荐建模策略。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    
+    if not dataset_id:
+        return jsonify({'message': 'Missing arguments'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    
+    recommendation = StatisticsService.recommend_modeling_strategy(df)
+    return jsonify({'recommendation': recommendation}), 200

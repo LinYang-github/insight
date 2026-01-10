@@ -155,18 +155,7 @@
                  />
                  
                  <!-- Fallback or Additional Diagnostics -->
-                 <el-alert
-                    v-if="smartSummary && !results.interpretation"
-                    title="模型诊断"
-                    type="info"
-                    show-icon
-                    :closable="false"
-                    style="margin-bottom: 20px"
-                 >
-                    <template #default>
-                        <div style="white-space: pre-wrap; line-height: 1.6;">{{ smartSummary }}</div>
-                    </template>
-                 </el-alert>
+
 
                 <!-- Metrics -->
                 <el-descriptions title="模型指标" :column="2" border size="small" style="margin-bottom: 20px">
@@ -371,7 +360,7 @@ import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import InterpretationPanel from './InterpretationPanel.vue'
 
-import MethodologyGenerator from '../utils/MethodologyGenerator.js'
+
 import InsightChart from './InsightChart.vue'
 
 import { QuestionFilled, ArrowDown, Setting, CopyDocument, MagicStick } from '@element-plus/icons-vue'
@@ -426,52 +415,50 @@ const config = reactive({
     }
 })
 
-const autoSuggestRoles = () => {
-    if (!props.metadata) return
-    const vars = props.metadata.variables
-    const lowerVars = vars.map(v => ({...v, lower: v.name.toLowerCase()}))
+const autoSuggestRoles = async () => {
+    if (!props.datasetId) return
     
-    // 1. Suggest Model Type (Default Logistic if 'status'/'outcome' exists)
-    // Keep current selection usually, or default to logistic if unknown.
+    // Check if configuration is already set by user? 
+    // Usually we only auto-suggest if empty or explicitly requested.
+    // But here we just overwrite or fill.
     
-    // 2. Identify Target
-    let target = null
-    let time = null
-    let event = null
-    
-    // Heuristic Patterns
-    const targetKeywords = ['status', 'event', 'outcome', 'death', 'died', 'recurrence', 'y', 'flag', 'label']
-    const timeKeywords = ['time', 'duration', 'days', 'month', 'year', 'os', 'pfs', 'rfs']
-    const idKeywords = ['id', 'no', 'code', 'name']
-    
-    if (config.model_type === 'cox') {
-        const timeVar = lowerVars.find(v => timeKeywords.some(k => v.lower.includes(k) && !v.lower.includes('id')))
-        if (timeVar) config.target.time = timeVar.name
+    try {
+        const { data } = await api.post('/statistics/recommend-model', {
+            dataset_id: props.datasetId
+        })
+        const rec = data.recommendation
         
-        const eventVar = lowerVars.find(v => targetKeywords.some(k => v.lower.includes(k)))
-        if (eventVar) config.target.event = eventVar.name
-    } else {
-        const targetVar = lowerVars.find(v => targetKeywords.some(k => v.lower.includes(k)))
-        if (targetVar) config.target = targetVar.name
+        // Apply Recommendation
+        config.model_type = rec.model_type
+        
+        if (rec.model_type === 'cox') {
+            config.target = {
+                time: rec.target.time,
+                event: rec.target.event
+            }
+        } else {
+            config.target = rec.target
+        }
+        
+        config.features = rec.features
+        
+        ElMessage.success(`智能推荐: 检测到适合 ${rec.model_type} 模型`)
+        if (rec.reason) {
+            // Optional: nice notification
+            setTimeout(() => {
+                 ElMessage.info({
+                    message: rec.reason,
+                    duration: 5000,
+                    showClose: true
+                 })
+            }, 500)
+        }
+        
+    } catch (e) {
+        console.error("Recommendation failed", e)
+        // Fallback to simple default if backend fails?
+        // Or just do nothing.
     }
-    
-    // 3. Identify Features (Covariates)
-    // Exclude target(s), IDs, and likely non-covariates
-    const currentTargets = []
-    if (config.model_type === 'cox') {
-        if (config.target.time) currentTargets.push(config.target.time)
-        if (config.target.event) currentTargets.push(config.target.event)
-    } else {
-        if (config.target) currentTargets.push(config.target)
-    }
-    
-    config.features = vars.filter(v => 
-        !currentTargets.includes(v.name) && 
-        !idKeywords.some(k => v.name.toLowerCase().includes(k)) &&
-        v.unique_count > 1 // Exclude constants
-    ).map(v => v.name)
-    
-    ElMessage.success('已根据变量名为您自动推荐配置')
 }
 
 // Collinearity Check Logic
@@ -601,81 +588,7 @@ const topResult = computed(() => {
     }
 })
 
-const smartSummary = computed(() => {
-    if (!results.value) return ''
-    const res = results.value
-    const lines = []
 
-    // 1. Variable Significance & Impact
-    if (res.importance) {
-        const topFeats = res.importance.slice(0, 3).map(f => f.feature).join(', ')
-        lines.push(`Features: 模型最重要的前 3 个特征变量为：${topFeats}。`)
-    } else if (res.summary) {
-        const sigVars = res.summary.filter(v => v.p_value < 0.05)
-        if (sigVars.length === 0) {
-            lines.push('Variables: 未发现统计学显著 (P < 0.05) 的变量。')
-        } else {
-             const type = config.model_type
-             let msg = `Variables: 发现 ${sigVars.length} 个显著变量。`
-             
-             let topVar = null
-             if (type === 'logistic') {
-                topVar = sigVars.reduce((prev, curr) => curr.or > prev.or ? curr : prev, sigVars[0])
-                msg += `其中 **${topVar.variable}** 风险增加最为显著 (OR=${topVar.or.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
-            } else if (type === 'cox') {
-                topVar = sigVars.reduce((prev, curr) => curr.hr > prev.hr ? curr : prev, sigVars[0])
-                msg += `其中 **${topVar.variable}** 风险增加最为显著 (HR=${topVar.hr.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
-            } else {
-                 topVar = sigVars.reduce((prev, curr) => Math.abs(curr.coef) > Math.abs(prev.coef) ? curr : prev, sigVars[0])
-                 msg += `其中 **${topVar.variable}** 影响最大 (Coef=${topVar.coef.toFixed(2)}, P=${topVar.p_value < 0.001 ? '<0.001' : topVar.p_value.toFixed(3)})。`
-            }
-            lines.push(msg)
-        }
-    }
-
-    // 2. Model Performance
-    if (res.metrics) {
-        if (res.metrics.auc) {
-            const auc = parseFloat(res.metrics.auc)
-            let grade = '无法评估'
-            if (auc >= 0.9) grade = '极好 (Outstanding)'
-            else if (auc >= 0.8) grade = '优秀 (Excellent)'
-            else if (auc >= 0.7) grade = '良好 (Acceptable)'
-            else if (auc >= 0.5) grade = '一般 (Poor)'
-            else grade = '差 (Fail)'
-            
-            let perfMsg = `Performance: AUC = ${auc.toFixed(3)}，模型区分度 ${grade}。`
-            if (res.metrics.cv_auc_mean) {
-                perfMsg += ` 5折交叉验证平均 AUC = ${res.metrics.cv_auc_mean} (Std=${res.metrics.cv_auc_std})，泛化能力可靠。`
-            }
-            lines.push(perfMsg)
-        } else if (res.metrics.c_index) {
-             const cno = parseFloat(res.metrics.c_index)
-             lines.push(`Performance: C-index = ${cno.toFixed(3)}。`)
-        } else if (res.metrics.r2) {
-             lines.push(`Performance: R-squared = ${parseFloat(res.metrics.r2).toFixed(3)}。`)
-        }
-    }
-
-    // 3. Diagnostics Warnings
-    if (res.summary) {
-        // VIF Check
-        const highVif = res.summary.filter(v => v.vif && v.vif !== '-' && parseFloat(v.vif) > 5)
-        if (highVif.length > 0) {
-            const vars = highVif.map(v => v.variable).join(', ')
-            lines.push(`⚠️ Diagnostics: 检测到多重共线性 (VIF > 5): ${vars}。建议移除相关性过高的特征。`)
-        }
-        
-        // PH Assumption Check
-        const phFail = res.summary.filter(v => v.ph_test_p && v.ph_test_p !== '-' && parseFloat(v.ph_test_p) < 0.05)
-        if (phFail.length > 0) {
-             const vars = phFail.map(v => v.variable).join(', ')
-             lines.push(`⚠️ Diagnostics: 违反 PH 等比例风险假设 (P < 0.05): ${vars}。建议使用分层 Cox 模型或含时变协变量的 Cox 模型。`)
-        }
-    }
-
-    return lines.join('\n\n')
-})
 
 const runModel = async () => {
     if (!props.datasetId) return
@@ -725,8 +638,12 @@ const selectedCategoricalVars = computed(() => {
 })
 
 const copyMethodology = () => {
-    // Generate text
-    const text = MethodologyGenerator.generate(config, results.value)
+    // Generate text from backend
+    if (!results.value || !results.value.methodology) {
+         ElMessage.info('暂无方法学内容')
+         return
+    }
+    const text = results.value.methodology
     navigator.clipboard.writeText(text).then(() => {
         ElMessage.success('方法学段落已复制到剪贴板')
     }).catch(err => {

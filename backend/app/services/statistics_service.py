@@ -606,3 +606,105 @@ class StatisticsService:
             'status': status,
             'report': report
         }
+
+    @staticmethod
+    def recommend_modeling_strategy(df):
+        """
+        Intelligent Recommendation Engine.
+        Scans data to suggest the most appropriate modeling strategy, target, and features.
+        """
+        recommendation = {
+            'model_type': 'logistic', # default
+            'target': {}, # {name: 'status', time: 'time'} or 'outcome'
+            'features': [],
+            'reason': ''
+        }
+        
+        columns = df.columns.tolist()
+        lower_cols = {c.lower(): c for c in columns}
+        
+        # 1. Detection Keywords
+        time_keywords = ['time', 'duration', 'days', 'month', 'year', 'os', 'pfs', 'rfs']
+        event_keywords = ['status', 'event', 'outcome', 'death', 'died', 'recurrence', 'y', 'flag', 'class', 'target']
+        id_keywords = ['id', 'no', 'code', 'name', 'patient', 'sample']
+        
+        # 2. Heuristic Scan
+        found_time = None
+        found_event = None
+        found_target = None
+        
+        # Search for Time
+        for k in time_keywords:
+            for lc, real_c in lower_cols.items():
+                if k in lc and not any(ik in lc for ik in id_keywords) and pd.api.types.is_numeric_dtype(df[real_c]):
+                    found_time = real_c
+                    break
+            if found_time: break
+            
+        # Search for Event/Target
+        for k in event_keywords:
+            for lc, real_c in lower_cols.items():
+                if k in lc and not any(ik in lc for ik in id_keywords):
+                    # Check unique values
+                    uniques = df[real_c].dropna().unique()
+                    n_uniq = len(uniques)
+                    
+                    if n_uniq == 2: # Binary likely event
+                        found_event = real_c
+                        if not found_target: found_target = real_c
+                    elif n_uniq > 2 and pd.api.types.is_numeric_dtype(df[real_c]):
+                        # Continuous target?
+                        if not found_target: found_target = real_c
+        
+        # 3. Strategy Decision
+        exclude_targets = []
+        if found_time and found_event:
+            recommendation['model_type'] = 'cox'
+            recommendation['target'] = {'time': found_time, 'event': found_event}
+            recommendation['reason'] = f"检测到生存时间 ({found_time}) 和终点事件 ({found_event})，推荐使用 **Cox 比例风险模型**。"
+            exclude_targets = [found_time, found_event]
+            
+        elif found_target:
+            # Check if binary or continuous
+            uniques = df[found_target].dropna().unique()
+            if len(uniques) == 2:
+                recommendation['model_type'] = 'logistic'
+                recommendation['target'] = found_target
+                recommendation['reason'] = f"检测到二分类结局变量 ({found_target})，推荐使用 **逻辑回归 (Logistic Regression)**。"
+                exclude_targets = [found_target]
+            elif pd.api.types.is_numeric_dtype(df[found_target]):
+                recommendation['model_type'] = 'linear'
+                recommendation['target'] = found_target
+                recommendation['reason'] = f"检测到连续型结局变量 ({found_target})，推荐使用 **线性回归 (Linear Regression)**。"
+                exclude_targets = [found_target]
+            else:
+                 # Classification but >2 classes?
+                 recommendation['model_type'] = 'logistic' # Multiclass fallback (not impl yet but safe default)
+                 recommendation['target'] = found_target
+                 recommendation['reason'] = f"目标变量 ({found_target}) 为分类型，推荐使用逻辑回归。"
+                 exclude_targets = [found_target]
+        else:
+            # Fallback
+            recommendation['reason'] = "未能自动识别明确的结局变量，默认推荐逻辑回归。请手动选择。"
+            exclude_targets = []
+
+        # 4. Feature Selection
+        features = []
+        for c in columns:
+            if c in exclude_targets: continue
+            
+            lc = c.lower()
+            # Skip ID-like
+            if any(ik in lc for ik in id_keywords): continue
+            
+            # Skip high cardinality strings (likely names/desc)
+            if df[c].dtype == 'object':
+                if df[c].nunique() > 10: continue
+            
+            # Skip strict constants
+            if df[c].dropna().nunique() <= 1: continue
+            
+            features.append(c)
+            
+        recommendation['features'] = features
+        return recommendation
