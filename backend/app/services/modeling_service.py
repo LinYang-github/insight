@@ -63,37 +63,56 @@ class ModelingService:
                  raise ValueError("Target variables (Time/Event) contain missing values.")
 
     @staticmethod
-    def run_model(df, model_type, target, features, model_params=None):
+    def run_model(df: pd.DataFrame, model_type: str, target: str|dict, features: list, model_params: dict = None) -> dict:
         """
-        Run statistical or ML model using Strategy Pattern.
+        执行统计建模或机器学习任务 (Strategy Pattern Dispatcher)。
+
+        负责协调数据预处理、策略选择和模型拟合。
+        包含对不同模型类型的特定预处理逻辑（如 Logistic 回归的目标变量编码）。
+
+        Args:
+            df (pd.DataFrame): 原始数据集。
+            model_type (str): 模型类型标识符 ('linear', 'logistic', 'cox', etc.)。
+            target (str|dict): 结局变量。
+            features (list): 纳入模型的特征变量列表。
+            model_params (dict, optional): 模型超参数或配置（如 ref_levels）。
+
+        Returns:
+            dict: 包含 'summary' (系数表) 和 'metrics' (模型评价指标) 的标准结果字典。
+            格式需符合 `DataService.sanitize_for_json` 要求以确保 JSON 序列化安全。
+
+        Raises:
+            ValueError: 当数据完整性校验失败或模型计算出现数学错误（如奇异矩阵）时抛出。
+            RuntimeError: 其他未预期的运行时错误。
         """
         model_params = model_params or {}
         
-        # 1. Integrity Check
+        # 1. Integrity Check (数据完整性校验)
         ModelingService.check_data_integrity(df, features, target)
         
-        # 2. Get Strategy
+        # 2. Get Strategy (获取模型策略)
         try:
             strategy = ModelRegistry.get_strategy(model_type)
         except ValueError as e:
             raise ValueError(f"Unknown model type: {model_type}")
             
-        # 3. Execute
+        # 3. Execute (执行建模)
         try:
             # Extract ref_levels from model_params if available
             ref_levels = model_params.get('ref_levels', None)
             
-            # Add Robust Preprocessing for Matrix-based methods (all strategies here)
-            # This ensures string/object columns are One-Hot Encoded
-            # And respects Reference Level if provided
+            # Robust Preprocessing for Matrix-based methods
+            # NOTE: 显式进行 One-Hot 编码，确保 Pandas 由于版本差异导致的 dtype 问题不影响后续计算。
             df_processed, new_features = DataService.preprocess_for_matrix(df, features, ref_levels=ref_levels)
             
-            # --- Robust Target Encoding ---
-            # Statsmodels requires numeric target.
+            # --- Robust Target Encoding (目标变量鲁棒性编码) ---
+            # 统计模型（Statsmodels）通常需要纯数值型的 Y 向量。
+            # 如果用户传入的是字符串（如 'Yes', 'No'），需要在此处统一转码。
             if model_type == 'logistic':
                 col = target
                 if df_processed[col].dtype == 'object' or str(df_processed[col].dtype) == 'category':
                     # Auto-encode: sort=True ensures consistent mapping (e.g. No=0, Yes=1)
+                    # 确保 'No' -> 0, 'Yes' -> 1 的映射顺序
                     codes, uniques = pd.factorize(df_processed[col], sort=True)
                     df_processed[col] = codes
             elif model_type == 'cox':
@@ -106,7 +125,7 @@ class ModelingService:
             
             results = strategy.fit(df_processed, target, new_features, model_params)
         except np.linalg.LinAlgError:
-            # Diagnose the issue
+            # Diagnose the issue (奇异矩阵诊断)
             diagnosis = ModelingService._diagnose_singularity(df_processed, new_features)
             raise ValueError(diagnosis)
         except Exception as e:

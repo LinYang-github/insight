@@ -21,11 +21,29 @@ class CoxStrategy(BaseModelStrategy):
     - HR < 1: 保护性因素。
     - ph_test_p: PH 假定校验 P 值。如果 P < 0.05，可能违反比例风险假定，需谨慎解释。
     """
-    def fit(self, df, target, features, params):
+    def fit(self, df: pd.DataFrame, target: dict, features: list, params: dict) -> dict:
+        """
+        拟合 Cox 模型。
+
+        Args:
+            df (pd.DataFrame): 经过预处理的数据集（已完成 One-Hot 编码）。
+            target (dict): 包含 'time' (生存时间列名) 和 'event' (终点事件列名) 的字典。
+            features (list): 协变量列表。
+            params (dict): 模型参数。
+
+        Returns:
+            dict: 格式化后的模型结果。
+
+        Raises:
+            ValueError: 
+                - 当 Event 列只有一种取值（无法建模）时。
+                - 当检测到奇异矩阵或完全分离（Perfect Separation）时。
+        """
         time_col = target['time']
         event_col = target['event']
         
         # Check for low variance in event column
+        # Cox 模型要求 Event 必须至少有两个水平 (0/1)，否则无法比较风险差异。
         if df[event_col].nunique() < 2:
              raise ValueError(f"Event column '{event_col}' must have at least 2 unique values (0 and 1).")
              
@@ -37,7 +55,7 @@ class CoxStrategy(BaseModelStrategy):
         except Exception as e:
             err_msg = str(e).lower()
             
-            # Diagnose specific variable causing separation
+            # Diagnose specific variable causing separation (诊断完全分离的具体变量)
             culprit = self._diagnose_separation(data, features, event_col)
             culprit_msg = f"\n可能的问题变量：{culprit} (在某一组中方差极低或完全分离)" if culprit else ""
 
@@ -59,9 +77,22 @@ class CoxStrategy(BaseModelStrategy):
 
         return self._format_results(cph, ph_test_results)
 
-    def _diagnose_separation(self, df, features, event_col):
+    def _diagnose_separation(self, df: pd.DataFrame, features: list, event_col: str) -> str|None:
         """
-        Check for variables that might cause perfect separation or low variance.
+        诊断导致完全分离 (Perfect Separation) 的具体变量。
+
+        Strategy:
+        1. 检查各特征在 Event=0 和 Event=1 两个子组中是否方差为 0 (Constant)。
+           如果某变量在某组中是常数，说明该变量完全预测了结局（例如：所有 'DrugA' 用户都存活）。
+        2. 对于名义分类变量，检查列联表 (Crosstab) 是否存在零单元格。
+
+        Args:
+           df: 包含数据的数据框.
+           features: 特征列表.
+           event_col: 结局列名.
+
+        Returns:
+           str: 疑似问题的变量名，如果未找到则返回 None.
         """
         for feature in features:
             try:
