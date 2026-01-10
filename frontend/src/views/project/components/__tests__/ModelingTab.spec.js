@@ -201,8 +201,8 @@ describe('ModelingTab.vue', () => {
         const mockResVIF = {
             model_type: 'logistic',
             summary: [
-                { variable: 'Age', p_value: 0.01, vif: '1.2' },
-                { variable: 'X', p_value: 0.6, vif: '6.0' }
+                { variable: 'Age', p_value: 0.01, vif: '1.2', or: 1.1, coef: 0.1 },
+                { variable: 'X', p_value: 0.6, vif: '6.0', or: 1.0, coef: 0.0 }
             ],
             plots: {}
         }

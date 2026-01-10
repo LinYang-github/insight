@@ -36,32 +36,62 @@
         <!-- Step 2: Covariates Selection -->
         <template #step2>
             <div class="wizard-step">
-                <h3>选择协变量 (Select Covariates)</h3>
+                <h3>选择匹配因素 (Covariates) <GlossaryTooltip term="or" v-if="false" /></h3>
                 <p class="step-desc">请选择那些即影响分组、又影响结果的混杂因素。匹配后，两组在这些变量上将达到均衡。</p>
                 
-                <el-form label-position="top">
-                    <el-form-item label="协变量 (Confounders / Covariates)">
+                <el-form label-position="top" v-loading="isRecommending">
+                    <el-form-item>
+                        <template #label>
+                             <span>纳入匹配的协变量 (Covariates)</span>
+                             <GlossaryTooltip term="vif" style="margin-left: 8px">什么是协变量？</GlossaryTooltip>
+                        </template>
                         <el-select v-model="config.covariates" multiple placeholder="Select Covariates" filterable size="large" style="width: 100%;">
                              <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
+                        <div v-if="recommendedVars.length > 0" class="recommend-hint">
+                            <el-icon><MagicStick /></el-icon>
+                            <span>系统已根据组间显著差异自动预选了 <b>{{ recommendedVars.length }}</b> 个变量。</span>
+                        </div>
                     </el-form-item>
                     
                      <el-form-item>
                         <el-checkbox v-model="config.save" border>匹配成功后，自动保存为新数据集</el-checkbox>
+                        <GlossaryTooltip term="caliper" style="margin-left: 10px">关于匹配设置</GlossaryTooltip>
                     </el-form-item>
                 </el-form>
                 
                 <el-alert
-                    title="操作指南"
-                    type="info"
+                    title="智能建议"
+                    type="success"
                     show-icon
                     :closable="false"
+                    v-if="recommendedVars.length > 0"
                 >
                     <div style="font-size: 13px; color: #606266; line-height: 1.6;">
-                        <li><b>推荐策略</b>: 纳入所有基线特征（User Baseline），特别是已知对预后有影响的因素。</li>
-                        <li><b>避免</b>: 不要纳入受治疗影响的变量（中间变量）。</li>
+                        <li>系统已识别出处理组间存在显著差异的变量，建议将其纳入匹配以消除偏差。</li>
+                        <li><b>当前已选中</b>: {{ config.covariates.join(', ') }}</li>
                     </div>
                 </el-alert>
+
+                <div v-if="healthReport.length > 0" class="health-report-area">
+                    <h4>数据健康预检 (Pre-flight Check)</h4>
+                    <div class="health-cards">
+                        <div v-for="item in healthReport" :key="item.variable" :class="['health-card', item.status]">
+                            <div class="health-header">
+                                <span class="var-name">{{ item.variable }}</span>
+                                <el-tag :type="item.status === 'healthy' ? 'success' : 'warning'" size="small">
+                                    {{ item.status === 'healthy' ? 'Healthy' : 'Warning' }}
+                                </el-tag>
+                            </div>
+                            <div class="health-details">
+                                <span>缺失率: {{ (item.missing_rate * 100).toFixed(1) }}%</span>
+                            </div>
+                            <div v-if="item.status !== 'healthy'" class="health-msg">
+                                <el-icon><Warning /></el-icon> {{ item.message }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </template>
 
@@ -79,19 +109,13 @@
                         <el-table-column prop="variable" label="协变量" />
                         <el-table-column prop="smd_pre" label="匹配前 SMD">
                             <template #header>
-                                <span>匹配前 SMD</span>
-                                <el-tooltip content="Standardized Mean Difference (标准化均数差)，衡量原始组间的差异。" placement="top">
-                                    <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                                </el-tooltip>
+                                <GlossaryTooltip term="smd">匹配前 SMD</GlossaryTooltip>
                             </template>
                             <template #default="scope">{{ scope.row.smd_pre.toFixed(3) }}</template>    
                         </el-table-column>
                         <el-table-column prop="smd_post" label="匹配后 SMD">
                             <template #header>
-                                <span>匹配后 SMD</span>
-                                <el-tooltip content="匹配后两组间的差异。理想情况下应 < 0.1，表明达到高度均衡。" placement="top">
-                                    <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                                </el-tooltip>
+                                <GlossaryTooltip term="smd">匹配后 SMD</GlossaryTooltip>
                             </template>
                             <template #default="scope">
                                 <span :style="{ fontWeight: 'bold', color: scope.row.smd_post < 0.1 ? 'green' : 'red' }">
@@ -130,7 +154,8 @@ import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import StepWizard from './StepWizard.vue'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import GlossaryTooltip from './GlossaryTooltip.vue'
+import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -142,12 +167,73 @@ const emit = defineEmits(['dataset-created'])
 const loading = ref(false)
 const results = ref(null)
 const activeStep = ref(0)
+const recommendedVars = ref([])
+const isRecommending = ref(false)
+const healthReport = ref([])
 
 const config = reactive({
     treatment: null,
     covariates: [],
     save: false
 })
+
+// ... props and emits ...
+
+// Watch treatment to recommend covariates
+watch(() => config.treatment, async (newVal) => {
+    if (newVal) {
+        config.covariates = [] // Reset
+        await fetchRecommendations(newVal)
+    }
+})
+
+// Watch covariates to check health
+watch(() => config.covariates, (newVal) => {
+    if (newVal && newVal.length > 0) {
+        checkHealth(newVal)
+    } else {
+        healthReport.value = []
+    }
+}, { deep: true })
+
+const checkHealth = async (variables) => {
+    try {
+        const { data } = await api.post('/statistics/check-health', {
+            dataset_id: props.datasetId,
+            variables
+        })
+        healthReport.value = data.report
+    } catch (err) {
+        console.error("Health check failed", err)
+    }
+}
+
+const fetchRecommendations = async (treatment) => {
+    isRecommending.value = true
+    try {
+        const { data } = await api.post('/statistics/recommend-covariates', {
+            dataset_id: props.datasetId,
+            treatment
+        })
+        recommendedVars.value = data.recommendations
+        // Auto-apply highly significant ones? Or just let user click.
+        // Let's auto-apply for "No-Manual" experience.
+        config.covariates = data.recommendations.map(r => r.variable)
+        if (config.covariates.length > 0) {
+            ElMessage({
+                message: `系统已自动为您预选了 ${config.covariates.length} 个组间差异显著的协变量。`,
+                type: 'success',
+                duration: 3000
+            })
+            // Manually trigger health check if watch doesn't catch it fast enough
+            checkHealth(config.covariates)
+        }
+    } catch (err) {
+        console.error("Recommendation failed", err)
+    } finally {
+        isRecommending.value = false
+    }
+}
 
 const steps = [
     { title: '设定组别', description: '选择处理组变量', slot: 'step1' },
@@ -275,5 +361,64 @@ const renderLovePlot = (balanceData) => {
 .step-desc {
     color: #606266;
     margin-bottom: 20px;
+}
+.recommend-hint {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #67c23a;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0f9eb;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+.health-report-area {
+    margin-top: 25px;
+    border-top: 1px solid #ebeef5;
+    padding-top: 15px;
+}
+.health-report-area h4 {
+    margin-bottom: 12px;
+    font-size: 15px;
+    color: #303133;
+}
+.health-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.health-card {
+    width: calc(50% - 6px);
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    padding: 10px;
+    background: #fafafa;
+}
+.health-card.warning {
+    border-color: #fce4d6;
+    background: #fff9f5;
+}
+.health-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.var-name {
+    font-weight: bold;
+    font-size: 13px;
+}
+.health-details {
+    font-size: 12px;
+    color: #606266;
+}
+.health-msg {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #e6a23c;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 </style>

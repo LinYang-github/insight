@@ -168,3 +168,64 @@ def export_table1(current_user):
         mimetype="text/csv",
         headers={"Content-disposition": "attachment; filename=table1_export.csv"}
     )
+
+@statistics_bp.route('/recommend-covariates', methods=['POST'])
+@token_required
+def recommend_covariates(current_user):
+    """
+    基于处理变量推荐协变量。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    treatment = data.get('treatment')
+    
+    if not dataset_id or not treatment:
+        return jsonify({'message': 'Missing arguments'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    
+    recommendations = StatisticsService.recommend_covariates(df, treatment)
+    return jsonify({'recommendations': recommendations}), 200
+
+@statistics_bp.route('/check-health', methods=['POST'])
+@token_required
+def check_health(current_user):
+    """
+    检查变量健康状况。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    variables = data.get('variables')
+    
+    if not dataset_id or not variables:
+        return jsonify({'message': 'Missing arguments'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    
+    report = StatisticsService.check_data_health(df, variables)
+    return jsonify({'report': report}), 200
+
+@statistics_bp.route('/distribution', methods=['POST'])
+@token_required
+def get_distribution(current_user):
+    """
+    获取变量分布数据。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    variable = data.get('variable')
+    
+    if not dataset_id or not variable:
+        return jsonify({'message': 'Missing arguments'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    
+    dist_data = StatisticsService.get_distribution(df, variable)
+    return jsonify({'distribution': dist_data}), 200

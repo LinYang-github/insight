@@ -65,7 +65,13 @@
                     highlight-current-row
                     @row-click="(row) => selectedRow = row"
                 >
-                    <el-table-column prop="variable" label="Variable" width="180" />
+                    <el-table-column prop="variable" label="Variable" width="180">
+                        <template #default="scope">
+                            <el-link type="primary" :underline="true" @click.stop="openDistribution(scope.row.variable)">
+                                {{ scope.row.variable }}
+                            </el-link>
+                        </template>
+                    </el-table-column>
                     <el-table-column label="Overall">
                         <template #default="scope">
                             <span v-if="scope.row.type === 'numeric'">
@@ -97,10 +103,7 @@
 
                     <el-table-column v-if="config.groupBy" prop="p_value" width="150" fixed="right">
                          <template #header>
-                             <span>P-value</span>
-                             <el-tooltip content="显著性检验 P 值。系统根据数据分布自动选择检验方法（T检验/ANOVA/卡方）。" placement="top">
-                                <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
-                             </el-tooltip>
+                             <GlossaryTooltip term="p_value">P-value</GlossaryTooltip>
                          </template>
                          <template #default="scope">
                              <el-tag :type="pValTag(scope.row.p_value)">{{ scope.row.p_value }}</el-tag>
@@ -132,6 +135,12 @@
             </el-card>
         </el-col>
     </el-row>
+
+    <DistributionDialog 
+        v-model="distVisible"
+        :dataset-id="datasetId"
+        :variable="clickedVar"
+    />
   </div>
 </template>
 
@@ -149,11 +158,21 @@ import { ref, computed, reactive } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'
 import InterpretationPanel from './InterpretationPanel.vue'
+import GlossaryTooltip from './GlossaryTooltip.vue'
+import DistributionDialog from './DistributionDialog.vue'
 
 const props = defineProps({
     datasetId: Number,
     metadata: Object
 })
+
+const distVisible = ref(false)
+const clickedVar = ref('')
+
+const openDistribution = (varName) => {
+    clickedVar.value = varName
+    distVisible.value = true
+}
 
 const loading = ref(false)
 const results = ref([])

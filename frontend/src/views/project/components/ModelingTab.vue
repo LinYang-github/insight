@@ -255,59 +255,32 @@
                         <el-row :gutter="20">
                             <!-- ROC -->
                             <el-col :span="12" v-if="results.plots.roc" style="margin-bottom: 20px;">
-                                <div class="chart-header">
-                                    <span>ROC Curve</span>
-                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('roc-plot', 'roc_curve', cmd)">
-                                        <el-button type="primary" link size="small">
-                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                                        </el-button>
-                                        <template #dropdown>
-                                            <el-dropdown-menu>
-                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
-                                            </el-dropdown-menu>
-                                        </template>
-                                    </el-dropdown>
-                                </div>
-                                <div id="roc-plot" style="width: 100%; height: 400px;"></div>
+                                <InsightChart
+                                    chartId="roc-plot"
+                                    title="ROC Curve"
+                                    :data="chartData.roc.data"
+                                    :layout="chartData.roc.layout"
+                                />
                             </el-col>
                             
                             <!-- Calibration -->
                             <el-col :span="12" v-if="results.plots.calibration" style="margin-bottom: 20px;">
-                                <div class="chart-header">
-                                    <span>Calibration Plot</span>
-                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('calibration-plot', 'calibration_curve', cmd)">
-                                        <el-button type="primary" link size="small">
-                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                                        </el-button>
-                                        <template #dropdown>
-                                            <el-dropdown-menu>
-                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
-                                            </el-dropdown-menu>
-                                        </template>
-                                    </el-dropdown>
-                                </div>
-                                <div id="calibration-plot" style="width: 100%; height: 400px;"></div>
+                                <InsightChart
+                                    chartId="calibration-plot"
+                                    title="Calibration Plot"
+                                    :data="chartData.calibration.data"
+                                    :layout="chartData.calibration.layout"
+                                />
                             </el-col>
                             
                             <!-- DCA -->
                              <el-col :span="12" v-if="results.plots.dca" style="margin-bottom: 20px;">
-                                <div class="chart-header">
-                                    <span>Decision Curve (DCA)</span>
-                                    <el-dropdown trigger="click" @command="(cmd) => downloadPlot('dca-plot', 'dca_curve', cmd)">
-                                        <el-button type="primary" link size="small">
-                                            导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                                        </el-button>
-                                        <template #dropdown>
-                                            <el-dropdown-menu>
-                                                <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-                                                <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
-                                            </el-dropdown-menu>
-                                        </template>
-                                    </el-dropdown>
-                                </div>
-                                <div id="dca-plot" style="width: 100%; height: 400px;"></div>
+                                <InsightChart
+                                    chartId="dca-plot"
+                                    title="Decision Curve (DCA)"
+                                    :data="chartData.dca.data"
+                                    :layout="chartData.dca.layout"
+                                />
                             </el-col>
                         </el-row>
                     </el-tab-pane>
@@ -319,7 +292,12 @@
                             <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
                                 <strong>标准:</strong> VIF < 5 为理想，VIF > 10 提示严重共线性。
                             </p>
-                            <div id="vif-plot" style="width: 100%; height: 400px;"></div>
+                            <InsightChart
+                                chartId="vif-plot"
+                                title="Multicollinearity (VIF)"
+                                :data="chartData.vif.data"
+                                :layout="chartData.vif.layout"
+                            />
                          </div>
                          
                          <!-- PH Assumption (Cox) -->
@@ -371,6 +349,7 @@ import Plotly from 'plotly.js-dist-min'
 import InterpretationPanel from './InterpretationPanel.vue'
 
 import MethodologyGenerator from '../utils/MethodologyGenerator.js'
+import InsightChart from './InsightChart.vue'
 
 import { QuestionFilled, ArrowDown, Setting, CopyDocument, MagicStick } from '@element-plus/icons-vue'
 
@@ -643,80 +622,111 @@ const copyMethodology = () => {
     })
 }
 
+const chartData = reactive({
+    roc: { data: [], layout: {} },
+    calibration: { data: [], layout: {} },
+    dca: { data: [], layout: {} },
+    vif: { data: [], layout: {} }
+})
+
 const renderEvaluationPlots = (plots) => {
     // ROC Curve
     if (plots.roc) {
-        const trace = {
-            x: plots.roc.fpr,
-            y: plots.roc.tpr,
-            mode: 'lines',
-            name: `AUC = ${plots.roc.auc.toFixed(3)}`,
-            line: { color: 'blue' }
-        }
-        const diagonal = {
-            x: [0, 1], y: [0, 1],
-            mode: 'lines',
-            name: 'Random',
-            line: { dash: 'dash', color: 'gray' }
-        }
-        Plotly.newPlot('roc-plot', [trace, diagonal], {
-            title: 'ROC Curve',
+        chartData.roc.data = [
+            {
+                x: plots.roc.fpr,
+                y: plots.roc.tpr,
+                mode: 'lines',
+                name: `AUC = ${plots.roc.auc.toFixed(3)}`,
+                line: { color: 'blue' }
+            },
+            {
+                x: [0, 1], y: [0, 1],
+                mode: 'lines',
+                name: 'Random',
+                line: { dash: 'dash', color: 'gray' }
+            }
+        ]
+        chartData.roc.layout = {
             xaxis: { title: 'False Positive Rate' },
             yaxis: { title: 'True Positive Rate' }
-        }, {responsive: true})
+        }
     }
 
     // Calibration Curve
     if (plots.calibration) {
-        const trace = {
-            x: plots.calibration.prob_pred,
-            y: plots.calibration.prob_true,
-            mode: 'lines+markers',
-            name: 'Model',
-            line: { color: 'red' }
-        }
-        const perfect = {
-            x: [0, 1], y: [0, 1],
-            mode: 'lines',
-            name: 'Perfectly Calibrated',
-            line: { dash: 'dash', color: 'gray' }
-        }
-        Plotly.newPlot('calibration-plot', [trace, perfect], {
-            title: 'Calibration Plot',
+        chartData.calibration.data = [
+            {
+                x: plots.calibration.prob_pred,
+                y: plots.calibration.prob_true,
+                mode: 'lines+markers',
+                name: 'Model',
+                line: { color: 'red' }
+            },
+            {
+                x: [0, 1], y: [0, 1],
+                mode: 'lines',
+                name: 'Perfectly Calibrated',
+                line: { dash: 'dash', color: 'gray' }
+            }
+        ]
+        chartData.calibration.layout = {
             xaxis: { title: 'Mean Predicted Probability', range: [0, 1] },
             yaxis: { title: 'Fraction of Positives', range: [0, 1] }
-        }, {responsive: true})
+        }
     }
 
     // DCA Plot
     if (plots.dca) {
-        const traceModel = {
-            x: plots.dca.thresholds,
-            y: plots.dca.net_benefit_model,
-            mode: 'lines',
-            name: 'Model',
-            line: { color: 'red', width: 2 }
-        }
-        const traceAll = {
-            x: plots.dca.thresholds,
-            y: plots.dca.net_benefit_all,
-            mode: 'lines',
-            name: 'Treat All',
-            line: { color: 'gray', dash: 'dash' }
-        }
-        const traceNone = {
-            x: plots.dca.thresholds,
-            y: plots.dca.net_benefit_none,
-            mode: 'lines',
-            name: 'Treat None',
-            line: { color: 'black' }
-        }
-    
-        Plotly.newPlot('dca-plot', [traceModel, traceAll, traceNone], {
-            title: 'Decision Curve Analysis',
+        const maxY = Math.max(...plots.dca.net_benefit_model, ...plots.dca.net_benefit_all)
+        chartData.dca.data = [
+            {
+                x: plots.dca.thresholds,
+                y: plots.dca.net_benefit_model,
+                mode: 'lines',
+                name: 'Model',
+                line: { color: 'red', width: 2 }
+            },
+            {
+                x: plots.dca.thresholds,
+                y: plots.dca.net_benefit_all,
+                mode: 'lines',
+                name: 'Treat All',
+                line: { color: 'gray', dash: 'dash' }
+            },
+            {
+                x: plots.dca.thresholds,
+                y: plots.dca.net_benefit_none,
+                mode: 'lines',
+                name: 'Treat None',
+                line: { color: 'black' }
+            }
+        ]
+        chartData.dca.layout = {
             xaxis: { title: 'Threshold Probability', range: [0, 1] },
-            yaxis: { title: 'Net Benefit', range: [-0.05, Math.max(...plots.dca.net_benefit_model, ...plots.dca.net_benefit_all) + 0.05] }
-        }, {responsive: true})
+            yaxis: { title: 'Net Benefit', range: [-0.05, maxY + 0.05] }
+        }
+    }
+
+    // VIF Plot
+    if (plots.vif) {
+        chartData.vif.data = [{
+            x: plots.vif.variables,
+            y: plots.vif.vif_values,
+            type: 'bar',
+            marker: {
+                color: plots.vif.vif_values.map(v => v > 5 ? 'red' : '#409EFF')
+            }
+        }]
+        chartData.vif.layout = {
+             title: 'VIF Values',
+             shapes: [{
+                type: 'line',
+                x0: -0.5, x1: plots.vif.variables.length - 0.5,
+                y0: 5, y1: 5,
+                line: { color: 'red', width: 2, dash: 'dash' }
+             }]
+        }
     }
 }
 
@@ -734,23 +744,8 @@ const exportResults = async () => {
     }
 }
 
-const downloadPlot = async (divId, filename, format = 'png') => {
-    try {
-        const el = document.getElementById(divId)
-        if (!el) return
-        
-        await Plotly.downloadImage(el, {
-            format: format,
-            width: 1200,
-            height: 800,
-            filename: filename,
-            scale: format === 'png' ? 3 : 1 // High Res for PNG
-        })
-    } catch (error) {
-        console.error(error)
-        ElMessage.error('图片导出失败')
-    }
-}
+// Removed downloadPlot function as it is now handled by InsightChart component
+// const downloadPlot = async (divId, filename, format = 'png') => { ... }
 </script>
 
 

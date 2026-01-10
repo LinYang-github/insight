@@ -327,6 +327,142 @@ class StatisticsService:
         }
 
     @staticmethod
+    def recommend_covariates(df, treatment):
+        """
+        推荐协变量。
+        通过计算所有其他变量与处理变量（treatment）之间的关联显著性，
+        找出组间差异显著 (P < 0.05) 的变量作为潜在混杂因素。
+        """
+        if treatment not in df.columns:
+            return []
+            
+        df = df.dropna(subset=[treatment])
+        groups = sorted(df[treatment].unique().tolist())
+        if len(groups) < 2:
+            return []
+            
+        recommendations = []
+        variables = [c for c in df.columns if c != treatment]
+        
+        for var in variables:
+            # Skip high cardinality strings or non-relevant columns
+            if df[var].dtype == 'object' and df[var].nunique() > 20:
+                continue
+                
+            try:
+                if pd.api.types.is_numeric_dtype(df[var]):
+                    group_data = [df[df[treatment] == g][var].dropna() for g in groups]
+                    if len(groups) == 2:
+                        stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
+                    else:
+                        stat, p = stats.f_oneway(*group_data)
+                else:
+                    ct = pd.crosstab(df[var], df[treatment])
+                    stat, p, dof, expected = stats.chi2_contingency(ct)
+                
+                if p < 0.05:
+                    recommendations.append({
+                        'variable': var,
+                        'p_value': float(p)
+                    })
+            except:
+                continue
+                
+        # Sort by P-value (most significant first)
+        recommendations.sort(key=lambda x: x['p_value'])
+        return recommendations
+
+    @staticmethod
+    def check_data_health(df, variables):
+        """
+        检查数据集在指定变量上的健康状况。
+        返回缺失率、唯一值数量及警告信息。
+        """
+        health_report = []
+        n_total = len(df)
+        
+        for var in variables:
+            if var not in df.columns:
+                continue
+                
+            missing_count = int(df[var].isnull().sum())
+            missing_rate = (missing_count / n_total) if n_total > 0 else 0
+            
+            status = 'healthy'
+            message = '数据状态良好。'
+            
+            if missing_rate > 0.2:
+                status = 'warning'
+                message = f'缺失率较高 ({missing_rate:.1%})，可能导致样本量锐减。'
+            
+            # For categorical, check if any level has very few samples
+            if not pd.api.types.is_numeric_dtype(df[var]):
+                counts = df[var].value_counts()
+                if (counts < 5).any():
+                    status = 'warning'
+                    message = '部分分类水平样本量过少 (<5)，可能导致统计效能不足。'
+            
+            health_report.append({
+                'variable': var,
+                'status': status,
+                'missing_count': missing_count,
+                'missing_rate': missing_rate,
+                'message': message
+            })
+            
+        return health_report
+
+    @staticmethod
+    def get_distribution(df, variable):
+        """
+        获取单个变量的分布统计数据，用于前端绘图。
+        """
+        if variable not in df.columns:
+            return None
+            
+        series = df[variable].dropna()
+        if series.empty:
+            return None
+            
+        if pd.api.types.is_numeric_dtype(series):
+            # Calculate Histogram data
+            counts, bin_edges = np.histogram(series, bins='auto')
+            
+            # Normal distribution curve for overlay
+            mu = series.mean()
+            std = series.std()
+            x_range = np.linspace(series.min(), series.max(), 100)
+            y_norm = stats.norm.pdf(x_range, mu, std) if std > 0 else []
+            
+            return {
+                'type': 'numeric',
+                'bins': {
+                    'counts': counts.tolist(),
+                    'edges': bin_edges.tolist()
+                },
+                'curve': {
+                    'x': x_range.tolist(),
+                    'y': y_norm.tolist()
+                },
+                'stats': {
+                    'mean': float(mu),
+                    'std': float(std),
+                    'n': len(series)
+                }
+            }
+        else:
+            # Categorical counts
+            counts = series.value_counts().to_dict()
+            return {
+                'type': 'categorical',
+                'counts': counts,
+                'stats': {
+                    'n': len(series),
+                    'unique': len(counts)
+                }
+            }
+
+    @staticmethod
     def _calc_smd(df1, df2, var):
         # Handle numeric
         if pd.api.types.is_numeric_dtype(df1[var]):
