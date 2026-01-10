@@ -83,7 +83,7 @@ def subgroup_analysis(current_user):
     results = AdvancedModelingService.perform_subgroup(
         df, target, event_col, exposure, subgroups, covariates, model_type
     )
-    return jsonify({'forest_data': results}), 200
+    return jsonify(results), 200
 
 @advanced_bp.route('/cif', methods=['POST'])
 @token_required

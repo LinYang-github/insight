@@ -257,7 +257,18 @@ class AdvancedModelingService:
             results['plot_data'] = plot_data
             results['ref_value'] = ref_value
             
+            # Methodology & Interpretation
+            results['methodology'] = AdvancedModelingService._generate_rcs_methodology(knots, model_type)
+            results['interpretation'] = "检测到潜在非线性关系。" if results.get('p_non_linear') and results['p_non_linear'] < 0.05 else "未检测到显著非线性关系。"
+            
         return results
+
+    @staticmethod
+    def _generate_rcs_methodology(knots, model_type):
+        model_name = "Cox proportional hazards" if model_type == 'cox' else "Logistic regression"
+        return (f"Restricted cubic splines (RCS) with {knots} knots were used to model the non-linear "
+                f"relationship between the continuous exposure and outcome using {model_name} models. "
+                "Tests for non-linearity was performed.")
 
     @staticmethod
     def perform_subgroup(df, target, event_col, exposure, subgroups, covariates, model_type='cox'):
@@ -358,7 +369,17 @@ class AdvancedModelingService:
             
             results.append(group_res)
             
-        return results
+        # Wrap in dict with methodology
+        return {
+            'forest_data': results,
+            'methodology': AdvancedModelingService._generate_subgroup_methodology(model_type)
+        }
+
+    @staticmethod
+    def _generate_subgroup_methodology(model_type):
+        test_type = "Likelihood Ratio Test" # Simplified
+        return ("Subgroup analyses were performed to evaluate the consistency of the effect sizes across prespecified subgroups. "
+                "Interaction terms were included in the models to test for heterogeneity of effects (interaction P-value).")
 
     @staticmethod
     def _fit_simple_model(df, target, event_col, exposure, covariates, model_type):
@@ -470,7 +491,15 @@ class AdvancedModelingService:
                 except Exception as e:
                     print(f"AJ fit failed for grp={grp} evt={evt}: {e}")
                     
-        return results
+        return {
+            'cif_data': results,
+            'methodology': AdvancedModelingService._generate_cif_methodology()
+        }
+
+    @staticmethod
+    def _generate_cif_methodology():
+        return ("Cumulative Incidence Functions (CIF) were estimated using the Aalen-Johansen estimator to account for competing risks. "
+                "Gray's test was used to compare equality of CIFs between groups (if applicable).")
 
     @staticmethod
     def generate_nomogram(df, target, event_col, model_type, predictors):
@@ -654,7 +683,15 @@ class AdvancedModelingService:
             'coeffs': {v: float(var_metas[v]['coef']) for v in predictors if v in var_metas},
             'model_type': model_type
         }
+        # Add methodology
+        results['methodology'] = AdvancedModelingService._generate_nomogram_methodology(model_type)
         return results
+
+    @staticmethod
+    def _generate_nomogram_methodology(model_type):
+        return ("A nomogram was formulated to visualize the prediction model. "
+                "Points were assigned to each variable (or level) based on its regression coefficient. "
+                "The total points were mapped to the predicted probability of the outcome.")
 
     @staticmethod
     def compare_models(df, target, model_configs, model_type='logistic', event_col=None):
@@ -784,4 +821,12 @@ class AdvancedModelingService:
                     'error': str(e)
                 })
                 
-        return results
+        return {
+            'comparison_data': results,
+            'methodology': AdvancedModelingService._generate_comparison_methodology()
+        }
+
+    @staticmethod
+    def _generate_comparison_methodology():
+        return ("Model discrimination was evaluated using the Area Under the Receiver Operating Characteristic (ROC) Curve (AUC) or Harrell's C-index. "
+                "Models were compared based on their predictive performance on the same complete-case dataset.")

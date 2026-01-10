@@ -34,7 +34,10 @@ def generate_table1(current_user):
     df = DataService.load_data(dataset.filepath)
     
     result = StatisticsService.generate_table_one(df, group_by, variables)
-    return jsonify({'table1': result}), 200
+    return jsonify({
+        'table1': result['table_data'],
+        'methodology': result['methodology']
+    }), 200
 
 @statistics_bp.route('/km', methods=['POST'])
 @token_required

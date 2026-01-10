@@ -82,11 +82,19 @@ class LongitudinalService:
                 'random_effects': random_effects,
                 'aic': result.aic,
                 'bic': result.bic,
-                'converged': result.converged
+                'converged': result.converged,
+                'methodology': LongitudinalService._generate_lmm_methodology(fixed_effects, random_slope)
             }
             
         except Exception as e:
             raise ValueError(f"LMM fitting failed: {str(e)}")
+
+    @staticmethod
+    def _generate_lmm_methodology(fixed_effects, random_slope):
+        re_text = "random intercepts and slopes" if random_slope else "random intercepts"
+        fe_text = f" Fixed effects included {', '.join(['Time'] + fixed_effects)}."
+        return (f"Linear mixed-effects models (LMM) were fitted with {re_text} to account for within-subject correlations."
+                f"{fe_text} The models were estimated using Maximum Likelihood (ML) or REML.")
 
     @staticmethod
     def cluster_trajectories(df, id_col, time_col, outcome_col, n_clusters=3):
@@ -143,8 +151,14 @@ class LongitudinalService:
         
         return {
             'clusters': params_df.to_dict(orient='records'),
-            'centroids': cluster_stats.to_dict(orient='records') # Simplified
+            'centroids': cluster_stats.to_dict(orient='records'),
+            'methodology': LongitudinalService._generate_clustering_methodology(n_clusters)
         }
+
+    @staticmethod
+    def _generate_clustering_methodology(n_clusters):
+        return (f"Trajectory clustering was performed using a two-step approach: 1) Individual slopes and intercepts were estimated using linear regression. "
+                f"2) K-means clustering (k={n_clusters}) was applied to these features to identify distinct trajectory patterns.")
 
     @staticmethod
     def calculate_variability(df, id_col, outcome_col):
@@ -183,4 +197,12 @@ class LongitudinalService:
                 'arv': float(arv)
             })
             
-        return results
+        return {
+            'variability_data': results,
+            'methodology': LongitudinalService._generate_variability_methodology()
+        }
+
+    @staticmethod
+    def _generate_variability_methodology():
+        return ("Visit-to-visit variability (VVV) was assessed using standard deviation (SD), coefficient of variation (CV), and average real variability (ARV). "
+                "These metrics capture different aspects of fluctuation independent of the mean level.")

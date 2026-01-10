@@ -61,8 +61,19 @@
                 </el-col>
                 
                 <el-col :span="18">
-                    <div id="rcs-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
-                    <div v-if="!rcsData" class="placeholder-text">请配置参数并运行以查看结果</div>
+                    <el-card shadow="never">
+                        <template #header>
+                             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>RCS Plot</span>
+                                <el-button v-if="rcsMethodology" size="small" type="primary" plain @click="copyText(rcsMethodology)">Copy Methods</el-button>
+                             </div>
+                        </template>
+                        <div v-if="processRCSInterpretation()" style="margin-bottom: 10px;">
+                            <el-alert :title="processRCSInterpretation()" type="info" :closable="false" show-icon />
+                        </div>
+                        <div id="rcs-plot" style="width: 100%; height: 600px; background: #fff;"></div>
+                        <div v-if="!rcsData" class="placeholder-text" style="height: 100px;">请配置参数并运行以查看结果</div>
+                    </el-card>
                 </el-col>
             </el-row>
         </el-tab-pane>
@@ -128,7 +139,15 @@
                     </el-card>
                 </el-col>
                 <el-col :span="18">
-                     <div id="forest-plot" style="width: 100%; height: 700px; background: #fff; border-radius: 4px;"></div>
+                    <el-card shadow="never">
+                        <template #header>
+                            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Forest Plot</span>
+                                <el-button v-if="subMethodology" size="small" type="primary" plain @click="copyText(subMethodology)">Copy Methods</el-button>
+                            </div>
+                        </template>
+                        <div id="forest-plot" style="width: 100%; height: 700px; background: #fff;"></div>
+                    </el-card>
                 </el-col>
              </el-row>
         </el-tab-pane>
@@ -177,7 +196,15 @@
                     </el-card>
                 </el-col>
                 <el-col :span="18">
-                     <div id="cif-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
+                    <el-card shadow="never">
+                        <template #header>
+                            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>CIF Plot</span>
+                                <el-button v-if="cifMethodology" size="small" type="primary" plain @click="copyText(cifMethodology)">Copy Methods</el-button>
+                            </div>
+                        </template>
+                        <div id="cif-plot" style="width: 100%; height: 600px; background: #fff;"></div>
+                    </el-card>
                 </el-col>
              </el-row>
         </el-tab-pane>
@@ -249,6 +276,9 @@
                      </el-card>
                      
                      <div id="nomogram-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
+                     <div style="margin-top: 10px; text-align: right;" v-if="nomoMethodology">
+                         <el-button size="small" type="primary" plain @click="copyText(nomoMethodology)">Copy Methods</el-button>
+                     </div>
                 </el-col>
              </el-row>
         </el-tab-pane>
@@ -297,6 +327,7 @@ const runRCS = async () => {
         }
         const { data } = await api.post('/advanced/rcs', payload)
         rcsData.value = data
+        rcsMethodology.value = data.methodology
         renderRCS(data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'RCS 运行失败')
@@ -354,6 +385,7 @@ const runSubgroup = async () => {
             ...subgroupParams.value
         }
         const { data } = await api.post('/advanced/subgroup', payload)
+        subMethodology.value = data.methodology
         renderForest(data.forest_data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || '亚组分析失败')
@@ -435,7 +467,8 @@ const runCIF = async () => {
             ...cifParams.value
         }
         const { data } = await api.post('/advanced/cif', payload)
-        renderCIF(data)
+        cifMethodology.value = data.methodology
+        renderCIF(data.cif_data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'CIF 分析失败')
     } finally {
@@ -474,6 +507,22 @@ const nomoParams = ref({
 })
 const calcValues = ref({})
 
+// Methodologies
+const rcsMethodology = ref('')
+const subMethodology = ref('')
+const cifMethodology = ref('')
+const nomoMethodology = ref('')
+
+const copyText = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+        ElMessage.success('Copied methodology')
+    })
+}
+
+const processRCSInterpretation = () => {
+    return rcsData.value?.interpretation
+}
+
 const runNomogram = async () => {
     nomoLoading.value = true
     try {
@@ -482,7 +531,9 @@ const runNomogram = async () => {
             ...nomoParams.value
         }
         const { data } = await api.post('/advanced/nomogram', payload)
+
         nomoData.value = data
+        nomoMethodology.value = data.methodology
         
         // Init calculator
         const initVals = {}

@@ -50,6 +50,7 @@
                 <template #header>
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>Table 1: Baseline Characteristics</span>
+                        <el-button v-if="methodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
                         <el-button v-if="results.length > 0" type="success" size="small" @click="exportExcel">导出 Excel</el-button>
                     </div>
                 </template>
@@ -198,6 +199,8 @@ const categoricalOptions = computed(() => {
 
 const allOptions = computed(() => variableOptions.value)
 
+const methodology = ref('')
+
 const generateTable = async () => {
     if (config.variables.length === 0) {
         ElMessage.warning("请至少选择一个统计变量")
@@ -207,6 +210,7 @@ const generateTable = async () => {
     loading.value = true
     results.value = []
     groupNames.value = []
+    methodology.value = ''
 
     try {
         const { data } = await api.post('/statistics/table1', {
@@ -216,6 +220,7 @@ const generateTable = async () => {
         })
         
         results.value = data.table1
+        methodology.value = data.methodology
         
         // Extract group names from first result that has groups
         if (config.groupBy && results.value.length > 0) {
@@ -231,6 +236,18 @@ const generateTable = async () => {
     } finally {
         loading.value = false
     }
+}
+
+const copyMethodology = () => {
+    if (!methodology.value) {
+        ElMessage.info('暂无方法学内容')
+        return
+    }
+    navigator.clipboard.writeText(methodology.value).then(() => {
+        ElMessage.success('方法学段落已复制')
+    }).catch(err => {
+        ElMessage.error('复制失败')
+    })
 }
 
 const pValTag = (info) => {

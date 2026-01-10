@@ -85,7 +85,12 @@
 
                 <!-- Result Table -->
                 <el-card shadow="never" style="margin-top: 20px" v-if="results">
-                    <template #header>统计对比表 (Statistics)</template>
+                    <template #header>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>统计对比表 (Statistics)</span>
+                            <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">Copy Methods</el-button>
+                        </div>
+                    </template>
                     <el-table :data="tableData" stripe border size="small">
                         <el-table-column prop="name" label="模型名称" width="150" />
                         <el-table-column prop="auc" label="AUC (95% CI)" width="180">
@@ -153,8 +158,19 @@ const isValid = computed(() => {
     return basic
 })
 
+// Methodology
+const methodology = ref('')
+
+const copyText = () => {
+    if(!methodology.value) return
+    navigator.clipboard.writeText(methodology.value).then(() => {
+        ElMessage.success('Copied methodology')
+    })
+}
+
 const runComparison = async () => {
     loading.value = true
+    methodology.value = ''
     try {
         const payload = {
             dataset_id: props.datasetId,
@@ -165,8 +181,10 @@ const runComparison = async () => {
         }
         
         const { data } = await api.post('/advanced/compare-models', payload)
-        results.value = data
-        renderPlot(data)
+        results.value = data.comparison_data
+        methodology.value = data.methodology
+        
+        renderPlot(data.comparison_data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || '对比分析失败')
     } finally {

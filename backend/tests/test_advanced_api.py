@@ -75,6 +75,7 @@ def test_rcs_endpoint(client, auth_headers, project_with_data):
     assert resp.status_code == 200
     data = resp.get_json()
     assert 'plot_data' in data
+    assert 'methodology' in data
     assert len(data['plot_data']) == 100
 
 def test_subgroup_endpoint(client, auth_headers, project_with_data):
@@ -92,6 +93,7 @@ def test_subgroup_endpoint(client, auth_headers, project_with_data):
     assert resp.status_code == 200
     data = resp.get_json()
     assert 'forest_data' in data
+    assert 'methodology' in data
     assert len(data['forest_data']) == 1 # One subgroup variable 'sex'
 
 def test_nomogram_endpoint(client, auth_headers, project_with_data):
@@ -107,7 +109,9 @@ def test_nomogram_endpoint(client, auth_headers, project_with_data):
     assert resp.status_code == 200, f"Nomogram failed: {resp.get_json()}"
     data = resp.get_json()
     assert 'variables' in data
+    assert 'variables' in data
     assert 'risk_table' in data
+    assert 'methodology' in data
     assert len(data['risk_table']) > 0
 
 def test_missing_dataset_404(client, auth_headers):
@@ -118,3 +122,23 @@ def test_missing_dataset_404(client, auth_headers):
     }
     resp = client.post("/api/advanced/rcs", headers=auth_headers, json=payload)
     assert resp.status_code == 404
+
+def test_rcs_invalid_params(client, auth_headers, project_with_data):
+    """Test RCS with invalid knots"""
+    payload = {
+        "dataset_id": project_with_data,
+        "target": "event",
+        "exposure": "exposure",
+        "knots": 1 # Invalid
+    }
+    resp = client.post("/api/advanced/rcs", headers=auth_headers, json=payload)
+    assert resp.status_code != 200
+
+def test_nomogram_missing_params(client, auth_headers, project_with_data):
+    """Test Nomogram without predictors"""
+    payload = {
+        "dataset_id": project_with_data,
+        "target": "event"
+    }
+    resp = client.post("/api/advanced/nomogram", headers=auth_headers, json=payload)
+    assert resp.status_code == 400

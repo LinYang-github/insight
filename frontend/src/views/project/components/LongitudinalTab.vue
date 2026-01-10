@@ -44,7 +44,10 @@
                  
                  <el-row :gutter="20">
                      <el-col :span="14">
-                         <h4>固定效应 (Popultaion Trends)</h4>
+                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                             <h4 style="margin: 0;">固定效应 (Population Trends)</h4>
+                             <el-button v-if="lmmMethodology" size="small" type="primary" link @click="copyText(lmmMethodology)">Copy Methods</el-button>
+                         </div>
                          <PublicationTable :data="results.lmm.summary">
                              <el-table-column prop="variable" label="变量" />
                              <el-table-column prop="coef" label="系数 (Coef)">
@@ -97,7 +100,10 @@
                           />
                       </el-col>
                       <el-col :span="8">
-                          <h4>簇中心 (Centroids)</h4>
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                               <h4>簇中心 (Centroids)</h4>
+                               <el-button v-if="trajMethodology" size="small" type="primary" link @click="copyText(trajMethodology)">Copy Methods</el-button>
+                          </div>
                           <el-table :data="results.clustering.centroids" border size="small">
                               <el-table-column prop="cluster" label="Cluster" width="80" />
                               <el-table-column prop="slope" label="Avg Slope">
@@ -185,6 +191,17 @@ const charts = reactive({
     trajectory: { data: [], layout: {} }
 })
 
+// Methodology
+const lmmMethodology = ref('')
+const trajMethodology = ref('')
+const varMethodology = ref('')
+
+const copyText = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+        ElMessage.success('Copied methodology')
+    })
+}
+
 const variables = computed(() => props.metadata?.variables || [])
 const clusterColors = ['#F56C6C', '#E6A23C', '#67C23A', '#409EFF', '#909399']
 
@@ -200,6 +217,7 @@ const fitLMM = async () => {
             ...config
         })
         results.lmm = data.results
+        lmmMethodology.value = data.results.methodology
         renderSlopesChart(data.results.random_effects)
         ElMessage.success('LMM 运行成功')
     } catch (e) {
@@ -221,6 +239,7 @@ const runClustering = async () => {
             ...config
         })
         results.clustering = data.results
+        trajMethodology.value = data.results.methodology
         renderTrajChart(data.results.clusters)
         ElMessage.success('聚类完成')
     } catch (e) {
@@ -242,7 +261,8 @@ const calcVariability = async () => {
             id_col: config.id_col,
             outcome_col: config.outcome_col
         })
-        results.variability = data.results
+        results.variability = data.results.variability_data
+        varMethodology.value = data.results.methodology
         ElMessage.success('计算成功')
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'Failed')

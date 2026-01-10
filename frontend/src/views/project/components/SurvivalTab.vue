@@ -61,17 +61,20 @@
                                 Log-Rank P: {{ pValue }}
                             </el-tag>
                         </div>
-                        <el-dropdown trigger="click" @command="downloadPlot">
-                            <el-button type="primary" size="small">
-                                导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                            </el-button>
-                            <template #dropdown>
-                                <el-dropdown-menu>
-                                    <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-                                    <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
-                                </el-dropdown-menu>
-                            </template>
-                        </el-dropdown>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <el-button v-if="kmMethodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
+                            <el-dropdown trigger="click" @command="downloadPlot">
+                                <el-button type="primary" size="small">
+                                    导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                                </el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
+                                        <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </div>
                     </div>
                 </template>
                 
@@ -124,6 +127,8 @@ const numericOptions = computed(() => {
     return variableOptions.value.filter(v => v.type === 'continuous')
 })
 
+const kmMethodology = ref('')
+
 const generatePlot = async () => {
     if (!config.time || !config.event) {
         ElMessage.warning("请选择时间变量和事件变量")
@@ -133,6 +138,7 @@ const generatePlot = async () => {
     loading.value = true
     pValue.value = null
     kmInterpretation.value = null
+    kmMethodology.value = ''
     
     try {
         const { data } = await api.post('/statistics/km', {
@@ -142,6 +148,7 @@ const generatePlot = async () => {
         
         pValue.value = data.km_data.p_value
         kmInterpretation.value = data.km_data.interpretation
+        kmMethodology.value = data.km_data.methodology
         
         renderPlot(data.km_data.plot_data)
         
@@ -150,6 +157,18 @@ const generatePlot = async () => {
     } finally {
         loading.value = false
     }
+}
+
+const copyMethodology = () => {
+    if (!kmMethodology.value) {
+        ElMessage.info('暂无方法学内容')
+        return
+    }
+    navigator.clipboard.writeText(kmMethodology.value).then(() => {
+        ElMessage.success('方法学段落已复制')
+    }).catch(err => {
+        ElMessage.error('复制失败')
+    })
 }
 
 /**

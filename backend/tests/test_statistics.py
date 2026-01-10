@@ -67,7 +67,7 @@ def test_service_logic():
     })
     
     # Test Numeric T-test (Should be significant)
-    res = StatisticsService.generate_table_one(df, 'group', ['age'])
+    res = StatisticsService.generate_table_one(df, 'group', ['age'])['table_data']
     age_row = res[0]
     assert age_row['variable'] == 'age'
     assert 'Young' in age_row['groups']
@@ -80,7 +80,7 @@ def test_service_logic():
     assert age_row['test'] == "Student's T-test"
 
     # Test Categorical (Chi-square) - Should be non-significant (perfectly balanced)
-    res = StatisticsService.generate_table_one(df, 'group', ['sex'])
+    res = StatisticsService.generate_table_one(df, 'group', ['sex'])['table_data']
     sex_row = res[0]
     assert sex_row['variable'] == 'sex'
     # p-value might be 1.0
@@ -164,7 +164,7 @@ def test_fisher_exact_small_sample():
         'outcome': ['Yes']*3 + ['Yes', 'No', 'No', 'No', 'No']
     })
     
-    res = StatisticsService.generate_table_one(df, 'group', ['outcome'])
+    res = StatisticsService.generate_table_one(df, 'group', ['outcome'])['table_data']
     row = res[0]
     
     # Should automatically choose Fisher Exact
@@ -223,7 +223,7 @@ def test_metadata_injection():
         'group': ['A']*5 + ['B']*5
     })
     
-    res = StatisticsService.generate_table_one(df, 'group', ['val'])
+    res = StatisticsService.generate_table_one(df, 'group', ['val'])['table_data']
     row = res[0]
     
     assert '_meta' in row
@@ -235,7 +235,7 @@ def test_metadata_injection():
         'val': [1, 2, 3, 1, 2, 3, 1, 2, 3],
         'group': ['A']*3 + ['B']*3 + ['C']*3
     })
-    res2 = StatisticsService.generate_table_one(df2, 'group', ['val'])
+    res2 = StatisticsService.generate_table_one(df2, 'group', ['val'])['table_data']
     row2 = res2[0]
     
     assert row2['test'] == 'ANOVA'
