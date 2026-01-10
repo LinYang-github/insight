@@ -182,7 +182,78 @@
              </el-row>
         </el-tab-pane>
 
-        <!-- Tab 4: Model Comparison -->
+        <!-- Tab 4: Nomogram -->
+        <el-tab-pane label="🏥 列线图 (Nomogram)" name="nomogram">
+             <el-row :gutter="20">
+                <el-col :span="6">
+                    <el-card shadow="never">
+                         <el-alert
+                             title="临床应用"
+                             type="success"
+                             :closable="false"
+                             show-icon
+                             style="margin-bottom: 20px"
+                         >
+                             <div>
+                                 <b>列线图 (Nomogram)</b> 将复杂的回归模型可视化为简单的评分系统。
+                             </div>
+                         </el-alert>
+                         <el-form label-position="top">
+                             <el-form-item label="模型类型">
+                                 <el-select v-model="nomoParams.model_type">
+                                     <el-option label="Cox Proportional Hazards" value="cox" />
+                                     <el-option label="Logistic Regression" value="logistic" />
+                                 </el-select>
+                             </el-form-item>
+                             
+                             <el-form-item label="结局变量 (Y)" required>
+                                 <el-select v-model="nomoParams.target" filterable>
+                                     <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" />
+                                 </el-select>
+                             </el-form-item>
+                             
+                             <el-form-item label="事件 (Event)" v-if="nomoParams.model_type === 'cox'" required>
+                                 <el-select v-model="nomoParams.event_col" filterable>
+                                     <el-option v-for="v in binaryVars" :key="v.name" :label="v.name" :value="v.name" />
+                                 </el-select>
+                             </el-form-item>
+                             
+                             <el-form-item label="预测因子 (Predictors)" required>
+                                 <el-select v-model="nomoParams.predictors" multiple filterable collapse-tags>
+                                     <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" :disabled="v.name === nomoParams.target" />
+                                 </el-select>
+                             </el-form-item>
+                             
+                             <el-button type="primary" @click="runNomogram" :loading="nomoLoading" style="width: 100%">生成列线图</el-button>
+                         </el-form>
+                    </el-card>
+                </el-col>
+                <el-col :span="18">
+                     <!-- Web Calculator -->
+                     <el-card shadow="hover" v-if="nomoData" style="margin-bottom: 20px;">
+                        <template #header>
+                             <div class="card-header">
+                                 <span>🌐 Web Risk Calculator</span>
+                             </div>
+                        </template>
+                        <el-form :inline="true">
+                            <el-form-item v-for="v in nomoData.variables" :key="v.name" :label="v.name">
+                                <el-input-number v-model="calcValues[v.name]" :min="v.min" :max="v.max" size="small" />
+                            </el-form-item>
+                        </el-form>
+                        <div style="background: #f0f9eb; padding: 10px; border-radius: 4px; text-align: center;">
+                            <span style="font-size: 16px; color: #67c23a; font-weight: bold;">
+                                预测风险 (Predicted Probability): {{ (calculatedRisk * 100).toFixed(2) }}%
+                            </span>
+                        </div>
+                     </el-card>
+                     
+                     <div id="nomogram-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
+                </el-col>
+             </el-row>
+        </el-tab-pane>
+
+        <!-- Tab 5: Model Comparison -->
         <el-tab-pane label="📊 模型对比 (Comparison)" name="comparison">
             <model-comparison-tab :dataset-id="datasetId" :metadata="metadata" />
         </el-tab-pane>
@@ -390,6 +461,231 @@ const renderCIF = (results) => {
         showlegend: true
     }
     Plotly.newPlot('cif-plot', traces, layout)
+}
+
+// --- 4. Nomogram Logic ---
+const nomoLoading = ref(false)
+const nomoData = ref(null)
+const nomoParams = ref({
+    model_type: 'cox',
+    target: '',
+    event_col: '',
+    predictors: []
+})
+const calcValues = ref({})
+
+const runNomogram = async () => {
+    nomoLoading.value = true
+    try {
+        const payload = {
+            dataset_id: props.datasetId,
+            ...nomoParams.value
+        }
+        const { data } = await api.post('/advanced/nomogram', payload)
+        nomoData.value = data
+        
+        // Init calculator
+        const initVals = {}
+        data.variables.forEach(v => {
+            initVals[v.name] = v.min // Default to min
+        })
+        calcValues.value = initVals
+        
+        renderNomogram(data)
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'Nomogram 生成失败')
+    } finally {
+        nomoLoading.value = false
+    }
+}
+
+const calculatedRisk = computed(() => {
+    if (!nomoData.value) return 0
+    let totalPoints = 0
+    
+    // Calculate Total Points
+    // Need scaling info?
+    // Backend returned 'points_mapping' for ticks.
+    // We need the formula: Points = (Val - Min) * Coef * Scaling + Min_C?
+    // Let's infer from the mapping linearly.
+    // simpler: The backend logic was:
+    // Pts = (Val * Coef - Min_C) * scaling
+    // But we don't have scaling factor directly exposed easily unless we parse mapping.
+    // Let's use linear interpolation from 'points_mapping'.
+    
+    nomoData.value.variables.forEach(v => {
+        const val = calcValues.value[v.name] || v.min
+        // Find mapping
+        // It's linear. Just take 2 points.
+        const p1 = v.points_mapping[0]
+        const p2 = v.points_mapping[v.points_mapping.length - 1]
+        
+        if (Math.abs(p2.val - p1.val) < 1e-9) {
+             totalPoints += 0
+        } else {
+             const slope = (p2.pts - p1.pts) / (p2.val - p1.val)
+             const pts = p1.pts + slope * (val - p1.val)
+             totalPoints += pts
+        }
+    })
+    
+    // Map Total Points to Risk
+    // 'risk_table' in nomoData
+    // find nearest or interp
+    const risks = nomoData.value.risk_table
+    if (!risks || risks.length === 0) return 0
+    
+    // risks is sorted by points (0 to max)
+    // simple linear search or interp
+    // find i where risks[i].points <= totalPoints < risks[i+1].points
+    
+    if (totalPoints <= risks[0].points) return risks[0].risk
+    if (totalPoints >= risks[risks.length-1].points) return risks[risks.length-1].risk
+    
+    for (let i = 0; i < risks.length - 1; i++) {
+        if (totalPoints >= risks[i].points && totalPoints <= risks[i+1].points) {
+            const r1 = risks[i]
+            const r2 = risks[i+1]
+            const ratio = (totalPoints - r1.points) / (r2.points - r1.points)
+            return r1.risk + ratio * (r2.risk - r1.risk)
+        }
+    }
+    return 0
+})
+
+const renderNomogram = (res) => {
+    // Draw using Shapes
+    const shapes = []
+    const annotations = []
+    
+    let current_y = 1
+    const Y_STEP = 0.15
+    
+    // 1. Variable Scales
+    res.variables.forEach(v => {
+        // Line
+        shapes.push({
+            type: 'line',
+            x0: 0, x1: 100, // Normalized 0-100 points
+            y0: current_y, y1: current_y,
+            line: { color: 'black', width: 2 }
+        })
+        
+        // Label
+        annotations.push({
+            x: -5, y: current_y, xref: 'x', yref: 'y',
+            text: `<b>${v.name}</b>`, showarrow: false, xanchor: 'right'
+        })
+        
+        // Ticks
+        v.points_mapping.forEach(m => {
+             shapes.push({
+                type: 'line', x0: m.pts, x1: m.pts, y0: current_y, y1: current_y + 0.02,
+                line: { color: 'black', width: 1 }
+             })
+             annotations.push({
+                 x: m.pts, y: current_y + 0.05, xref: 'x', yref: 'y',
+                 text: m.val.toFixed(1), showarrow: false, font: {size: 10}
+             })
+        })
+        
+        current_y -= Y_STEP
+    })
+    
+    // 2. Total Points Scale
+    current_y -= Y_STEP
+    shapes.push({
+        type: 'line', x0: 0, x1: 100, y0: current_y, y1: current_y,
+        line: { color: 'black', width: 2 }
+    })
+    annotations.push({
+        x: -5, y: current_y, xref: 'x', yref: 'y',
+        text: `<b>Total Points</b>`, showarrow: false, xanchor: 'right'
+    })
+    // Ticks usually 0 to ??? Backend normalized to 100 max variable points? 
+    // Wait, total max points > 100 probably.
+    // The backend `points_mapping` already normalized each var to 0-100 scale relative to max effect?
+    // YES. `total_max_points` in backend is the sum of max points.
+    // We need to know the Total Points Range to draw the detailed scale.
+    // Backend `risk_table` has points range 0 to total_max.
+    // We should map this 0-total_max to 0-100 visual width? Or just show 0-total_max.
+    // Let's use the `risk_table` range.
+    const max_total_pts = res.risk_table[res.risk_table.length-1].points
+    
+    // Draw ticks for Total Points (e.g. every 20 or 50)
+    const step = max_total_pts / 10
+    for(let p=0; p<=max_total_pts; p+=step) {
+        // Where is p on the x-axis?
+        // We need to align the visual columns.
+        // Actually, the Nomogram aligns everything standardly.
+        // If var1 0-100 pts takes 100 pixel width.
+        // Then Total points 0-SumMax takes SumMax pixel width.
+        // So we should scale everything to the same physical unit.
+        // Let's simply map "Points" directly to X-axis value.
+        // So X-axis is "Points".
+        shapes.push({
+            type: 'line', x0: p, x1: p, y0: current_y, y1: current_y + 0.02,
+            line: { color: 'black', width: 1 }
+        })
+        annotations.push({
+             x: p, y: current_y + 0.05, xref: 'x', yref: 'y',
+             text: p.toFixed(0), showarrow: false, font: {size: 10}
+        })
+    }
+    
+    // 3. Risk Scale
+    current_y -= Y_STEP
+    shapes.push({
+        type: 'line', x0: 0, x1: max_total_pts, y0: current_y, y1: current_y,
+        line: { color: 'black', width: 2 }
+    })
+    annotations.push({
+        x: -5, y: current_y, xref: 'x', yref: 'y',
+        text: `<b>Linear Predictor</b>`, showarrow: false, xanchor: 'right' // or Risk
+    })
+    
+    // Risk Ticks mapping
+    // We iterate risk levels (0.1, 0.2 ... 0.9) and find corresponding points
+    const risk_levels = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+    current_y -= Y_STEP
+    
+    shapes.push({
+        type: 'line', x0: 0, x1: max_total_pts, y0: current_y, y1: current_y,
+        line: { color: 'black', width: 2 }
+    })
+    annotations.push({
+        x: -5, y: current_y, xref: 'x', yref: 'y',
+        text: `<b>Risk Probability</b>`, showarrow: false, xanchor: 'right'
+    })
+    
+    risk_levels.forEach(r => {
+        // Reverse map Risk -> Points using risk_table
+        // risk_table is monotonic
+        const match = res.risk_table.find(item => item.risk >= r)
+        if (match) {
+            const x_pos = match.points
+             shapes.push({
+                type: 'line', x0: x_pos, x1: x_pos, y0: current_y, y1: current_y + 0.02,
+                line: { color: 'black', width: 1 }
+             })
+             annotations.push({
+                 x: x_pos, y: current_y + 0.05, xref: 'x', yref: 'y',
+                 text: r.toString(), showarrow: false, font: {size: 10}
+             })
+        }
+    })
+    
+    const layout = {
+        title: 'Nomogram',
+        xaxis: { visible: false, range: [-20, max_total_pts * 1.1] }, // Add padding
+        yaxis: { visible: false, range: [current_y - 0.2, 1.2] },
+        shapes: shapes,
+        annotations: annotations,
+        height: 600,
+        margin: { l: 150, r: 50, t: 50, b: 50 }
+    }
+    
+    Plotly.newPlot('nomogram-plot', [], layout)
 }
 
 // Shared

@@ -55,19 +55,16 @@
                 </template>
 
                 <el-empty v-if="results.length === 0" description="请配置参数并运行" />
-
-                <el-table 
+                
+                <PublicationTable 
                     v-else 
                     :data="results" 
-                    style="width: 100%" 
-                    border 
-                    stripe 
                     highlight-current-row
                     @row-click="(row) => selectedRow = row"
                 >
                     <el-table-column prop="variable" label="Variable" width="180">
                         <template #default="scope">
-                            <el-link type="primary" :underline="true" @click.stop="openDistribution(scope.row.variable)">
+                            <el-link type="primary" :underline="false" @click.stop="openDistribution(scope.row.variable)">
                                 {{ scope.row.variable }}
                             </el-link>
                         </template>
@@ -106,7 +103,8 @@
                              <GlossaryTooltip term="p_value">P-value</GlossaryTooltip>
                          </template>
                          <template #default="scope">
-                             <el-tag :type="pValTag(scope.row.p_value)">{{ scope.row.p_value }}</el-tag>
+                             <StatValue :value="scope.row.p_value" type="p-value" />
+                             
                              <div style="margin-top: 5px;">
                                  <el-tooltip 
                                     v-if="scope.row._meta && scope.row._meta.selection_reason"
@@ -123,7 +121,7 @@
                              </div>
                          </template>
                     </el-table-column>
-                </el-table>
+                </PublicationTable>
                 
                 <InterpretationPanel 
                     v-if="selectedRow && selectedRow.p_value"
@@ -160,6 +158,8 @@ import { ElMessage } from 'element-plus'
 import InterpretationPanel from './InterpretationPanel.vue'
 import GlossaryTooltip from './GlossaryTooltip.vue'
 import DistributionDialog from './DistributionDialog.vue'
+import PublicationTable from '../../../components/PublicationTable.vue'
+import StatValue from '../../../components/StatValue.vue'
 
 const props = defineProps({
     datasetId: Number,

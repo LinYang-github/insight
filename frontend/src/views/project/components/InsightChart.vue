@@ -71,6 +71,7 @@ const renderChart = () => {
   const defaultLayout = {
     font: { family: 'Helvetica Neue, Arial, sans-serif' },
     margin: { t: 40, r: 20, b: 40, l: 60 },
+    colorway: ['#3B71CA', '#E6A23C', '#2E7D32', '#D32F2F', '#909399'], // IDS Palette
     ...props.layout
   }
 
@@ -107,6 +108,7 @@ watch(() => [props.data, props.layout], () => {
          const defaultLayout = {
             font: { family: 'Helvetica Neue, Arial, sans-serif' },
             margin: { t: 40, r: 20, b: 40, l: 60 },
+            colorway: ['#3B71CA', '#E6A23C', '#2E7D32', '#D32F2F', '#909399'],
             ...props.layout
         }
         Plotly.react(props.chartId, props.data, defaultLayout, props.config)

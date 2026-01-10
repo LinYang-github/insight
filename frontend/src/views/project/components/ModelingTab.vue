@@ -31,7 +31,10 @@
                        </template>
                        <template v-if="config.model_type !== 'cox'">
                            <el-select v-model="config.target" placeholder="选择目标变量" filterable style="width: 100%">
-                               <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                               <el-option v-for="opt in targetOptions" :key="opt.value" :label="opt.label" :value="opt.value" :disabled="opt.disabled">
+                                    <span v-if="opt.disabled" style="color: #ccc">{{ opt.label }} (Non-numeric)</span>
+                                    <span v-else>{{ opt.label }}</span>
+                               </el-option>
                            </el-select>
                        </template>
                        <template v-else>
@@ -74,6 +77,16 @@
                                </div>
                            </el-option>
                        </el-select>
+                       
+                       <!-- VIF Alert -->
+                        <el-alert
+                            v-if="collinearityWarning"
+                            :title="collinearityWarning"
+                            type="warning"
+                            show-icon
+                            style="margin-top: 10px"
+                            :closable="false"
+                        />
                    </el-form-item>
                    
                    <!-- Reference Levels (Advanced) -->
@@ -397,6 +410,14 @@ const metricTooltips = {
     'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近1越好。'
 }
 
+const modelOptions = [
+    { label: '线性回归 (Linear Regression, OLS)', value: 'linear' },
+    { label: '逻辑回归 (Logistic Regression)', value: 'logistic' },
+    { label: 'Cox 比例风险回归 (Cox Proportional Hazards)', value: 'cox' },
+    { label: '随机森林 (Random Forest)', value: 'random_forest' },
+    { label: 'XGBoost', value: 'xgboost' }
+]
+
 const config = reactive({
     model_type: 'logistic',
     target: null, 
@@ -460,8 +481,10 @@ const autoSuggestRoles = () => {
 // Collinearity Check Logic
 let collinearityTimer = null
 const checkingCollinearity = ref(false)
+const collinearityWarning = ref(null)
 
 const checkCollinearity = async () => {
+    collinearityWarning.value = null
     if (config.features.length < 2) return
     
     checkingCollinearity.value = true
@@ -472,14 +495,9 @@ const checkCollinearity = async () => {
         })
         
         if (data.status !== 'ok') {
-            // Show first warning
+            // Show persistent warning
             const first = data.report[0]
-            ElMessage({
-                message: `⚠️ 检测到共线性风险: ${first.message}`,
-                type: 'warning',
-                duration: 5000,
-                showClose: true
-            })
+            collinearityWarning.value = `检测到共线性风险: ${first.message} (VIF=${first.vif.toFixed(1)})。建议移除该变量。`
         }
     } catch (e) {
         console.error("Collinearity check failed", e)
@@ -489,6 +507,7 @@ const checkCollinearity = async () => {
 }
 
 watch(() => config.features, (newVal) => {
+    collinearityWarning.value = null
     if (collinearityTimer) clearTimeout(collinearityTimer)
     collinearityTimer = setTimeout(() => {
         checkCollinearity()
@@ -503,10 +522,22 @@ const variableOptions = computed(() => {
         return { 
             label: v.name, 
             value: v.name,
+            type: v.type, // Added type for filtering
             status: h ? h.status : 'unknown',
             msg: h ? h.message : ''
         }
     })
+})
+
+const targetOptions = computed(() => {
+    // For Linear Regression, Target must be numeric (continuous)
+    if (config.model_type === 'linear') {
+        return variableOptions.value.map(v => ({
+            ...v,
+            disabled: !['continuous', 'float', 'int'].includes(v.type)
+        }))
+    }
+    return variableOptions.value
 })
 
 const varHealthMap = ref({})
