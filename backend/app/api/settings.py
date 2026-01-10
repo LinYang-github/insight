@@ -46,9 +46,5 @@ def update_settings(current_user):
     # but reassigning a new dict works best
     current_user.settings = dict(current_settings) 
     
-    try:
-        db.session.commit()
-        return jsonify({'message': 'Settings updated', 'settings': current_user.settings}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': str(e)}), 500
+    db.session.commit()
+    return jsonify({'message': 'Settings updated', 'settings': current_user.settings}), 200

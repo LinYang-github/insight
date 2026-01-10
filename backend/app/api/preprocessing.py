@@ -27,14 +27,11 @@ def impute(current_user):
     dataset = Dataset.query.get_or_404(dataset_id)
     # Check permissions (omitted for MVP speed)
     
-    try:
-        from app.services.data_service import DataService
-        df = DataService.load_data(dataset.filepath)
-        new_df = PreprocessingService.impute_data(df, strategies)
-        new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'imputed', current_user.id)
-        return jsonify({'message': 'Imputation successful', 'new_dataset_id': new_dataset.id}), 200
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    new_df = PreprocessingService.impute_data(df, strategies)
+    new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'imputed', current_user.id)
+    return jsonify({'message': 'Imputation successful', 'new_dataset_id': new_dataset.id}), 200
 
 @preprocessing_bp.route('/encode', methods=['POST'])
 @token_required
@@ -48,11 +45,8 @@ def encode(current_user):
         
     dataset = Dataset.query.get_or_404(dataset_id)
     
-    try:
-        from app.services.data_service import DataService
-        df = DataService.load_data(dataset.filepath)
-        new_df = PreprocessingService.encode_data(df, columns)
-        new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'encoded', current_user.id)
-        return jsonify({'message': 'Encoding successful', 'new_dataset_id': new_dataset.id}), 200
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    new_df = PreprocessingService.encode_data(df, columns)
+    new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'encoded', current_user.id)
+    return jsonify({'message': 'Encoding successful', 'new_dataset_id': new_dataset.id}), 200

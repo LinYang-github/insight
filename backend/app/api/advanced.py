@@ -18,10 +18,7 @@ def fit_rcs(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    try:
-         df = DataService.load_data(dataset.filepath)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 404
+    df = DataService.load_data(dataset.filepath)
          
     target = data.get('target')
     event_col = data.get('event_col') # Optional (for Cox)
@@ -36,23 +33,17 @@ def fit_rcs(current_user):
     
     # Validation
     features = [exposure] + covariates
-    try:
-         # Target formatting for check
-         tgt_arg = target
-         if model_type == 'cox' and event_col:
-             tgt_arg = {'time': target, 'event': event_col}
-             
-         ModelingService.check_data_integrity(df, features, tgt_arg)
-    except ValueError as e:
-         return jsonify({'message': str(e)}), 400
+    # Target formatting for check
+    tgt_arg = target
+    if model_type == 'cox' and event_col:
+        tgt_arg = {'time': target, 'event': event_col}
         
-    try:
-        results = AdvancedModelingService.fit_rcs(
-            df, target, event_col, exposure, covariates, model_type, knots
-        )
-        return jsonify(results), 200
-    except Exception as e:
-        return jsonify({'message': f"RCS Analysis failed: {str(e)}"}), 500
+    ModelingService.check_data_integrity(df, features, tgt_arg)
+        
+    results = AdvancedModelingService.fit_rcs(
+        df, target, event_col, exposure, covariates, model_type, knots
+    )
+    return jsonify(results), 200
 
 
 @advanced_bp.route('/subgroup', methods=['POST'])
@@ -65,10 +56,7 @@ def subgroup_analysis(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    try:
-         df = DataService.load_data(dataset.filepath)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 404
+    df = DataService.load_data(dataset.filepath)
          
     target = data.get('target')
     event_col = data.get('event_col')
@@ -80,13 +68,10 @@ def subgroup_analysis(current_user):
     if not subgroups:
          return jsonify({'message': 'No subgroups provided.'}), 400
          
-    try:
-        results = AdvancedModelingService.perform_subgroup(
-            df, target, event_col, exposure, subgroups, covariates, model_type
-        )
-        return jsonify({'forest_data': results}), 200
-    except Exception as e:
-        return jsonify({'message': f"Subgroup Analysis failed: {str(e)}"}), 500
+    results = AdvancedModelingService.perform_subgroup(
+        df, target, event_col, exposure, subgroups, covariates, model_type
+    )
+    return jsonify({'forest_data': results}), 200
 
 @advanced_bp.route('/cif', methods=['POST'])
 @token_required
@@ -98,10 +83,7 @@ def calculate_cif(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    try:
-         df = DataService.load_data(dataset.filepath)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 404
+    df = DataService.load_data(dataset.filepath)
          
     time_col = data.get('time_col')
     event_col = data.get('event_col')
@@ -110,13 +92,10 @@ def calculate_cif(current_user):
     if not time_col or not event_col:
         return jsonify({'message': 'Time and Event columns are required.'}), 400
         
-    try:
-        results = AdvancedModelingService.calculate_cif(
-            df, time_col, event_col, group_col
-        )
-        return jsonify(results), 200
-    except Exception as e:
-        return jsonify({'message': f"CIF Calculation failed: {str(e)}"}), 500
+    results = AdvancedModelingService.calculate_cif(
+        df, time_col, event_col, group_col
+    )
+    return jsonify(results), 200
 
 @advanced_bp.route('/nomogram', methods=['POST'])
 @token_required
@@ -128,10 +107,7 @@ def generate_nomogram(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    try:
-         df = DataService.load_data(dataset.filepath)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 404
+    df = DataService.load_data(dataset.filepath)
     
     target = data.get('target')
     event_col = data.get('event_col')
@@ -142,21 +118,15 @@ def generate_nomogram(current_user):
          return jsonify({'message': 'Predictors are required'}), 400
 
     # Validation
-    try:
-         tgt_arg = target
-         if model_type == 'cox' and event_col:
-             tgt_arg = {'time': target, 'event': event_col}
-         ModelingService.check_data_integrity(df, predictors, tgt_arg)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 400
+    tgt_arg = target
+    if model_type == 'cox' and event_col:
+        tgt_arg = {'time': target, 'event': event_col}
+    ModelingService.check_data_integrity(df, predictors, tgt_arg)
 
-    try:
-        results = AdvancedModelingService.generate_nomogram(
-            df, target, event_col, model_type, predictors
-        )
-        return jsonify(results), 200
-    except Exception as e:
-        return jsonify({'message': f"Nomogram generation failed: {str(e)}"}), 500
+    results = AdvancedModelingService.generate_nomogram(
+        df, target, event_col, model_type, predictors
+    )
+    return jsonify(results), 200
 
 @advanced_bp.route('/compare-models', methods=['POST'])
 @token_required
@@ -168,10 +138,7 @@ def compare_models(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    try:
-         df = DataService.load_data(dataset.filepath)
-    except Exception as e:
-         return jsonify({'message': str(e)}), 404
+    df = DataService.load_data(dataset.filepath)
          
     target = data.get('target')
     event_col = data.get('event_col') # Optional (for Cox)
@@ -186,10 +153,7 @@ def compare_models(current_user):
         if 'name' not in conf or 'features' not in conf:
              return jsonify({'message': 'Invalid model config format. Need name and features.'}), 400
              
-    try:
-        results = AdvancedModelingService.compare_models(
-            df, target, model_configs, model_type, event_col
-        )
-        return jsonify(results), 200
-    except Exception as e:
-        return jsonify({'message': f"Model comparison failed: {str(e)}"}), 500
+    results = AdvancedModelingService.compare_models(
+        df, target, model_configs, model_type, event_col
+    )
+    return jsonify(results), 200

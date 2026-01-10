@@ -34,34 +34,29 @@ def derive_egfr(current_user):
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
-    try:
-        # Load data
-        df = DataService.load_data(dataset.filepath)
-        if df is None:
-            return jsonify({'message': 'Failed to load dataset'}), 500
-            
-        # Derive
-        new_df = PreprocessingService.derive_variable(df, formula_type, params)
+    # Load data
+    df = DataService.load_data(dataset.filepath)
+    if df is None:
+        return jsonify({'message': 'Failed to load dataset'}), 500
         
-        # Save
-        suffix = formula_type.replace('egfr_', 'Egfr')
-        
-        overwrite_id = dataset.id if save_mode == 'overwrite' else None
-        
-        new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, suffix, current_user.id, overwrite_id=overwrite_id)
-        
-        return jsonify({
-            'message': 'Derived variable created successfully',
-            'new_dataset': {
-                'id': new_dataset.id,
-                'name': new_dataset.name,
-                'metadata': new_dataset.meta_data
-            }
-        }), 200
-        
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'message': str(e)}), 500
+    # Derive
+    new_df = PreprocessingService.derive_variable(df, formula_type, params)
+    
+    # Save
+    suffix = formula_type.replace('egfr_', 'Egfr')
+    
+    overwrite_id = dataset.id if save_mode == 'overwrite' else None
+    
+    new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, suffix, current_user.id, overwrite_id=overwrite_id)
+    
+    return jsonify({
+        'message': 'Derived variable created successfully',
+        'new_dataset': {
+            'id': new_dataset.id,
+            'name': new_dataset.name,
+            'metadata': new_dataset.meta_data
+        }
+    }), 200
 
 @clinical_bp.route('/stage-ckd', methods=['POST'])
 @token_required
@@ -86,25 +81,21 @@ def stage_ckd(current_user):
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
-    try:
-        df = DataService.load_data(dataset.filepath)
-        new_df = PreprocessingService.derive_ckd_staging(df, params)
-        
-        overwrite_id = dataset.id if save_mode == 'overwrite' else None
-        
-        new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Staged', current_user.id, overwrite_id=overwrite_id)
-        
-        return jsonify({
-            'message': 'CKD Staging complete',
-            'new_dataset': {
-                'id': new_dataset.id,
-                'name': new_dataset.name,
-                'metadata': new_dataset.meta_data
-            }
-        }), 200
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'message': str(e)}), 500
+    df = DataService.load_data(dataset.filepath)
+    new_df = PreprocessingService.derive_ckd_staging(df, params)
+    
+    overwrite_id = dataset.id if save_mode == 'overwrite' else None
+    
+    new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Staged', current_user.id, overwrite_id=overwrite_id)
+    
+    return jsonify({
+        'message': 'CKD Staging complete',
+        'new_dataset': {
+            'id': new_dataset.id,
+            'name': new_dataset.name,
+            'metadata': new_dataset.meta_data
+        }
+    }), 200
 
 @clinical_bp.route('/melt', methods=['POST'])
 @token_required
@@ -133,25 +124,21 @@ def melt_data(current_user):
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
-    try:
-        df = DataService.load_data(dataset.filepath)
-        new_df = PreprocessingService.melt_to_long(df, id_col, time_mapping, value_name)
-        
-        overwrite_id = dataset.id if save_mode == 'overwrite' else None
-        
-        new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Long', current_user.id, overwrite_id=overwrite_id)
-        
-        return jsonify({
-            'message': 'Data melted successfully',
-            'new_dataset': {
-                'id': new_dataset.id,
-                'name': new_dataset.name,
-                'metadata': new_dataset.meta_data
-            }
-        }), 200
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'message': str(e)}), 500
+    df = DataService.load_data(dataset.filepath)
+    new_df = PreprocessingService.melt_to_long(df, id_col, time_mapping, value_name)
+    
+    overwrite_id = dataset.id if save_mode == 'overwrite' else None
+    
+    new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Long', current_user.id, overwrite_id=overwrite_id)
+    
+    return jsonify({
+        'message': 'Data melted successfully',
+        'new_dataset': {
+            'id': new_dataset.id,
+            'name': new_dataset.name,
+            'metadata': new_dataset.meta_data
+        }
+    }), 200
 
 @clinical_bp.route('/calculate-slope', methods=['POST'])
 @token_required
@@ -180,26 +167,22 @@ def calculate_slope(current_user):
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
-    try:
-        df = DataService.load_data(dataset.filepath)
-        new_df = PreprocessingService.calculate_slope(df, id_col, time_col, value_col)
-        
-        # Merge slope back to original unique patient list?
-        # Usually user wants a patient-level summary table.
-        # But if the input is Long, we get a summary table with 1 row per patient.
-        # This is perfect for subsequent analysis.
-        
-        overwrite_id = dataset.id if save_mode == 'overwrite' else None
-        new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Slopes', current_user.id, overwrite_id=overwrite_id)
-        
-        return jsonify({
-            'message': 'Slope calculation complete',
-            'new_dataset': {
-                'id': new_dataset.id,
-                'name': new_dataset.name,
-                'metadata': new_dataset.meta_data
-            }
-        }), 200
-    except Exception as e:
-        print(traceback.format_exc())
-        return jsonify({'message': str(e)}), 500
+    df = DataService.load_data(dataset.filepath)
+    new_df = PreprocessingService.calculate_slope(df, id_col, time_col, value_col)
+    
+    # Merge slope back to original unique patient list?
+    # Usually user wants a patient-level summary table.
+    # But if the input is Long, we get a summary table with 1 row per patient.
+    # This is perfect for subsequent analysis.
+    
+    overwrite_id = dataset.id if save_mode == 'overwrite' else None
+    new_dataset = PreprocessingService.save_processed_dataset(dataset.id, new_df, 'Slopes', current_user.id, overwrite_id=overwrite_id)
+    
+    return jsonify({
+        'message': 'Slope calculation complete',
+        'new_dataset': {
+            'id': new_dataset.id,
+            'name': new_dataset.name,
+            'metadata': new_dataset.meta_data
+        }
+    }), 200

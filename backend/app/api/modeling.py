@@ -42,23 +42,17 @@ def run_model(current_user):
     if dataset.project_id != project.id:
         return jsonify({'message': 'Dataset does not belong to project'}), 400
         
-    try:
-        # Load data
-        # Load data
-        # Use robust loading from DataService
-        from app.services.data_service import DataService
-        df = DataService.load_data(dataset.filepath)
-            
-        # Run model
-        results = ModelingService.run_model(df, model_type, target, features)
+    # Use robust loading from DataService
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
         
-        return jsonify({
-            'message': 'Model run successfully',
-            'results': results
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
+    # Run model
+    results = ModelingService.run_model(df, model_type, target, features)
+    
+    return jsonify({
+        'message': 'Model run successfully',
+        'results': results
+    }), 200
 
 @modeling_bp.route('/export', methods=['POST'])
 @token_required
@@ -75,24 +69,19 @@ def export_model(current_user):
         
     dataset = Dataset.query.get_or_404(dataset_id)
     
-    try:
-        # Load data
-        # Load data
-        from app.services.data_service import DataService
-        df = DataService.load_data(dataset.filepath)
-            
-        # Run model
-        results = ModelingService.run_model(df, model_type, target, features)
+    # Load data
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
         
-        # Export
-        from app.services.export_service import ExportService
-        filename = f"results_{project_id}_{model_type}.xlsx"
-        filepath = ExportService.export_results_to_excel(results, filename)
-        
-        return jsonify({
-            'message': 'Export successful',
-            'download_url': f"/api/data/download/{filename}" # Need a download endpoint
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
+    # Run model
+    results = ModelingService.run_model(df, model_type, target, features)
+    
+    # Export
+    from app.services.export_service import ExportService
+    filename = f"results_{project_id}_{model_type}.xlsx"
+    filepath = ExportService.export_results_to_excel(results, filename)
+    
+    return jsonify({
+        'message': 'Export successful',
+        'download_url': f"/api/data/download/{filename}" # Need a download endpoint
+    }), 200

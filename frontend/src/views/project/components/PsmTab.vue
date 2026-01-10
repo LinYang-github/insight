@@ -130,6 +130,7 @@ import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import StepWizard from './StepWizard.vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({
     datasetId: Number,

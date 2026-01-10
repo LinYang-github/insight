@@ -34,35 +34,32 @@ def upload_data(current_user, project_id):
         return jsonify({'message': 'No selected file'}), 400
     
     if file:
-        try:
-            # Save file
-            filename = f"project_{project_id}_{file.filename}"
-            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            file.save(filepath)
-            
-            # Parse and get metadata
-            metadata = DataService.get_initial_metadata(filepath)
-            
-            # Save to Database
-            new_dataset = Dataset(
-                project_id=project.id,
-                name=file.filename,
-                filepath=filepath
-            )
-            new_dataset.meta_data = metadata
-            db.session.add(new_dataset)
-            db.session.flush() # Get ID
-            project.active_dataset_id = new_dataset.id
-            db.session.commit()
-            
-            return jsonify({
-                'message': 'File uploaded successfully', 
-                'dataset_id': new_dataset.id,
-                'metadata': metadata
-            }), 201
-        except Exception as e:
-            return jsonify({'message': str(e)}), 500
+        # Save file
+        filename = f"project_{project_id}_{file.filename}"
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        file.save(filepath)
+        
+        # Parse and get metadata
+        metadata = DataService.get_initial_metadata(filepath)
+        
+        # Save to Database
+        new_dataset = Dataset(
+            project_id=project.id,
+            name=file.filename,
+            filepath=filepath
+        )
+        new_dataset.meta_data = metadata
+        db.session.add(new_dataset)
+        db.session.flush() # Get ID
+        project.active_dataset_id = new_dataset.id
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'File uploaded successfully', 
+            'dataset_id': new_dataset.id,
+            'metadata': metadata
+        }), 201
 
 @data_bp.route('/metadata/<int:project_id>', methods=['GET'])
 @token_required
@@ -116,14 +113,10 @@ def delete_dataset(current_user, dataset_id):
     if dataset.project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403
         
-    try:
-        # File removal is handled by SQLAlchemy event listener in models/dataset.py:receive_after_delete
-        db.session.delete(dataset)
-        db.session.commit()
-        return jsonify({'message': 'Dataset deleted successfully'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': str(e)}), 500
+    # File removal is handled by SQLAlchemy event listener in models/dataset.py:receive_after_delete
+    db.session.delete(dataset)
+    db.session.commit()
+    return jsonify({'message': 'Dataset deleted successfully'}), 200
 
 @data_bp.route('/<int:dataset_id>/rename', methods=['PUT'])
 @token_required
@@ -141,10 +134,6 @@ def rename_dataset(current_user, dataset_id):
     if dataset.project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403
         
-    try:
-        dataset.name = new_name
-        db.session.commit()
-        return jsonify({'message': 'Dataset renamed successfully'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': str(e)}), 500
+    dataset.name = new_name
+    db.session.commit()
+    return jsonify({'message': 'Dataset renamed successfully'}), 200

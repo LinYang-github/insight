@@ -47,4 +47,23 @@ def create_app(config_class=Config):
         # Serve index.html for SPA routes
         return app.send_static_file('index.html')
 
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        from flask import jsonify
+        # 记录完整堆栈信息
+        app.logger.error(f"Unhandled Exception: {str(e)}", exc_info=True)
+        
+        # 业务逻辑错误 (Business Logic Error) -> 400
+        if isinstance(e, ValueError):
+            return jsonify({
+                "error": "BusinessError", 
+                "message": str(e)
+            }), 400
+            
+        # 其他未捕获异常 (Internal Server Error) -> 500
+        return jsonify({
+            "error": "InternalServerError", 
+            "message": "系统繁忙，请联系管理员或查看日志。"
+        }), 500
+
     return app

@@ -53,11 +53,8 @@ def download_validation_data(filename):
     if filename not in allowed:
          return jsonify({"error": "File not found or access denied"}), 404
          
-    try:
-        return send_from_directory(
-            ValidationService.GOLDEN_DATA_DIR, 
-            filename, 
-            as_attachment=True
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return send_from_directory(
+        ValidationService.GOLDEN_DATA_DIR, 
+        filename, 
+        as_attachment=True
+    )
