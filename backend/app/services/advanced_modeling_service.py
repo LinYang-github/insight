@@ -609,10 +609,10 @@ class AdvancedModelingService:
                 results['variables'].append({
                     'name': var,
                     'type': 'numeric',
-                    'min': meta['min'],
-                    'max': meta['max'],
-                    'coef': coef,
-                    'points_mapping': [{'val': t, 'pts': p} for t, p in zip(ticks, tick_points)]
+                    'min': float(meta['min']),
+                    'max': float(meta['max']),
+                    'coef': float(coef),
+                    'points_mapping': [{'val': float(t), 'pts': float(p)} for t, p in zip(ticks, tick_points)]
                 })
                 
                 total_min_points += 0 # By definition of shift
@@ -645,13 +645,13 @@ class AdvancedModelingService:
                  # Note: lifelines 'partial hazard' usually excludes baseline.
                  risks.append(prob)
                  
-        results['risk_table'] = [{'points': pt, 'risk': r} for pt, r in zip(point_grid, risks)]
+        results['risk_table'] = [{'points': float(pt), 'risk': float(r)} for pt, r in zip(point_grid, risks)]
         
         # Meta info for Calculator
         results['formula'] = {
-            'intercept': intercept,
-            'baseline_survival': baseline_sf if model_type == 'cox' else None,
-            'coeffs': {v: var_metas[v]['coef'] for v in predictors if v in var_metas},
+            'intercept': float(intercept),
+            'baseline_survival': float(baseline_sf) if model_type == 'cox' else None,
+            'coeffs': {v: float(var_metas[v]['coef']) for v in predictors if v in var_metas},
             'model_type': model_type
         }
         return results

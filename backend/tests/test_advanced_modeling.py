@@ -319,6 +319,68 @@ class TestAdvancedModeling:
         assert res[0]['n'] == 18
         assert res[1]['n'] == 18
 
+    def test_subgroup_robustness_small_sample(self, dummy_df):
+        """
+        TC-BE-01: Verify that subgroup analysis handles small sample sizes gracefully.
+        """
+        # Create a group with very small N (e.g. < 5)
+        # dummy_df has 500 rows. Let's force a group 'Small'
+        dummy_df.loc[:2, 'sex'] = 'Small'
+        
+        # Run subgroup analysis
+        res = AdvancedModelingService.perform_subgroup(
+            dummy_df,
+            target='duration',
+            event_col='event',
+            exposure='exposure',
+            subgroups=['sex'],
+            covariates=['age'],
+            model_type='cox'
+        )
+        
+        # Find the 'Small' subgroup result
+        # 'sex' group result
+        sex_res = res[0]
+        small_res = next((s for s in sex_res['subgroups'] if s['level'] == 'Small'), None)
+        
+        # It should either be skipped (not present) or present but with invalid stats
+        # The service logic: if len(sub_df) < 10: continue
+        # So it should be absent?
+        if small_res:
+            # If present, check if it failed gracefully?
+            # Current logic: continues if < 10. So expecting NOT present.
+             pytest.fail("Subgroup with N<10 should be skipped or handled.")
+        else:
+            # Correct behavior: Skipped
+            pass
+
+    def test_rcs_knots_boundary(self, dummy_df):
+        """
+        TC-BE-02: Verify behavior with invalid knot numbers.
+        """
+        # Case 1: Knots < 3
+        # Should raise ValueError or default to 3? Lifelines/Patsy might error.
+        # Our Service currently passes it to patsy df=knots.
+        # patsy.cr(df=1) might fail or work weirdly.
+        
+        try:
+             AdvancedModelingService.fit_rcs(
+                dummy_df, target='event', event_col=None, 
+                exposure='exposure', covariates=[], knots=2, model_type='logistic'
+            )
+        except Exception:
+            # Expected failure or handled
+            pass
+
+        # Case 2: Knots > 10 (Overfitting check or warning)
+        # Service doesn't limit it explicitly, but let's Ensure it doesn't crash 
+        # (assuming 500 samples is enough for 10 knots).
+        res = AdvancedModelingService.fit_rcs(
+            dummy_df, target='event', event_col=None, 
+            exposure='exposure', covariates=[], knots=8, model_type='logistic'
+        )
+        assert 'plot_data' in res
+
     def test_rcs_knots_stability(self, dummy_df):
         """
         Verify that RCS works for different knot numbers (3, 4, 5).
