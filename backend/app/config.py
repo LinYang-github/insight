@@ -5,9 +5,8 @@ class Config:
     # Detect if we are running in a bundled executable (PyInstaller)
     IS_FROZEN = getattr(sys, 'frozen', False)
     
-    # BASE_DIR for persistence (database, uploads) should be CWD
-    # This allows the user to run the .exe anywhere and keep data locally
-    BASE_DIR = os.getcwd()
+    # BASE_DIR should be the 'backend' directory, regardless of where run.py is executed
+    BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     

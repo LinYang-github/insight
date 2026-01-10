@@ -10,6 +10,7 @@ from app.services.data_service import DataService
 from app.models.dataset import Dataset
 from app import db
 import os
+import json
 
 class PreprocessingService:
     @staticmethod
@@ -76,7 +77,8 @@ class PreprocessingService:
         return df
 
     @staticmethod
-    def save_processed_dataset(original_dataset_id, new_df, suffix, user_id, overwrite_id=None):
+    @staticmethod
+    def save_processed_dataset(original_dataset_id, new_df, suffix, user_id, overwrite_id=None, parent_id=None, action_type=None, log=None):
         """
         将处理后的 DataFrame 保存为新的数据集记录并生成物理文件。
         If overwrite_id is provided, updates that dataset instead of creating new.
@@ -128,7 +130,10 @@ class PreprocessingService:
             new_dataset = Dataset(
                 project_id=original.project_id,
                 name=new_filename,
-                filepath=new_filepath
+                filepath=new_filepath,
+                parent_id=parent_id if parent_id else original.id,
+                action_type=action_type,
+                action_log=json.dumps(log) if log else None
             )
             # Generate metadata
             try:

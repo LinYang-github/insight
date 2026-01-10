@@ -126,9 +126,22 @@ class ModelingService:
             results = strategy.fit(df_processed, target, new_features, model_params)
         except np.linalg.LinAlgError:
             # Diagnose the issue (奇异矩阵诊断)
-            diagnosis = ModelingService._diagnose_singularity(df_processed, new_features)
-            raise ValueError(diagnosis)
+            diagnosis_msg = ModelingService._diagnose_singularity(df_processed, new_features)
+            # Instead of raising, return a 'failed' result with diagnosis
+            results = {
+                'status': 'failed',
+                'error_type': 'singular_matrix',
+                'message': diagnosis_msg,
+                'summary': [],
+                'metrics': {},
+                'plots': {}
+            }
+            # Log it but don't crash
+            print(f"Model run failed: {diagnosis_msg}")
+            
         except Exception as e:
+            # For other errors, we might still want to return a clean error if possible,
+            # but for now let's keep ValueError strictly for user errors if it was raised manually.
             if isinstance(e, ValueError): raise e
             raise RuntimeError(f"Model execution failed: {str(e)}")
 

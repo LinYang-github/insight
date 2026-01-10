@@ -8,10 +8,16 @@ class Dataset(db.Model):
     filepath = db.Column(db.String(512))
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     
+    # Lineage / Version Control
+    parent_id = db.Column(db.Integer, db.ForeignKey('dataset.id'), nullable=True) # Source dataset
+    action_type = db.Column(db.String(32), nullable=True) # e.g. 'upload', 'impute', 'encode', 'psm'
+    action_log = db.Column(db.Text, nullable=True) # JSON Logs of parameters
+    
     # Metadata stored as JSON string
     _metadata_json = db.Column("metadata", db.Text)
     
     project = db.relationship('Project', foreign_keys=[project_id], backref=db.backref('datasets', lazy=True, cascade="all, delete-orphan"))
+    parent = db.relationship('Dataset', remote_side=[id], backref=db.backref('children', lazy=True))
 
     @property
     def meta_data(self):

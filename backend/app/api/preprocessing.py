@@ -30,7 +30,15 @@ def impute(current_user):
     from app.services.data_service import DataService
     df = DataService.load_data(dataset.filepath)
     new_df = PreprocessingService.impute_data(df, strategies)
-    new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'imputed', current_user.id)
+    new_dataset = PreprocessingService.save_processed_dataset(
+        dataset_id, 
+        new_df, 
+        'imputed', 
+        current_user.id,
+        parent_id=dataset_id,
+        action_type='impute',
+        log=strategies
+    )
     return jsonify({'message': 'Imputation successful', 'new_dataset_id': new_dataset.id}), 200
 
 @preprocessing_bp.route('/encode', methods=['POST'])
@@ -48,5 +56,13 @@ def encode(current_user):
     from app.services.data_service import DataService
     df = DataService.load_data(dataset.filepath)
     new_df = PreprocessingService.encode_data(df, columns)
-    new_dataset = PreprocessingService.save_processed_dataset(dataset_id, new_df, 'encoded', current_user.id)
+    new_dataset = PreprocessingService.save_processed_dataset(
+        dataset_id, 
+        new_df, 
+        'encoded', 
+        current_user.id,
+        parent_id=dataset_id,
+        action_type='encode',
+        log={'columns': columns}
+    )
     return jsonify({'message': 'Encoding successful', 'new_dataset_id': new_dataset.id}), 200

@@ -58,7 +58,21 @@
                             </el-tooltip>
                        </template>
                        <el-select v-model="config.features" multiple placeholder="选择特征变量" filterable style="width: 100%">
-                           <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                           <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value">
+                               <div style="display: flex; justify-content: space-between; align-items: center;">
+                                   <span>{{ opt.label }}</span>
+                                   <el-tooltip v-if="opt.status !== 'unknown'" :content="opt.msg" placement="right">
+                                       <span :style="{
+                                           display: 'inline-block',
+                                           width: '8px',
+                                           height: '8px',
+                                           borderRadius: '50%',
+                                           backgroundColor: opt.status === 'healthy' ? '#67C23A' : '#E6A23C',
+                                           marginLeft: '8px'
+                                       }"></span>
+                                   </el-tooltip>
+                               </div>
+                           </el-option>
                        </el-select>
                    </el-form-item>
                    
@@ -443,34 +457,90 @@ const autoSuggestRoles = () => {
     ElMessage.success('已根据变量名为您自动推荐配置')
 }
 
-// Auto-trigger when metadata loads for the first time
-watch(() => props.metadata, (newVal) => {
-    if (newVal && (!config.target || !config.target.time)) {
-        // Only run if empty
-        autoSuggestRoles()
-    }
-}, { immediate: true })
+// Collinearity Check Logic
+let collinearityTimer = null
+const checkingCollinearity = ref(false)
 
-watch(() => config.model_type, (newType) => {
-    if (newType === 'cox') {
-        config.target = { time: null, event: null }
-    } else {
-        config.target = null
+const checkCollinearity = async () => {
+    if (config.features.length < 2) return
+    
+    checkingCollinearity.value = true
+    try {
+        const { data } = await api.post('/statistics/check-collinearity', {
+            dataset_id: props.datasetId,
+            features: config.features
+        })
+        
+        if (data.status !== 'ok') {
+            // Show first warning
+            const first = data.report[0]
+            ElMessage({
+                message: `⚠️ 检测到共线性风险: ${first.message}`,
+                type: 'warning',
+                duration: 5000,
+                showClose: true
+            })
+        }
+    } catch (e) {
+        console.error("Collinearity check failed", e)
+    } finally {
+        checkingCollinearity.value = false
     }
+}
+
+watch(() => config.features, (newVal) => {
+    if (collinearityTimer) clearTimeout(collinearityTimer)
+    collinearityTimer = setTimeout(() => {
+        checkCollinearity()
+    }, 1000) // Debounce 1s
 })
-
-const modelOptions = [
-    { label: '逻辑回归 (Logistic)', value: 'logistic' },
-    { label: '线性回归 (Linear)', value: 'linear' },
-    { label: 'Cox 生存分析', value: 'cox' },
-    { label: '随机森林 (Random Forest)', value: 'random_forest' },
-    { label: 'XGBoost', value: 'xgboost' }
-]
 
 const variableOptions = computed(() => {
     if (!props.metadata) return []
-    return props.metadata.variables.map(v => ({ label: v.name, value: v.name }))
+    return props.metadata.variables.map(v => {
+        // Find health status
+        const h = varHealthMap.value[v.name]
+        return { 
+            label: v.name, 
+            value: v.name,
+            status: h ? h.status : 'unknown',
+            msg: h ? h.message : ''
+        }
+    })
 })
+
+const varHealthMap = ref({})
+
+const fetchHealthStatus = async () => {
+    if (!props.metadata || !props.datasetId) return
+    const allVars = props.metadata.variables.map(v => v.name)
+    try {
+        const { data } = await api.post('/statistics/check-health', {
+            dataset_id: props.datasetId,
+            variables: allVars
+        })
+        // Map to object
+        const map = {}
+        data.report.forEach(item => {
+            map[item.variable] = item
+        })
+        varHealthMap.value = map
+    } catch (e) {
+        console.error("Health fetch failed", e)
+    }
+}
+
+// Auto-trigger when metadata loads for the first time
+watch(() => props.metadata, (newVal) => {
+    if (newVal) {
+        fetchHealthStatus()
+        
+        if (!config.target || !config.target.time) {
+            // Only run if empty
+            autoSuggestRoles()
+        }
+    }
+}, { immediate: true })
 
 const topResult = computed(() => {
     if (!results.value || !results.value.summary) return null
@@ -589,6 +659,21 @@ const runModel = async () => {
             dataset_id: props.datasetId,
             ...config
         })
+        if (data.results.status === 'failed') {
+            results.value = null // Clear previous good results
+            // Show diagnositic error
+            ElMessage({
+                message: data.results.message,
+                type: 'error',
+                duration: 10000,
+                showClose: true,
+                grouping: true
+            })
+            // Optionally, we could set a reactive 'errorState' to show a persistent alert in UI
+            // But for now, a long duration Toast is consistent with user request "Give me a hint".
+            return 
+        }
+        
         results.value = data.results
         ElMessage.success('模型运行成功')
         

@@ -479,3 +479,67 @@ class StatisticsService:
              # Simple approach: Turn to dummy and max SMD
              # Or just ignore non-numeric for MVP
              return 0.0 # Placeholder for non-numeric
+
+    @staticmethod
+    def check_multicollinearity(df, features):
+        """
+        检查特征变量之间的多重共线性。
+        计算两两相关系数 (Correlation) 和方差膨胀因子 (VIF)。
+        """
+        if not features or len(features) < 2:
+            return {'status': 'ok', 'report': []}
+            
+        # Filter numeric only for VIF/Corr
+        # For categorical, we might need Cramer's V (skipped for MVP, assuming OneHot or skipping)
+        numeric_df = df[features].select_dtypes(include=[np.number])
+        if numeric_df.empty or numeric_df.shape[1] < 2:
+             return {'status': 'ok', 'report': []}
+
+        # Handle missing for calculation
+        numeric_df = numeric_df.dropna()
+        if numeric_df.empty:
+             return {'status': 'warning', 'message': '有效样本不足，无法计算共线性。'}
+
+        report = []
+        status = 'ok'
+        
+        # 1. Pairwise Correlation
+        corr_matrix = numeric_df.corr().abs()
+        
+        # Upper triangle
+        cols = corr_matrix.columns
+        for i in range(len(cols)):
+            for j in range(i+1, len(cols)):
+                r = corr_matrix.iloc[i, j]
+                if r > 0.8: # Threshold 0.8
+                    status = 'warning'
+                    report.append({
+                        'type': 'correlation',
+                        'vars': [cols[i], cols[j]],
+                        'value': float(r),
+                        'message': f"'{cols[i]}' 与 '{cols[j]}' 高度相关 (r={r:.2f})"
+                    })
+
+        # 2. VIF (Variance Inflation Factor)
+        # Only if no perfect linear dependency?
+        try:
+            from app.utils.diagnostics import ModelDiagnostics
+            vif_data = ModelDiagnostics.calculate_vif(numeric_df, numeric_df.columns.tolist())
+            
+            for item in vif_data:
+                val = item['vif']
+                if val == 'inf' or (isinstance(val, (int, float)) and val > 10):
+                    status = 'error' # VIF > 10 is critical
+                    report.append({
+                        'type': 'vif',
+                        'vars': [item['variable']],
+                        'value': str(val),
+                        'message': f"'{item['variable']}' 存在严重多重共线性 (VIF={val})"
+                    })
+        except Exception:
+            pass
+            
+        return {
+            'status': status,
+            'report': report
+        }

@@ -93,10 +93,15 @@ def perform_psm(current_user):
         matched_df.to_csv(new_filepath, index=False)
         
         # Create new Dataset record
+        # For lineage in PSM, we treat original dataset as parent
+        import json
         new_dataset = Dataset(
             name=new_filename,
             filepath=new_filepath,
-            project_id=dataset.project_id
+            project_id=dataset.project_id,
+            parent_id=dataset.id,
+            action_type='psm',
+            action_log=json.dumps({'treatment': treatment, 'covariates': covariates})
         )
         # Add metadata?
         try:
@@ -229,3 +234,23 @@ def get_distribution(current_user):
     
     dist_data = StatisticsService.get_distribution(df, variable)
     return jsonify({'distribution': dist_data}), 200
+
+@statistics_bp.route('/check-collinearity', methods=['POST'])
+@token_required
+def check_collinearity(current_user):
+    """
+    检查共线性。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    features = data.get('features') # list of strings
+    
+    if not dataset_id or not features:
+        return jsonify({'message': 'Missing arguments'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    from app.services.data_service import DataService
+    df = DataService.load_data(dataset.filepath)
+    
+    result = StatisticsService.check_multicollinearity(df, features)
+    return jsonify(result), 200
