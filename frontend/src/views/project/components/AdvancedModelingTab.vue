@@ -256,7 +256,7 @@ const renderRCS = (res) => {
     ]
     
     const layout = {
-        title: `Restricted Cubic Spline (Knots=${rcsParams.value.knots})`,
+        title: `Restricted Cubic Spline (Knots=${rcsParams.value.knots}) with 95% CI`,
         xaxis: { title: rcsParams.value.exposure },
         yaxis: { title: rcsParams.value.model_type === 'cox' ? 'Hazard Ratio (95% CI)' : 'Odds Ratio (95% CI)' },
         showlegend: true

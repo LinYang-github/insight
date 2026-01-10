@@ -68,7 +68,10 @@ class AdvancedModelingService:
             if cov_str:
                 formula_rhs += f" + {cov_str}"
                 
-            cph = CoxPHFitter()
+            if cov_str:
+                formula_rhs += f" + {cov_str}"
+                
+            cph = CoxPHFitter(penalizer=0.01) # Add small penalizer for stability
             # Lifelines fit(formula=...) is supported in recent versions
             # But let's verify if we can do prediction easily.
             # Alternatively, generate spline matrix manually using patsy to have full control.
@@ -77,67 +80,99 @@ class AdvancedModelingService:
             # dmatrix returns a matrix, we need a DF with readable names
             # But lifelines handles formulas well.
             
+            # 1. Fit the model
             try:
                 cph.fit(df_clean, duration_col=target, event_col=event_col, formula=formula_rhs)
             except Exception as e:
                 raise ValueError(f"Model fitting failed: {str(e)}")
             
-            # Check non-linearity P-value?
-            # Usually we test if the coefficients for spline terms (checking non-linear terms) are zero.
-            # This is complex to extract auto-magically without `anova`.
-            # For MVP, we skip "P for non-linearity" calculation unless we do a Likelihood Ratio Test vs linear model.
-            
-            # Prediction
-            # We construct a synthetic df varying exposure, fixing others (though they cancel for HR)
+            # 2. Prepare Prediction Data (Grid) and Reference Data (Ref)
             pred_df = pd.DataFrame({exposure: x_grid})
-            # For covariates, fill with mean (needed for patsy to generate matrix, even if not used for HR diff)
+            ref_df = pd.DataFrame({exposure: [ref_value]})
+            
+            # Fill covariates with mean/mode
             for cov in covariates:
                 if pd.api.types.is_numeric_dtype(df_clean[cov]):
-                    pred_df[cov] = df_clean[cov].mean()
+                    mean_val = df_clean[cov].mean()
+                    pred_df[cov] = mean_val
+                    ref_df[cov] = mean_val
                 else:
-                    # mode
-                    pred_df[cov] = df_clean[cov].mode()[0]
+                    mode_val = df_clean[cov].mode()[0]
+                    pred_df[cov] = mode_val
+                    ref_df[cov] = mode_val
             
-            # Add reference row
-            ref_row = pred_df.iloc[0].copy()
-            ref_row[exposure] = ref_value
-            # We can't easily append ref_row for ratio in lifelines `predict_partial_hazard`.
-            # `predict_partial_hazard` returns exp(X*beta). 
-            # HR(x) = risk(x) / risk(ref) = exp(beta*spline(x)) / exp(beta*spline(ref))
+            # 3. Compute Log Hazard Ratio and Standard Errors (Delta Method)
+            # We need the Design Matrix for the *spline terms* and covariates.
+            # Lifelines uses patsy internally. accessing cph._predicted_partial_hazard is tricky for diffs.
+            # Best way: Build design matrix manually using the SAME design info from the fitted model.
             
-            log_hazards = cph.predict_log_partial_hazard(pred_df)
-            # We need log_hazard for reference value
-            # Create single row DF
-            ref_df = pd.DataFrame([ref_row])
-            # Ensure dtypes match (pandas often converts single row int to float, etc)
-            # concat is safer
-            full_pred_df = pd.concat([pred_df, ref_df], ignore_index=True)
+            # Get Design Info from the fitted model
+            # cph._model contains the patsy design info usually, but lifelines API changed.
+            # In recent lifelines, cph._predicted_partial_hazard uses:
+            #   matrix = patsy.dmatrix(self.formula, data, return_type='dataframe')
+            # But we need to ensure the knots/basis are identical to training.
+            # Only way is to use `patsy.build_design_matrices`.
+            # But where is the `design_info` stored?
+            # It seems `cph._regression_data` might have it, or `cph._model`?
+            # Actually, `cph.fit` creates the matrix but doesn't expose the design info object easily publicly?
+            # Re-creating dmatrix with the same formula on training data extracts the design_info.
             
-            full_log_hazards = cph.predict_log_partial_hazard(full_pred_df)
-            ref_log_hazard = full_log_hazards.iloc[-1]
-            target_log_hazards = full_log_hazards.iloc[:-1]
+            design_matrix_train = patsy.dmatrix(formula_rhs, df_clean, return_type='matrix')
+            design_info = design_matrix_train.design_info
             
-            log_hr = target_log_hazards - ref_log_hazard
+            # Now build matrices for Pred and Ref
+            # return_type='dataframe' is safer for column alignment
+            dmatrix_pred = patsy.build_design_matrices([design_info], pred_df, return_type='dataframe')[0]
+            dmatrix_ref = patsy.build_design_matrices([design_info], ref_df, return_type='dataframe')[0]
+            
+            # Params (Coefficients)
+            params = cph.params_ # Series
+            
+            # Calculate Linear Predictor (X * beta)
+            # Alignment check: dmatrix columns must match params index
+            # patsy usually keeps order, but let's be safe
+            common_cols = [c for c in params.index if c in dmatrix_pred.columns]
+            
+            lp_pred = dmatrix_pred[common_cols].dot(params[common_cols])
+            lp_ref = dmatrix_ref[common_cols].dot(params[common_cols]).iloc[0]
+            
+            log_hr = lp_pred - lp_ref
             hr = np.exp(log_hr)
             
-            # Confidence Intervals?
-            # This is hard with lifelines out-of-the-box for ratios of two arbitrary points.
-            # Need variance-covariance matrix.
-            # Var(logHR) = (x - xref)^T * Cov * (x - xref) where x are spline basis vectors.
-            # We might skip CI for MVP or try to approximate.
-            # Actually, lifelines `predict_log_partial_hazard` does not return CI.
-            # `compute_followup_hazard_ratios` might help? No.
+            # 4. Variance Calculation
+            # Var(logHR) = Var(LP_pred - LP_ref) = Var( (Xp - Xr) * beta )
+            #            = (Xp - Xr) * Cov * (Xp - Xr)^T
+            # We only need diagonal of the resulting N x N matrix (variance of each point)
             
-            # Let's return just the line for now. Adding CIs manually requires manually creating the design matrix.
-            # If user demands CI (which is standard), we should do design matrix approach.
+            cov_matrix = cph.variance_matrix_
+            # Reindex cov_matrix to match common_cols
+            cov_matrix = cov_matrix.loc[common_cols, common_cols]
+            
+            # Diff Matrix (N x p)
+            diff_matrix = dmatrix_pred[common_cols].sub(dmatrix_ref[common_cols].iloc[0], axis=1)
+            
+            # Var = diag( Diff @ Cov @ Diff.T )
+            # optimization: sum( (Diff @ Cov) * Diff, axis=1 )
+            var_log_hr = (diff_matrix.dot(cov_matrix) * diff_matrix).sum(axis=1)
+            se_log_hr = np.sqrt(var_log_hr)
+            
+            # 5. Confidence Intervals
+            z_score = 1.96
+            lower_ci = np.exp(log_hr - z_score * se_log_hr)
+            upper_ci = np.exp(log_hr + z_score * se_log_hr)
             
             plot_data = []
-            for x, y in zip(x_grid, hr):
-                plot_data.append({'x': x, 'y': y})
+            for i, x in enumerate(x_grid):
+                plot_data.append({
+                    'x': x,
+                    'y': hr.iloc[i],
+                    'lower': lower_ci.iloc[i],
+                    'upper': upper_ci.iloc[i]
+                })
                 
             results['plot_data'] = plot_data
             results['ref_value'] = ref_value
-            results['p_non_linear'] = None # To do: LRT
+            results['p_non_linear'] = None # To do: LRT if needed
             
         elif model_type == 'logistic':
             # Statsmodels Logit

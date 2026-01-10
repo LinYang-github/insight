@@ -2,181 +2,150 @@
 trigger: always_on
 ---
 
-# Insight Design System (IDS) v1.0
+# Insight Design System (IDS)
 **Project:** Insight Medical Research Platform  
-**Target User:** 医学生、临床医生（统计学非专业人士）  
-**Core Values:** 专业信赖 (Professional)、循循善诱 (Guided)、清晰可释 (Interpretable)
+**Target User:** 临床医生、医学生（非统计学专业背景）  
+**Core Philosophy:** 拒绝黑盒 (De-blackboxing) & 零手册 (Zero-Manual)
 
 ---
 
 ## 1. 设计原则 (Design Principles)
 
-1.  **认知减负 (Cognitive Ease)**
-    *   **原则**：不要让用户做选择题，而是做判断题。能自动推断的参数（如根据Y值类型自动推荐模型）绝不让用户手动选。
-    *   **实践**：复杂参数折叠在“高级设置”中，默认只展示核心参数。
+### 1.1 认知减负 (Cognitive Ease)
+*   **原则**：不要让用户做“选择题”，而是做“判断题”。
+*   **实践**：系统基于数据特征（如方差齐性、样本量）自动推荐统计方法。用户只需确认“接受推荐”或“手动修改”，而非从头检索算法。
 
-2.  **结果即结论 (Result as Insight)**
-    *   **原则**：不要只展示冷冰冰的数字（P=0.04），要提供解释（P<0.05，差异显著）。
-    *   **实践**：所有统计表格必须支持“三线表”样式，所有关键指标必须配备 Tooltip 解释。
+### 1.2 预防式约束 (Preventative Constraints)
+*   **原则**：错误应该在发生前被阻止，而不是报错后才提示。
+*   **实践**：
+    *   **灰度禁用**：线性回归的结局变量下拉框中，分类变量（如死亡/存活）自动置灰不可选。
+    *   **实时预警**：当用户同时选中两个高度共线性的变量（如 eGFR 和 Scr）进入模型时，即时弹出黄色警告条：“检测到多重共线性风险 (VIF > 10)”。
 
-3.  **流程叙事化 (Narrative Flow)**
-    *   **原则**：将数据分析过程视作撰写一篇论文：数据 -> 基线 -> 方法 -> 结果。
-    *   **实践**：左侧导航栏采用线性叙事结构，状态指示灯明确当前进度。
+### 1.3 渐进式披露 (Progressive Disclosure)
+*   **原则**：新手看临床结论，专家看统计细节。
+*   **实践**：
+    *   **L1 (摘要层)**：**智能解读面板**。用自然语言描述：“eGFR 每下降 10 个单位，死亡风险显著增加 15% (P<0.05)。”
+    *   **L2 (证据层)**：**三线表 (Table)**。展示 HR 值、95% CI、P 值。
+    *   **L3 (诊断层)**：折叠在“详细诊断”中，展示残差图、PH 假定检验、VIF 值。
 
----
-
-## 2. 色彩体系 (Color System)
-
-基于 Element Plus 默认色板进行微调，使其更具“医学科研”的冷静与严谨感。
-
-### 品牌色 (Primary)
-用于主按钮、激活状态、关键引导。
-*   **Science Blue**: `#3B71CA` (比默认Element Blue更深沉一点，显得更稳重)
-    *   *Hover*: `#5A8FDE`
-    *   *Active*: `#2D5AA8`
-
-### 功能色 (Functional)
-用于统计显著性、警告及状态反馈。
-*   **Significance Red (显著/风险升高)**: `#D32F2F` (用于 P<0.05 或 OR>1 的高亮)
-*   **Safety Green (安全/保护因素)**: `#2E7D32` (用于 OR<1 或 校验通过)
-*   **Warning Orange**: `#ED6C02` (用于数据缺失警告、模型不收敛风险)
-*   **Info Gray**: `#0288D1` (用于中性提示、帮助文档链接)
-
-### 中性色 (Neutrals)
-用于文本、边框、背景，保证长时间阅读不疲劳。
-*   **Text Primary**: `#212121` (正文、表格数值)
-*   **Text Regular**: `#616161` (标签、辅助说明)
-*   **Text Placeholder**: `#9E9E9E`
-*   **Border**: `#E0E0E0`
-*   **Background (Body)**: `#F5F7FA` (浅灰背景，突显白色卡片)
+### 1.4 结果即结论 (Result as Insight)
+*   **原则**：不仅展示数字 (P=0.04)，更要解释意义。
+*   **实践**：所有关键指标必须配备 Tooltip 解释。所有导出图表必须符合学术期刊发表标准 (Publication-Ready)。
 
 ---
 
-## 3. 排版与字体 (Typography)
+## 2. 交互模式 (Interaction Patterns)
 
-强调数字的可读性与表格的整洁度。
+### 2.1 “智能推荐 + 人工确认” (Suggest & Confirm)
+*   **场景**：数据上传与清洗。
+*   **交互**：系统自动扫描数据，将变量标记为 `Categorical` 或 `Continuous`。用户在“数据体检”页面浏览 Tag，仅在系统判错时点击修正。
 
-*   **Font Family**:
-    *   优先：`"Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif`
-    *   **数字/代码专用**: `"Roboto Mono", Consolas, monospace` (用于 P值、置信区间、代码片段)
+### 2.2 数据体检 (Data Health Check)
+*   **场景**：分析前的必备步骤。
+*   **视觉**：交通灯色系反馈。
+    *   🔴 **严重 (Blocker)**：非数值字符、因变量完全缺失。 -> 动作：**“去清洗”**
+    *   🟡 **警告 (Warning)**：缺失率 > 20%、类别样本极少。 -> 动作：**“智能填补”**
+    *   🟢 **健康 (Healthy)**：数据完整，分布正常。
 
-*   **字号规范**:
-    *   **H1 (页面标题)**: 24px / Bold / #212121
-    *   **H2 (卡片标题)**: 18px / Medium / #212121
-    *   **H3 (分析结果摘要)**: 16px / Bold / Science Blue
-    *   **Body (正文/表格)**: 14px / Regular / #212121
-    *   **Small (辅助文字/Tooltip)**: 12px / Regular / #616161
-
----
-
-## 4. 核心组件规范 (Component Guidelines)
-
-### A. 布局容器 (Cards & Layout)
-所有的功能模块都应包裹在卡片中，形成清晰的视觉区块。
-
-*   **Card Style**:
-    *   `border-radius: 8px`
-    *   `box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05)` (极简阴影)
-    *   `border: 1px solid #EBEEF5`
-*   **Header**:
-    *   左侧：标题 + (可选) 状态徽章。
-    *   右侧：主要操作区（如“导出 Excel”、“运行模型”）。
-
-### B. 表格 (Tables) - 核心交互
-科研数据的展示形式是重中之重。
-
-1.  **数据预览模式 (Data View)**:
-    *   用于“数据管理”、“清洗”页面。
-    *   样式：`stripe` (斑马纹), `border` (全边框), `size="small"`。
-    *   交互：表头固定，支持列宽拖拽。
-
-2.  **学术发表模式 (Publication View)**:
-    *   用于“Table 1”、“模型结果”页面。
-    *   样式：模拟**三线表 (Three-line Table)**。
-        *   顶底边框加粗 (2px black)。
-        *   表头下边框 (1px black)。
-        *   去除竖线边框。
-        *   去除斑马纹背景。
-    *   **显著性高亮**：
-        *   当 `P < 0.05` 时，文字加粗并标红 (`#D32F2F`)。
-        *   置信区间 `(95% CI)` 如果跨越 1 (如 0.8-1.2)，显示为灰色（无意义）；如果不跨越 1，显示为黑色（有意义）。
-
-### C. 数据录入表单 (Forms)
-减少用户焦虑。
-
-*   **Label**: 统一使用 `label-position="top"`，确保长变量名也能完整显示。
-*   **Select**:
-    *   必须支持 `filterable` (可搜索)，因为变量名可能很多。
-    *   对于多选框（如选择协变量），使用 Tag 模式展示已选项。
-*   **Helper Text**:
-    *   每个复杂表单项下方必须有灰色的解释性文字。
-    *   *例如：“处理变量 (Treatment)”下方注明：“请选择区分实验组和对照组的变量（通常为0/1）”。*
-
-### D. 反馈与引导 (Feedback & Guide)
-
-*   **Loading**:
-    *   短时间 (<1s)：按钮 loading。
-    *   长时间 (>1s)：**骨架屏 (Skeleton)** 或 **进度条**，并配有文字（“正在进行倾向性评分匹配...”）。
-*   **Empty State**:
-    *   绝不展示空白。
-    *   内容：插画 + 解释文字 + **行动按钮**（如：“暂无模型结果，[去配置参数]”）。
+### 2.3 流程叙事化 (Narrative Flow)
+*   **导航结构**：左侧菜单按照科研论文撰写顺序排列：
+    1.  **数据准备** (Data Readiness)
+    2.  **基线特征** (Baseline / Table 1)
+    3.  **统计推断** (Inference / PSM / Survival)
+    4.  **多因素建模** (Modeling)
+    5.  **临床应用** (Nomogram)
 
 ---
 
-## 5. 数据可视化规范 (Data Viz)
+## 3. 视觉体系 (Visual System)
 
-使用 Plotly.js，但需统一配置以符合医学审美。
+### 3.1 色彩规范 (Color Palette)
+基于医学科研的冷静与严谨感微调。
 
-*   **配色板**:
-    *   **分组对比**: [`#3B71CA` (组A), `#E6A23C` (组B), `#67C23A` (组C)]
-    *   **生存曲线**: 必须清晰区分不同线条，且线条稍粗 (width: 2.5)。
-*   **图表元素**:
-    *   **坐标轴**: 必须有明确的 Label 和 Unit。
-    *   **置信区间**: 使用半透明填充 (Opacity 0.2)。
-    *   **参考线**: 必须标注参考线（如 OR=1, P=0.05, AUC=0.5），使用虚线灰色。
-*   **导出**:
-    *   提供按钮：`下载高清 PNG (300 DPI)` 和 `下载 SVG (矢量)`。
-
----
-
-## 6. 文案与微交互 (Micro-copy & Terminology)
-
-建立“中英对照”与“人话翻译”标准。
-
-| 开发者术语 (Dev) | 界面显示 (UI) | 解释/提示 (Tooltip) |
+| 语义 | 色值 (Hex) | 用途 |
 | :--- | :--- | :--- |
-| **Project** | **科研项目** | |
-| **Dataset** | **数据集** | 上传的 Excel 或 CSV 文件 |
-| **Feature** | **变量 (Variables)** | 您采集的患者指标 |
-| **Target / Label** | **结局变量 (Outcome)** | 您主要研究的结果（如死亡、发病）|
-| **Imputation** | **缺失值填补** | 自动补全空缺的数据 |
-| **Encoding** | **数值化处理** | 将文字（男/女）转换为数字（0/1） |
-| **Correlation** | **相关性分析** | 查看变量之间是否相互关联 |
-| **Coefficient** | **效应值 (Coef)** | 正数代表促进，负数代表抑制 |
-| **Hazard Ratio (HR)** | **风险比 (HR)** | HR > 1 代表风险增加 |
-| **Epochs** | **迭代轮次** | 越大越准，但速度越慢 |
+| **Primary (Brand)** | `#3B71CA` | 主按钮、激活状态、链接 (Science Blue) |
+| **Significance (Hot)** | `#D32F2F` | **P < 0.05**，危险因素 (HR > 1)，错误信息 |
+| **Safety (Cool)** | `#2E7D32` | 保护因素 (HR < 1)，校验通过，低风险 |
+| **Warning** | `#E6A23C` | 数据缺失警告，模型不收敛风险 |
+| **Neutral Text** | `#212121` | 正文、表格数值 |
+| **Secondary Text** | `#606266` | 标签、辅助说明 |
+| **Background** | `#F5F7FA` | 页面背景 (浅灰，突显白色卡片) |
+
+### 3.2 排版与字体
+*   **数字/代码**: `"Roboto Mono", Consolas, monospace` (用于 P值、置信区间，确保对齐)。
+*   **正文**: `"Helvetica Neue", "PingFang SC", sans-serif`。
 
 ---
 
-## 7. 图标系统 (Iconography)
+## 4. 核心组件规范 (Component Specs)
 
-使用 Element Plus Icons，赋予特定语义：
+### A. 学术三线表 (Publication Table)
+用于 Table 1 和模型结果展示，模拟论文发表样式。
+*   **样式**：
+    *   顶底边框加粗 (2px black)，表头下边框 (1px black)。
+    *   去除竖线，去除斑马纹。
+*   **智能交互**：
+    *   **显著性高亮**：`P < 0.05` 时，文字加粗并标红。
+    *   **置信区间**：若 `95% CI` 跨越 1 (如 0.8-1.2)，显示为灰色（无意义）；否则显示为黑色。
+    *   **决策透明化**：P 值旁显示微小的 `?` 图标，Hover 显示：“此处使用了 **Fisher 精确检验**，因为期望频数 < 5。”
 
-*   📂 `Folder` / `Document`: 项目与数据。
-*   🪄 `MagicStick`: 自动清洗、智能推荐。
-*   🏥 `FirstAidKit` (或 `Box`): 数据体检/修复。
-*   📈 `TrendCharts`: 统计建模。
-*   ⚖️ `ScaleToOriginal` (或 `Connection`): 倾向性匹配 (PSM)。
-*   ⏳ `Timer`: 生存分析。
-*   📥 `Download`: 导出报告/图片。
+### B. 数据录入表单 (Forms)
+*   **Label**: 统一使用 `label-position="top"`。
+*   **Helper Text**: 复杂项下方必须有灰色解释文字。
+    *   *例：“时间变量”下注明：“请输入随访时长（如月/天）”。*
+*   **Select**: 必须支持 `filterable` (搜索)，多选时使用 Tags 展示。
+
+### C. 智能解读面板 (Interpretation Panel)
+位于模型结果表格上方的高亮区域。
+*   **背景色**: 极浅的品牌色背景 (`#ecf5ff`)。
+*   **内容**: 动态生成的自然语言结论。
+    *   *例*: "在校正了年龄、性别后，**高血压** 是全因死亡的独立危险因素 (HR=1.5, 95% CI: 1.1-2.1)。"
+
+### D. 绘图组件 (InsightChart)
+基于 Plotly.js 封装。
+*   **统一配置**:
+    *   **配色**: 分组对比使用 [`#3B71CA` (组A), `#E6A23C` (组B)]。
+    *   **参考线**: 必须标注 OR=1, P=0.05 等参考线（虚线灰色）。
+*   **导出功能**: 必须提供 `下载高清 PNG (300 DPI)` 和 `下载 SVG` 按钮。
+
+---
+
+## 5. 文案与术语对照 (Micro-copy & Terminology)
+
+界面优先显示**临床术语**，Tooltip 或副标题显示**统计术语**。
+
+| 界面显示 (UI Label) | 统计学术语 (Stat Term) | Tooltip 解释 / 备注 |
+| :--- | :--- | :--- |
+| **结局变量 (Outcome)** | Dependent Variable (Y) | 您希望预测的结果（如死亡、复发）。 |
+| **影响因素 (Predictors)** | Independent Variable (X) / Covariates | 可能影响结局的变量。 |
+| **处理变量 (Treatment)** | Group Variable | 区分实验组和对照组的变量（0/1）。 |
+| **效应值 (Effect Size)** | Coef / OR / HR | 正数/大于1代表促进风险，负数/小于1代表抑制风险。 |
+| **数据填充 (Repair)** | Imputation | 使用统计学方法补全缺失值。 |
+| **数值化 (Digitize)** | One-Hot Encoding | 将文字类别（男/女）转换为数字（0/1）。 |
+
+---
+
+## 6. 全局“知识胶囊” (Global Knowledge Base)
+在页面右上角设置悬浮球或帮助中心入口。
+*   **Table 1 页**: 展示“如何选择 T 检验还是卡方？”的决策树图。
+*   **PSM 页**: 展示“倾向性评分匹配原理”动图。
+*   **生存分析页**: 解释“删失 (Censored)”的概念。
+
+---
+
+## 7. 异常处理 (Error Handling)
+*   **空状态 (Empty State)**: 绝不留白。展示插画 + 引导文字 + 行动按钮（如：“暂无模型结果，[去配置参数]”）。
+*   **后端错误**: 捕获 500 错误，转化为友好提示：“服务器正在处理大量数据或遇到格式问题，请检查数据是否存在特殊字符。”
 
 ---
 
 ## 8. 开发实现建议 (Implementation Notes)
 
-为了在 Vue 3 + Element Plus 中快速落地此规范，建议封装以下基础组件：
+前端 (Vue 3 + Element Plus) 需封装以下基础组件以统一规范：
 
-1.  **`InsightCard.vue`**: 统一封装 Header, Body, Footer 样式。
-2.  **`InsightTable.vue`**: 封装 `el-table`，通过 prop `mode="publication"` 自动切换为三线表样式。
-3.  **`HelpIcon.vue`**: 封装 `el-tooltip` + `QuestionFilled` 图标，统一问号的大小、颜色和提示文字的排版。
-4.  **`StatTag.vue`**: 根据传入的 P 值自动渲染红色/绿色/灰色的 Tag。
+1.  **`InsightCard.vue`**: 统一 Header (标题+操作区) 和 Body 的 Padding。
+2.  **`PublicationTable.vue`**: 封装 `el-table`，预设三线表样式，接收数据并自动处理 P 值高亮。
+3.  **`GlossaryTooltip.vue`**: 统一的术语解释组件，标准化问号图标样式。
+4.  **`StatTag.vue`**: 根据 P 值自动渲染 🔴/🟢/⚪ 状态标签。
+5.  **`InterpretationPanel.vue`**: 接收统计结果对象，输出 HTML 格式的解读文本。
