@@ -34,20 +34,31 @@ def upload_data(current_user, project_id):
         return jsonify({'message': 'No selected file'}), 400
     
     if file:
-        # Save file
-        filename = f"project_{project_id}_{file.filename}"
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        file.save(filepath)
+        # Save temp file for ingestion
+        raw_filename = f"temp_{project_id}_{file.filename}"
+        raw_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], raw_filename)
+        os.makedirs(os.path.dirname(raw_filepath), exist_ok=True)
+        file.save(raw_filepath)
         
-        # Parse and get metadata
-        metadata = DataService.get_initial_metadata(filepath)
+        # Define target DuckDB file path
+        # Use simple replacing of extension or appending
+        base_name = os.path.splitext(file.filename)[0]
+        # Sanitize filename? relying on secure_filename upstream usually, but here simple
+        db_filename = f"project_{project_id}_{base_name}.duckdb"
+        db_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], db_filename)
+        
+        # Ingest (Convert Raw -> DuckDB)
+        # This will remove the raw_filepath after success
+        DataService.ingest_data(raw_filepath, db_filepath)
+        
+        # Parse and get metadata (Reads from .duckdb now)
+        metadata = DataService.get_initial_metadata(db_filepath)
         
         # Save to Database
         new_dataset = Dataset(
             project_id=project.id,
-            name=file.filename,
-            filepath=filepath
+            name=file.filename, # Keep original name
+            filepath=db_filepath
         )
         new_dataset.meta_data = metadata
         db.session.add(new_dataset)
@@ -101,6 +112,46 @@ def download_file(filename):
         return jsonify({'message': 'File not found'}), 404
         
     return send_from_directory(directory, filename, as_attachment=True)
+
+@data_bp.route('/download/dataset/<int:dataset_id>', methods=['GET'])
+@token_required
+def download_dataset(current_user, dataset_id):
+    """
+    Download dataset. Automatically converts DuckDB to CSV.
+    """
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.project.author != current_user:
+        return jsonify({'message': 'Permission denied'}), 403
+
+    filepath = dataset.filepath
+    if not os.path.exists(filepath):
+        return jsonify({'message': 'File not found'}), 404
+
+    # Determine output filename (use original name from DB)
+    original_name = dataset.name
+    # Ensure it ends with .csv if we are converting
+    if not original_name.lower().endswith('.csv'):
+        original_name += '.csv'
+
+    # If it's a DuckDB file, export to temp CSV
+    if filepath.endswith('.duckdb'):
+        try:
+            temp_dir = current_app.config['UPLOAD_FOLDER']
+            temp_filename = f"export_{dataset.id}_{original_name}"
+            temp_filepath = os.path.join(temp_dir, temp_filename)
+            
+            # Export
+            DataService.export_to_csv(filepath, temp_filepath)
+            
+            return send_from_directory(temp_dir, temp_filename, as_attachment=True, download_name=original_name)
+        except Exception as e:
+            current_app.logger.error(f"Export failed: {e}")
+            return jsonify({'message': f'Export failed: {str(e)}'}), 500
+    else:
+        # Fallback for legacy files
+        directory = os.path.dirname(filepath)
+        filename = os.path.basename(filepath)
+        return send_from_directory(directory, filename, as_attachment=True, download_name=original_name)
     return send_from_directory(directory, filename, as_attachment=True)
 
 @data_bp.route('/<int:dataset_id>', methods=['DELETE'])

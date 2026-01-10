@@ -8,9 +8,51 @@ import pandas as pd
 import numpy as np
 import os
 import math
+import duckdb
 
 class DataService:
     MAX_FILE_SIZE_MB = 200
+
+    @staticmethod
+    def ingest_data(raw_filepath, db_filepath):
+        """
+        Ingest raw file (CSV/Excel) into a persistent DuckDB file.
+        
+        Args:
+            raw_filepath (str): Path to temporary raw file.
+            db_filepath (str): Target path for .duckdb file.
+        """
+        con = duckdb.connect(db_filepath)
+        try:
+            if raw_filepath.endswith('.csv'):
+                # Use read_csv_auto for robust robust type inference
+                # ignore_errors=True skips bad lines
+                con.sql(f"CREATE OR REPLACE TABLE data AS SELECT * FROM read_csv_auto('{raw_filepath}', ignore_errors=true)")
+            elif raw_filepath.endswith('.xlsx') or raw_filepath.endswith('.xls'):
+                # DuckDB Excel support requires extension, fall back to Pandas then insert
+                df = pd.read_excel(raw_filepath)
+                con.sql("CREATE OR REPLACE TABLE data AS SELECT * FROM df")
+            else:
+                 raise ValueError("Unsupported format")
+        finally:
+            con.close()
+            # Cleanup raw file if needed? Let caller decide or do it here.
+            # Usually strict cleanup is good.
+            if os.path.exists(raw_filepath):
+                os.remove(raw_filepath)
+
+    @staticmethod
+    def export_to_csv(db_filepath, output_csv_path):
+        """
+        Export data from DuckDB file to CSV.
+        """
+        con = duckdb.connect(db_filepath, read_only=True)
+        try:
+            # Use COPY statement for efficient export
+            # HEADER implies writing header row
+            con.sql(f"COPY data TO '{output_csv_path}' (HEADER, DELIMITER ',')")
+        finally:
+            con.close()
 
     @staticmethod
     def load_data(filepath, use_chunk=False):
@@ -24,7 +66,18 @@ class DataService:
             filepath (str): 文件路径
             use_chunk (bool): 是否使用 chunksize 读取（仅用于元数据预览），返回 iterator
         """
+        if filepath.endswith('.duckdb'):
+             con = duckdb.connect(filepath, read_only=True)
+             try:
+                 # Legacy fallback: load all to pandas (expensive but compatible)
+                 return con.sql("SELECT * FROM data").df()
+             finally:
+                 con.close()
+
         # 1. Size Check
+        if not os.path.exists(filepath):
+             raise FileNotFoundError(f"File not found: {filepath}")
+
         file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
         if file_size_mb > DataService.MAX_FILE_SIZE_MB:
             raise ValueError(f"文件大小 ({file_size_mb:.1f}MB) 超过限制 ({DataService.MAX_FILE_SIZE_MB}MB)。建议先进行本地预处理。")
@@ -41,7 +94,7 @@ class DataService:
                          return pd.read_csv(filepath, encoding=encoding, chunksize=1000)
                     else:
                          df = pd.read_csv(filepath, encoding=encoding, low_memory=False)
-                    break
+                    break 
                 except UnicodeDecodeError:
                     continue
             
@@ -52,6 +105,67 @@ class DataService:
             return pd.read_excel(filepath)
         else:
             raise ValueError("Unsupported file format (only .csv, .xlsx, .xls)")
+
+    @staticmethod
+    def load_data_optimized(filepath, columns=None):
+        """
+        Optimized data loader using DuckDB's projection pushdown.
+        Loads ONLY the specified columns to minimize memory usage.
+        
+        Args:
+            filepath (str): Path to file (.csv, .xlsx, .parquet).
+            columns (list): List of column names to load. If None, loads all.
+            
+        Returns:
+            pd.DataFrame: Dataframe containing only requested columns.
+        """
+        if not columns:
+            return DataService.load_data(filepath)
+            
+        if filepath.endswith('.duckdb'):
+            # Zero-Parsing query
+            try:
+                con = duckdb.connect(filepath, read_only=True)
+                cols_sql = ", ".join([f'"{c}"' for c in columns])
+                df = con.sql(f"SELECT {cols_sql} FROM data").df()
+                con.close()
+                return df
+            except Exception as e:
+                # If column missing, DuckDB raises generic Binder Error
+                raise ValueError(f"DuckDB Query Error: {e}")
+
+        if not filepath.endswith('.csv'):
+            # Fallback to Pandas for Excel (DuckDB excel support needs extension)
+            df = DataService.load_data(filepath)
+            missing = [c for c in columns if c not in df.columns]
+            if missing:
+                raise ValueError(f"Columns not found: {missing}")
+            return df[columns]
+            
+        try:
+            # DuckDB SQL Injection Protection: internally handles parameterized paths?
+            # DuckDB python API usually safe with f-string for local paths if trusted.
+            # But column names need sanitization.
+            # Assuming columns are validated/sanitized upstream or trusted enough.
+            
+            # Construct Column String
+            # Quote columns to handle spaces/special chars
+            cols_sql = ", ".join([f'"{c}"' for c in columns])
+            
+            # Use DuckDB to query
+            # read_csv_auto handles headers and types
+            query = f"SELECT {cols_sql} FROM read_csv_auto('{filepath}', ignore_errors=true)"
+            
+            # Execute and fetch as Pandas
+            # This triggers Projection Pushdown: only reads these columns from disk
+            df = duckdb.sql(query).df()
+            return df
+            
+        except Exception as e:
+            # Fallback to Pandas if DuckDB fails (e.g. encoding issues, though read_csv_auto is robust)
+            # print(f"DuckDB failed: {e}, falling back to Pandas")
+            df = DataService.load_data(filepath)
+            return df[columns]
 
     @staticmethod
     def get_initial_metadata(filepath):

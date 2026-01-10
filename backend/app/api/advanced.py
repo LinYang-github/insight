@@ -18,8 +18,10 @@ def fit_rcs(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    df = DataService.load_data(dataset.filepath)
-         
+    # Load Data (Deferred to after params parsing to know columns)
+    # dataset = Dataset.query.get(dataset_id) # Already got dataset object 
+    
+    # Move param parsing UP before loading
     target = data.get('target')
     event_col = data.get('event_col') # Optional (for Cox)
     exposure = data.get('exposure')
@@ -30,6 +32,9 @@ def fit_rcs(current_user):
     # Validation
     required_cols = [exposure, target] + covariates
     if event_col: required_cols.append(event_col)
+    
+    # Optimization: Load only required columns
+    df = DataService.load_data_optimized(dataset.filepath, columns=required_cols)
     
     # Validation
     features = [exposure] + covariates
@@ -56,8 +61,7 @@ def subgroup_analysis(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    df = DataService.load_data(dataset.filepath)
-         
+    # Parse params first
     target = data.get('target')
     event_col = data.get('event_col')
     exposure = data.get('exposure')
@@ -68,6 +72,14 @@ def subgroup_analysis(current_user):
     if not subgroups:
          return jsonify({'message': 'No subgroups provided.'}), 400
          
+    # Optimization
+    required = [target, exposure] + covariates + subgroups
+    if event_col: required.append(event_col)
+    # Deduplicate
+    required = list(set(required))
+    
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
+          
     results = AdvancedModelingService.perform_subgroup(
         df, target, event_col, exposure, subgroups, covariates, model_type
     )
@@ -83,8 +95,6 @@ def calculate_cif(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    df = DataService.load_data(dataset.filepath)
-         
     time_col = data.get('time_col')
     event_col = data.get('event_col')
     group_col = data.get('group_col') # Optional
@@ -92,6 +102,11 @@ def calculate_cif(current_user):
     if not time_col or not event_col:
         return jsonify({'message': 'Time and Event columns are required.'}), 400
         
+    required = [time_col, event_col]
+    if group_col: required.append(group_col)
+    
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
+    
     results = AdvancedModelingService.calculate_cif(
         df, time_col, event_col, group_col
     )
@@ -107,8 +122,6 @@ def generate_nomogram(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    df = DataService.load_data(dataset.filepath)
-    
     target = data.get('target')
     event_col = data.get('event_col')
     model_type = data.get('model_type', 'logistic')
@@ -116,6 +129,11 @@ def generate_nomogram(current_user):
     
     if not predictors:
          return jsonify({'message': 'Predictors are required'}), 400
+
+    required = [target] + predictors
+    if event_col: required.append(event_col)
+    
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
 
     # Validation
     tgt_arg = target
@@ -138,8 +156,6 @@ def compare_models(current_user):
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
-    df = DataService.load_data(dataset.filepath)
-         
     target = data.get('target')
     event_col = data.get('event_col') # Optional (for Cox)
     model_configs = data.get('models', [])
@@ -148,10 +164,18 @@ def compare_models(current_user):
     if not target or not model_configs:
          return jsonify({'message': 'Target and Models are required'}), 400
          
+    # Optimization: Collect all unique features needed
+    required = set([target])
+    if event_col: required.add(event_col)
+    
     # Basic Config Validation
     for conf in model_configs:
         if 'name' not in conf or 'features' not in conf:
              return jsonify({'message': 'Invalid model config format. Need name and features.'}), 400
+        for f in conf['features']:
+            required.add(f)
+            
+    df = DataService.load_data_optimized(dataset.filepath, columns=list(required))
              
     results = AdvancedModelingService.compare_models(
         df, target, model_configs, model_type, event_col

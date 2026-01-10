@@ -32,6 +32,7 @@
          <template #header>
             <div class="card-header">
                 <span>数据集元数据 ({{ metadata.row_count }} 行)</span>
+                <el-button type="primary" size="small" icon="Download" @click="handleDownload" v-if="dataset">下载 CSV</el-button>
             </div>
          </template>
          <el-table :data="metadata.variables" style="width: 100%" stripe border>
@@ -62,6 +63,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import api from '../../api/client'
 
 const props = defineProps({
     projectId: { type: String, required: true },
@@ -93,6 +95,32 @@ const handleUploadFinish = (response) => {
 
 const handleUploadError = () => {
     ElMessage.error('上传失败')
+}
+
+const handleDownload = () => {
+    if (!props.dataset) return
+    const dsId = props.dataset.dataset_id || props.dataset.id
+    
+    api.get(`/data/download/dataset/${dsId}`, { responseType: 'blob' })
+    .then((response) => {
+        const href = URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = href;
+        
+        // Try to get filename
+        let filename = props.dataset.name || 'dataset.csv';
+        if (!filename.toLowerCase().endsWith('.csv')) filename += '.csv'
+
+        link.setAttribute('download', filename); 
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+    })
+    .catch(e => {
+        ElMessage.error("下载失败")
+        console.error(e)
+    })
 }
 </script>
 

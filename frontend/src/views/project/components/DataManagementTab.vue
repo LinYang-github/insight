@@ -57,6 +57,7 @@
                                  {{ row.id === activeDatasetId ? '活跃' : '启用' }}
                              </el-button>
                              <el-button size="small" icon="Edit" @click="openRename(row)" />
+                             <el-button size="small" icon="Download" @click="handleDownload(row)" />
                              <el-button size="small" type="danger" icon="Delete" @click="confirmDelete(row)" />
                          </el-button-group>
                      </template>
@@ -137,7 +138,7 @@ import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
     CircleCheckFilled, Edit, Delete, List, Connection, 
-    Document, MagicStick, Cpu, ScaleToOriginal 
+    Document, MagicStick, Cpu, ScaleToOriginal, Download 
 } from '@element-plus/icons-vue'
 import api from '../../../api/client'
 import dayjs from 'dayjs'
@@ -264,6 +265,42 @@ const handleRename = async () => {
     } finally {
         renaming.value = false
     }
+}
+
+// Delete Logic
+    // Determine API URL
+    const url = `${api.defaults.baseURL}/data/download/dataset/${dataset.id}`
+    // Trigger download via window.open or hidden link
+    // Need to pass token? 
+    // Data download usually needs token in header or param.
+    // If standard browser nav, headers aren't sent.
+    // OPTION 1: Add ?token=... (Insecure for logging)
+    // OPTION 2: Fetch blob and save.
+    
+    // Let's use fetch blob approach for security (Header Auth).
+    api.get(`/data/download/dataset/${dataset.id}`, { responseType: 'blob' })
+    .then((response) => {
+        // Create link
+        const href = URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = href;
+        
+        // Extract filename from header or use dataset.name
+        // Content-Disposition: attachment; filename="filename.jpg"
+        let filename = dataset.name;
+        // Simple fallback
+        if (!filename.endsWith('.csv')) filename += '.csv'
+
+        link.setAttribute('download', filename); 
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+    })
+    .catch(e => {
+        ElMessage.error("下载失败")
+        console.error(e)
+    })
 }
 
 // Delete Logic

@@ -11,6 +11,7 @@ from app.models.project import Project
 from app.models.dataset import Dataset
 import pandas as pd
 import os # missing import fixed
+from app.services.data_service import DataService # Moved import to top for consistency
 
 modeling_bp = Blueprint('modeling', __name__)
 
@@ -26,13 +27,16 @@ def run_model(current_user):
     
     project_id = data.get('project_id')
     dataset_id = data.get('dataset_id')
-    model_type = data.get('model_type') # linear, logistic, cox
+    
+    # Extract model parameters with defaults
     target = data.get('target')
-    features = data.get('features')
+    features = data.get('features', [])
+    model_type = data.get('model_type', 'linear') # linear, logistic, cox
+    params = data.get('params', {}) # For future use, e.g., specific model parameters
     
     # Validation
-    if not all([project_id, dataset_id, model_type, target, features]):
-        return jsonify({'message': 'Missing required parameters'}), 400
+    if not all([project_id, dataset_id, model_type, target, features is not None]): # features can be empty list
+        return jsonify({'message': 'Missing required parameters (project_id, dataset_id, model_type, target, features)'}), 400
         
     project = Project.query.get_or_404(project_id)
     if project.author != current_user:
@@ -43,8 +47,12 @@ def run_model(current_user):
         return jsonify({'message': 'Dataset does not belong to project'}), 400
         
     # Use robust loading from DataService
-    from app.services.data_service import DataService
-    df = DataService.load_data(dataset.filepath)
+    # Optimization
+    required = [target] + features
+    # Dedup
+    required = list(set(required))
+    
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
         
     # Run model
     results = ModelingService.run_model(df, model_type, target, features)
@@ -70,8 +78,11 @@ def export_model(current_user):
     dataset = Dataset.query.get_or_404(dataset_id)
     
     # Load data
-    from app.services.data_service import DataService
-    df = DataService.load_data(dataset.filepath)
+    required = [target] + features
+    # Dedup
+    required = list(set(required))
+    
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
         
     # Run model
     results = ModelingService.run_model(df, model_type, target, features)
