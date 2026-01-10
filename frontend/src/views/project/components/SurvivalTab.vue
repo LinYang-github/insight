@@ -57,7 +57,7 @@
                      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span>Survival Analysis (Kaplan-Meier)</span>
-                            <el-tag v-if="pValue" :type="pValue === 'N/A' ? 'info' : (parseFloat(pValue) < 0.05 ? 'danger' : 'success')">
+                            <el-tag v-if="pValue" type="info">
                                 Log-Rank P: {{ pValue }}
                             </el-tag>
                         </div>
@@ -75,6 +75,11 @@
                     </div>
                 </template>
                 
+                <InterpretationPanel 
+                    v-if="kmInterpretation"
+                    :interpretation="kmInterpretation"
+                />
+                
                 <div id="km-plot" style="width: 100%; height: 500px;"></div>
                 
             </el-card>
@@ -89,6 +94,7 @@ import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import { ArrowDown } from '@element-plus/icons-vue'
+import InterpretationPanel from './InterpretationPanel.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -97,6 +103,7 @@ const props = defineProps({
 
 const loading = ref(false)
 const pValue = ref(null)
+const kmInterpretation = ref(null)
 
 const config = reactive({
     time: null,
@@ -125,6 +132,7 @@ const generatePlot = async () => {
 
     loading.value = true
     pValue.value = null
+    kmInterpretation.value = null
     
     try {
         const { data } = await api.post('/statistics/km', {
@@ -133,6 +141,8 @@ const generatePlot = async () => {
         })
         
         pValue.value = data.km_data.p_value
+        kmInterpretation.value = data.km_data.interpretation
+        
         renderPlot(data.km_data.plot_data)
         
     } catch (error) {

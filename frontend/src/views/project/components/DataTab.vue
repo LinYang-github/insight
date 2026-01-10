@@ -63,7 +63,7 @@
  */
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import api from '../../api/client'
+import api from '../../../api/client'
 
 const props = defineProps({
     projectId: { type: String, required: true },

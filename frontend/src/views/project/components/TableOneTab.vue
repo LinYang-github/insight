@@ -124,10 +124,8 @@
                 </PublicationTable>
                 
                 <InterpretationPanel 
-                    v-if="selectedRow && selectedRow.p_value"
-                    :p-value="selectedRow.p_value"
-                    :test-name="selectedRow.test"
-                    :selection-reason="selectedRow._meta ? selectedRow._meta.selection_reason : ''"
+                    v-if="selectedRow && selectedRow.interpretation"
+                    :interpretation="selectedRow.interpretation"
                 />
                 <el-empty v-else-if="results.length > 0" description="点击表格行查看详细智能分析" :image-size="60" />
             </el-card>

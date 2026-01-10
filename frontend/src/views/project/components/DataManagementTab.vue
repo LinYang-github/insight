@@ -267,17 +267,8 @@ const handleRename = async () => {
     }
 }
 
-// Delete Logic
-    // Determine API URL
-    const url = `${api.defaults.baseURL}/data/download/dataset/${dataset.id}`
-    // Trigger download via window.open or hidden link
-    // Need to pass token? 
-    // Data download usually needs token in header or param.
-    // If standard browser nav, headers aren't sent.
-    // OPTION 1: Add ?token=... (Insecure for logging)
-    // OPTION 2: Fetch blob and save.
-    
-    // Let's use fetch blob approach for security (Header Auth).
+// Download Logic
+const handleDownload = (dataset) => {
     api.get(`/data/download/dataset/${dataset.id}`, { responseType: 'blob' })
     .then((response) => {
         // Create link
@@ -286,10 +277,9 @@ const handleRename = async () => {
         link.href = href;
         
         // Extract filename from header or use dataset.name
-        // Content-Disposition: attachment; filename="filename.jpg"
         let filename = dataset.name;
         // Simple fallback
-        if (!filename.endsWith('.csv')) filename += '.csv'
+        if (!filename.toLowerCase().endsWith('.csv')) filename += '.csv'
 
         link.setAttribute('download', filename); 
         document.body.appendChild(link);

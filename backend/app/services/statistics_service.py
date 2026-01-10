@@ -122,9 +122,44 @@ class StatisticsService:
                 row['p_value'] = ResultFormatter.format_p_value(p) if p is not None else 'N/A'
                 row['_meta'] = test_meta
                 
+                # --- Generate Interpretation (Decoupling) ---
+                row['interpretation'] = StatisticsService._generate_table1_interpretation(row['variable'], p, test_name)
+                
             results.append(row)
             
         return results
+
+    @staticmethod
+    def _generate_table1_interpretation(var_name, p_value, test_name):
+        """
+        Generate decoupling interpretation for Table 1 row.
+        """
+        if p_value is None:
+            return None
+            
+        is_sig = p_value < 0.05
+        p_str = "< 0.001" if p_value < 0.001 else f"{p_value:.3f}"
+        
+        if is_sig:
+            return {
+                "text_template": "变量 {var} 在各组间分布差异显著 (P={p})。",
+                "params": {
+                    "var": var_name,
+                    "p": p_str,
+                    "test": test_name
+                },
+                "level": "danger" # Significant difference in Table 1 often means confounding
+            }
+        else:
+            return {
+                "text_template": "变量 {var} 在各组间分布均衡 (P={p})。",
+                "params": {
+                    "var": var_name,
+                    "p": p_str,
+                    "test": test_name
+                },
+                "level": "success" # Balanced is usually good for baseline
+            }
 
     @staticmethod
     def _calc_stats(series):
@@ -228,10 +263,38 @@ class StatisticsService:
             }
             plot_data.append(trace)
             
+        # --- Generate Interpretation (Decoupling) ---
+        interpretation = None
+        if p_value and p_value != 'N/A':
+            p_float = float(p_value) if isinstance(p_value, (float, int)) else float(p_value.replace('<', '').strip())
+            interpretation = StatisticsService._generate_km_interpretation(p_float)
+
         return {
             'plot_data': plot_data,
-            'p_value': p_value
+            'p_value': p_value,
+            'interpretation': interpretation
         }
+
+    @staticmethod
+    def _generate_km_interpretation(p_value):
+        """
+        Generate interpretation for KM Log-rank test.
+        """
+        is_sig = p_value < 0.05
+        p_str = "< 0.001" if p_value < 0.001 else f"{p_value:.3f}"
+        
+        if is_sig:
+            return {
+                "text_template": "各组生存曲线存在**显著差异** (Log-rank P={p})。组间生存概率分布不同。",
+                "params": { "p": p_str },
+                "level": "danger" # Significant difference
+            }
+        else:
+            return {
+                "text_template": "各组生存曲线**无显著差异** (Log-rank P={p})。组间生存概率分布相似。",
+                "params": { "p": p_str },
+                "level": "info"
+            }
 
     @staticmethod
     def perform_psm(df, treatment, covariates):
