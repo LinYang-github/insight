@@ -11,7 +11,10 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import roc_curve, auc, confusion_matrix, accuracy_score, mean_squared_error, r2_score
 import xgboost as xgb
-import shap
+try:
+    import shap
+except ImportError:
+    shap = None
 from .base import BaseModelStrategy
 from app.utils.formatter import ResultFormatter
 
@@ -140,6 +143,10 @@ class TreeModelStrategy(BaseModelStrategy):
         return metrics, plots
 
     def _explain(self, model, X, features):
+        if shap is None:
+            # Fallback if SHAP not installed
+            return [{"feature": "SHAP Not Available", "importance": 0}]
+
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
         
