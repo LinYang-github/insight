@@ -1,21 +1,12 @@
 <template>
-  <div class="interpretation-panel" v-if="isValid">
+  <div class="interpretation-panel" v-if="interpretation" :class="interpretation.level">
     <div class="panel-header">
       <el-icon class="icon"><MagicStick /></el-icon>
       <span class="title">智能分析结论 (Smart Insight)</span>
     </div>
     <div class="panel-content">
-      <!-- Main Conclusion -->
-      <p class="summary-text" v-html="summaryHtml"></p>
-      
-      <!-- Methodology Explanation -->
-      <div v-if="testName" class="methodology-note">
-        <span class="label">分析方法:</span>
-        <span class="value">{{ testName }}</span>
-        <el-tooltip v-if="selectionReason" :content="selectionReason" placement="top">
-            <el-icon class="info-icon"><QuestionFilled /></el-icon>
-        </el-tooltip>
-      </div>
+      <!-- Main Conclusion rendered from template -->
+      <p class="summary-text" v-html="renderedText"></p>
     </div>
   </div>
 </template>
@@ -24,82 +15,69 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  pValue: {
-    type: [Number, String],
-    default: null
-  },
-  testName: {
-    type: String,
-    default: ''
-  },
-  selectionReason: {
-    type: String,
-    default: ''
-  },
-  // Optional: difference description (e.g. "Mean A > Mean B")
-  direction: String,
-  effectSize: {
-    type: Number,
-    default: null
-  },
-  ci: {
-    type: Array, // [lower, upper]
-    default: () => []
+  interpretation: {
+    type: Object,
+    default: null 
+    // Structure: { text_template: "Var {var}...", params: {var: "Age"}, level: "danger" }
   }
 })
 
-const isValid = computed(() => {
-  return props.pValue !== null && props.pValue !== 'N/A'
-})
-
-const summaryHtml = computed(() => {
-  if (!isValid.value) return ''
-
-  let p = props.pValue
-  if (typeof p === 'string') {
-    if (p.startsWith('<')) p = 0.0001
-    else p = parseFloat(p)
-  }
-
-  if (isNaN(p)) return ''
-
-  if (p < 0.05) {
-    let effectText = ''
-    if (props.effectSize !== null && !isNaN(props.effectSize)) {
-          if (props.effectSize > 1) {
-              effectText = ` <span class="risk-inc">风险增加 ${(props.effectSize).toFixed(2)} 倍 (Risk Increased)</span>。`
-          } else if (props.effectSize < 1 && props.effectSize > 0) {
-              const reduction = ((1 - props.effectSize) * 100).toFixed(1)
-              effectText = ` <span class="risk-dec">风险降低 ${reduction}% (Risk Reduced)</span>。`
-          }
-    }
+const renderedText = computed(() => {
+    if (!props.interpretation) return ''
+    const tmpl = props.interpretation.text_template
+    const params = props.interpretation.params || {}
     
-    return `<span class="significant">差异显著 (P < 0.05)。</span>` + 
-           effectText +
-           (props.direction ? ` ${props.direction}` : '') + 
-           ` 统计学分析表明，存在显著性关联。`
-  } else {
-    return `<span class="non-significant">无显著差异 (P > 0.05)。</span>` +
-           ` 目前的证据尚不足以证明存在统计学关联。`
-  }
+    // Simple interpolation
+    return tmpl.replace(/{(\w+)}/g, (match, key) => {
+        const val = params[key]
+        if (val === undefined) return match
+        
+        // Apply specific styling based on keys?
+        // e.g. HR/OR/P -> Bold or Color
+        // Or simpler: Backend can provide markdown or HTML? 
+        // User requirement said "Frontend only renders".
+        // Let's wrap value in span for potential styling.
+        // But 'direction' changes color based on logic? 
+        // The logic was moved to backend (level: danger/success), 
+        // so we can style the whole block or specific keywords.
+        // Let's keep it simple: Bold the parameters.
+        return `<strong>${val}</strong>`
+    })
 })
 </script>
 
 <style scoped>
 .interpretation-panel {
-  background-color: #F8FDFF; /* Very light blue background */
-  border: 1px solid #C3E9FF;
+  border: 1px solid #dcdfe6;
   border-radius: 8px;
   padding: 15px;
   margin-top: 20px;
+  background-color: #f4f4f5;
+}
+
+.interpretation-panel.danger {
+    background-color: #fef0f0;
+    border-color: #fde2e2;
+}
+.interpretation-panel.success {
+    background-color: #f0f9eb;
+    border-color: #e1f3d8;
+}
+.interpretation-panel.info {
+    background-color: #f4f4f5;
+    border-color: #e9e9eb;
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   margin-bottom: 10px;
-  color: #3B71CA; /* Science Blue */
+  font-weight: bold;
 }
+
+.interpretation-panel.danger .panel-header { color: #f56c6c; }
+.interpretation-panel.success .panel-header { color: #67c23a; }
+.interpretation-panel.info .panel-header { color: #909399; }
 
 .icon {
   font-size: 18px;
@@ -107,57 +85,13 @@ const summaryHtml = computed(() => {
 }
 
 .title {
-  font-weight: 600;
   font-size: 14px;
 }
 
 .summary-text {
   font-size: 14px;
   line-height: 1.6;
-  color: #212121;
-  margin: 0 0 10px 0;
-}
-
-.methodology-note {
-  font-size: 12px;
-  color: #616161;
-  display: flex;
-  align-items: center;
-}
-
-.label {
-  font-weight: 500;
-  margin-right: 6px;
-}
-
-.info-icon {
-  margin-left: 4px;
-  cursor: help;
-  color: #9E9E9E;
-}
-
-:deep(.significant) {
-  color: #D32F2F; /* Red for significance */
-  font-weight: 600;
-}
-
-:deep(.non-significant) {
-  color: #616161;
-}
-
-:deep(.risk-inc) {
-    color: #D32F2F;
-    background-color: #FFEBEE;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-weight: 600;
-}
-
-:deep(.risk-dec) {
-    color: #2E7D32;
-    background-color: #E8F5E9;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-weight: 600;
+  color: #303133;
+  margin: 0;
 }
 </style>

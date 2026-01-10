@@ -124,6 +124,10 @@ class ModelingService:
             # -------------------------------
             
             results = strategy.fit(df_processed, target, new_features, model_params)
+            
+            # --- Generate Interpretation (Decoupling) ---
+            results['interpretation'] = ModelingService._generate_interpretation(model_type, results['summary'])
+            
         except np.linalg.LinAlgError:
             # Diagnose the issue (奇异矩阵诊断)
             diagnosis_msg = ModelingService._diagnose_singularity(df_processed, new_features)
@@ -146,6 +150,86 @@ class ModelingService:
             raise RuntimeError(f"Model execution failed: {str(e)}")
 
         return DataService.sanitize_for_json(results)
+
+    @staticmethod
+    def _generate_interpretation(model_type: str, summary: list) -> dict:
+        """
+        Generate structured interpretation for frontend.
+        Returns:
+            {
+                "text_template": "Variable {var} ...",
+                "params": {...},
+                "level": "danger/success/info"
+            }
+        """
+        if not summary:
+            return None
+            
+        # Filter significant vars
+        sig_vars = [row for row in summary if row.get('p_value') is not None and row['p_value'] < 0.05]
+        
+        if not sig_vars:
+            return {
+                "text_template": "未发现统计学显著 (P < 0.05) 的变量。目前的证据尚不足以证明存在统计学关联。",
+                "params": {},
+                "level": "info"
+            }
+            
+        # Pick best variable
+        top_var = None
+        if model_type == 'logistic':
+            # Max OR
+            top_var = max(sig_vars, key=lambda x: x.get('or', 0))
+        elif model_type == 'cox':
+            # Max HR
+            top_var = max(sig_vars, key=lambda x: x.get('hr', 0))
+        else: # linear
+            # Max Coef (abs)
+            top_var = max(sig_vars, key=lambda x: abs(x.get('coef', 0)))
+            
+        # Construct message
+        var_name = top_var['variable']
+        p_val_fmt = "< 0.001" if top_var['p_value'] < 0.001 else f"{top_var['p_value']:.3f}"
+        
+        if model_type == 'cox':
+            hr = top_var['hr']
+            direction = "增加" if hr > 1 else "降低"
+            return {
+                "text_template": "变量 {var} 风险{direction}显著 (HR={hr}, P={p})。",
+                "params": {
+                    "var": var_name,
+                    "direction": direction,
+                    "hr": hr,
+                    "p": p_val_fmt
+                },
+                "level": "danger" if hr > 1 else "success"
+            }
+        elif model_type == 'logistic':
+            or_val = top_var['or']
+            direction = "增加" if or_val > 1 else "降低"
+            return {
+                "text_template": "变量 {var} 风险{direction}显著 (OR={or_val}, P={p})。",
+                "params": {
+                    "var": var_name,
+                    "direction": direction,
+                    "or_val": or_val,
+                    "p": p_val_fmt
+                },
+                "level": "danger" if or_val > 1 else "success"
+            }
+        else: # Linear
+            coef = top_var['coef']
+            direction = "正相关" if coef > 0 else "负相关"
+            return {
+                "text_template": "变量 {var} 与结果呈显著{direction} (Coef={coef}, P={p})。",
+                "params": {
+                    "var": var_name,
+                    "direction": direction,
+                    "coef": coef,
+                    "p": p_val_fmt
+                },
+                "level": "info"
+            }
 
     @staticmethod
     def _diagnose_singularity(df, features):

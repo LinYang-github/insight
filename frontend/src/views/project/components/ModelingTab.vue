@@ -150,17 +150,13 @@
 
                  <!-- Smart Interpretation Component -->
                  <InterpretationPanel
-                    v-if="topResult"
-                    :p-value="topResult.p_value"
-                    :test-name="config.model_type.toUpperCase() + ' Model'"
-                    :selection-reason="smartSummary"
-                    :effect-size="topResult.effectSize"
-                    :direction="topResult.desc"
+                    v-if="results.interpretation"
+                    :interpretation="results.interpretation"
                  />
                  
                  <!-- Fallback or Additional Diagnostics -->
                  <el-alert
-                    v-if="smartSummary && !topResult"
+                    v-if="smartSummary && !results.interpretation"
                     title="模型诊断"
                     type="info"
                     show-icon
