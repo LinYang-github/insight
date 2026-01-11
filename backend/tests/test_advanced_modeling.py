@@ -66,26 +66,14 @@ class TestAdvancedModeling:
             covariates=['age'],
             model_type='cox'
         )
-        assert len(res) == 1 
-        group_res = res[0]
+        assert 'forest_data' in res
+        forest_data = res['forest_data']
+        assert len(forest_data) == 1 
+        group_res = forest_data[0]
         assert group_res['variable'] == 'sex'
         assert len(group_res['subgroups']) == 2
         # Verify first subgroup
         sub = group_res['subgroups'][0]
-        # Since we mocked DataService to identity, cleaning works as expected on real DF
-        # But wait, helper _fit_simple_model uses real CoxPHFitter? Yes.
-        # It relies on DataService.preprocess_for_formula? Yes.
-        # Since we mocked preprocess to identity, it returns the DF as is.
-        # The DF has 'sex' as strings 'M'/'F'.
-        # CoxPHFitter can handle object/categorical IF formula is used OR data is prep-ed.
-        # perform_subgroup logic:
-        # sub_df = df[df[grp_col] == val]
-        # sub_df = DataService.preprocess_for_formula(sub_df) -> returns raw sub_df
-        # _fit_simple_model: 
-        # formula = "exposure + age"
-        # cph.fit(sub_df, duration, event, formula)
-        # Exposure/Age are numeric. Duration/Event numeric. It SHOULD work.
-        
         assert 'est' in sub
 
 
@@ -98,10 +86,14 @@ class TestAdvancedModeling:
             group_col='group'
         )
         
-        # Expect: Group A (Evt1, Evt2) + Group B (Evt1, Evt2) = 4 curves
-        assert len(res) == 4 
+        # Expect 2 events x 2 groups = 4 lines
+        # events=[1,2], groups=['A','B']
+        assert 'cif_data' in res
+        cif_data = res['cif_data']
+        assert len(cif_data) == 4
+        assert 'methodology' in res 
         
-        first = res[0]
+        first = cif_data[0]
         assert 'cif_data' in first
         assert len(first['cif_data']) > 0
         assert first['event_type'] in [1, 2]
@@ -217,17 +209,18 @@ class TestAdvancedModeling:
             model_configs=model_configs, 
             model_type='logistic'
         )
-        
-        assert len(res) == 2
+        assert 'comparison_data' in res
+        results = res['comparison_data']
+        assert len(results) == 2
         
         # Check Model 1
-        m1 = res[0]
+        m1 = results[0]
         assert m1['name'] == 'Model1'
         assert 'auc' in m1['metrics']
         assert len(m1['roc_data']) > 0
         
         # Check Model 2
-        m2 = res[1]
+        m2 = results[1]
         assert m2['name'] == 'Model2'
         
         # Incremental Value: Model 2 (Age + Exposure) should generally have higher AUC than Model 1 (Age only)
@@ -257,14 +250,15 @@ class TestAdvancedModeling:
             dummy_df, 
             target='duration',
             event_col='event', 
-            model_configs=model_configs, 
+            model_configs=model_configs,
             model_type='cox'
         )
-        
-        assert len(res) == 2
+        assert 'comparison_data' in res
+        results = res['comparison_data']
+        assert len(results) == 2
         
         # Check Model 2
-        m2 = res[1]
+        m2 = results[1]
         metrics = m2['metrics']
         
         # Should have C-index
@@ -315,9 +309,12 @@ class TestAdvancedModeling:
             model_type='logistic'
         )
         
+        assert 'comparison_data' in res
+        results = res['comparison_data']
+        
         # Both models should report n=18
-        assert res[0]['n'] == 18
-        assert res[1]['n'] == 18
+        assert results[0]['n'] == 18
+        assert results[1]['n'] == 18
 
     def test_subgroup_robustness_small_sample(self, dummy_df):
         """
@@ -340,7 +337,9 @@ class TestAdvancedModeling:
         
         # Find the 'Small' subgroup result
         # 'sex' group result
-        sex_res = res[0]
+        
+        # Fix: perform_subgroup returns dict {'forest_data': [...]}
+        sex_res = res['forest_data'][0]
         small_res = next((s for s in sex_res['subgroups'] if s['level'] == 'Small'), None)
         
         # It should either be skipped (not present) or present but with invalid stats

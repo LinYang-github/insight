@@ -7,7 +7,7 @@ from sklearn.datasets import make_classification
 
 @pytest.fixture
 def classification_df():
-    X, y = make_classification(n_samples=100, n_features=5, random_state=42)
+    X, y = make_classification(n_samples=100, n_features=5, n_informative=3, n_redundant=0, random_state=42)
     df = pd.DataFrame(X, columns=[f'f{i}' for i in range(5)])
     df['target'] = y
     return df

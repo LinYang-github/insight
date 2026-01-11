@@ -99,9 +99,9 @@ class TestComprehensiveModeling:
         assert results['task'] == 'regression'
         assert 'r2' in results['metrics']
         assert 'importance' in results
-        # Ensure category variable was handled and is in importance list
+        # Ensure category variable was handled (might be one-hot encoded as category_A/B)
         imp_vars = [x['feature'] for x in results['importance']]
-        assert 'category' in imp_vars
+        assert any('category' in f for f in imp_vars)
 
     def test_xgboost_classification_with_categorical(self, logistic_data):
         """Test XGBoost Classification with Categorical Feature simulation"""
@@ -118,6 +118,11 @@ class TestComprehensiveModeling:
         assert results['model_type'] == 'xgboost'
         assert results['task'] == 'classification'
         assert 'auc' in results['metrics']
+        
+        # Debug parsing error
+        auc_val = results['metrics']['auc']
+        # print(f"DEBUG: AUC Value: {auc_val} Type: {type(auc_val)}") 
+        
         assert 'roc' in results['plots']
 
     def test_robustness_singular_matrix(self, linear_data):

@@ -80,8 +80,9 @@ def test_validation_service_robustness():
     """
     report = ValidationService.run_robustness_checks()
     # Expect 2 tests: Singularity and GBK
-    singularity = next(r for r in report if r['case'] == "Perfect Multicollinearity")
-    gbk = next(r for r in report if r['case'] == "GBK/Chinese Character Support")
+    # Use substring matching for robustness against localization changes
+    singularity = next(r for r in report if "Perfect Multicollinearity" in r['case'])
+    gbk = next(r for r in report if "GBK" in r['case'])
     
     assert singularity['status'] == 'PASS'
     assert gbk['status'] == 'PASS'

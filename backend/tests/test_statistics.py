@@ -59,7 +59,7 @@ def sample_dataset(app, auth_header, client):
     
     return dataset
 
-def test_service_logic():
+def test_table1_generation_logic():
     df = pd.DataFrame({
         'age': [20, 22, 19, 21, 60, 62, 59, 61],
         'group': ['Young', 'Young', 'Young', 'Young', 'Old', 'Old', 'Old', 'Old'],
@@ -77,10 +77,12 @@ def test_service_logic():
         assert True
     else:
         assert float(p_val_str) < 0.05
-    assert age_row['test'] == "Student's T-test"
+    # Updated to Welch's due to recent Phase 2 change
+    assert age_row['test'] == "Welch's T-test" 
 
     # Test Categorical (Chi-square) - Should be non-significant (perfectly balanced)
-    res = StatisticsService.generate_table_one(df, 'group', ['sex'])['table_data']
+    res_dict = StatisticsService.generate_table_one(df, 'group', ['sex'])
+    res = res_dict['table_data']
     sex_row = res[0]
     assert sex_row['variable'] == 'sex'
     # p-value might be 1.0
@@ -88,7 +90,7 @@ def test_service_logic():
     # With small sample (N=10) and expected < 5, code now switches to Fisher
     assert sex_row['test'] == 'Fisher Exact Test'
 
-def test_api_endpoint(client, auth_header, sample_dataset):
+def test_table1_api_endpoint(client, auth_header, sample_dataset):
     ds_id = sample_dataset.id
     
     data = {
@@ -228,7 +230,8 @@ def test_metadata_injection():
     
     assert '_meta' in row
     assert row['_meta']['test_name'] == "Welch's T-test"
-    assert "方差不相等" in row['_meta']['selection_reason']
+    # Updated reason string
+    assert "采用 Welch's T-test" in row['_meta']['selection_reason']
     
     # 2. ANOVA Case (>2 groups)
     df2 = pd.DataFrame({

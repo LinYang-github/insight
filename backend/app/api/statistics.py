@@ -147,7 +147,8 @@ def export_table1(current_user):
     df = DataService.load_data(dataset.filepath)
     
     # 1. Generate Table 1 data
-    result = StatisticsService.generate_table_one(df, group_by, variables)
+    res_dict = StatisticsService.generate_table_one(df, group_by, variables)
+    result = res_dict.get('table_data', [])
     
     # 2. Convert to DataFrame for CSV
     export_rows = []

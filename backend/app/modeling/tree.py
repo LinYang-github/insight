@@ -143,17 +143,28 @@ class TreeModelStrategy(BaseModelStrategy):
         return metrics, plots
 
     def _explain(self, model, X, features):
-        if shap is None:
-            # Fallback if SHAP not installed
-            return [{"feature": "SHAP Not Available", "importance": 0}]
+        feature_importance = None
+        
+        try:
+            if shap is None:
+                raise ImportError("SHAP not installed")
 
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X)
-        
-        if isinstance(shap_values, list): 
-            shap_values = shap_values[1]
-        
-        feature_importance = np.abs(shap_values).mean(axis=0)
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X)
+            
+            if isinstance(shap_values, list): 
+                shap_values = shap_values[1]
+            
+            feature_importance = np.abs(shap_values).mean(axis=0)
+            
+        except Exception as e:
+            # Fallback if SHAP fails (e.g. ValueError: could not convert string to float)
+            print(f"SHAP explanation failed: {e}. Using native feature_importances_.")
+            if hasattr(model, 'feature_importances_'):
+                feature_importance = model.feature_importances_
+            else:
+                return [{"feature": "Importance N/A", "importance": 0}]
+
         importance_df = pd.DataFrame({
             'feature': features,
             'importance': feature_importance

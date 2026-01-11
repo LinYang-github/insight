@@ -53,6 +53,17 @@ class ModelingService:
         for col in features:
             if df[col].nunique() <= 1:
                 raise ValueError(f"变量 '{col}' 是常数（方差为0），无法用于建模。")
+        
+        # 4. Singularity / Multicollinearity Check
+        # Robust Clinical Grade requirement: Detect numeric singularity
+        numeric_features = df[features].select_dtypes(include=[np.number])
+        if not numeric_features.empty and numeric_features.shape[1] > 1:
+            try:
+                cond = np.linalg.cond(numeric_features)
+                if cond > 1e10:
+                    raise ValueError(f"Feature matrix is singular (Condition Number > 1e10). Perfect multicollinearity detected.")
+            except np.linalg.LinAlgError:
+                 raise ValueError("Singular matrix detected (LinAlgError). Check for perfect multicollinearity.")
 
         # Check target
         if isinstance(target, str):

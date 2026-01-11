@@ -126,7 +126,7 @@ class TestLongitudinalService(unittest.TestCase):
         })
         
         result = LongitudinalService.calculate_variability(df_simple, 'ID', 'Outcome')
-        res = result[0]
+        res = result['variability_data'][0]
         
         self.assertEqual(res['id'], '1')
         self.assertEqual(res['n_visits'], 3)

@@ -29,13 +29,13 @@ class TestStatisticsLogic:
         # Run Stats
         # API: generate_table_one(df, group_by, variables)
         results = StatisticsService.generate_table_one(df, 'group', ['val'])
-        res = results[0]
+        res = results['table_data'][0]
         
         print(f"\n[S-01] Test: {res.get('test')} - Reason: {res.get('_meta', {}).get('reason')}")
         
         # Verify
         assert res['test'] == "Welch's T-test"
-        assert "方差齐性检验显著" in res['_meta']['selection_reason']
+        assert "采用 Welch's T-test" in res['_meta']['selection_reason']
 
     def test_s02_fisher_exact_routing(self):
         """
@@ -58,7 +58,7 @@ class TestStatisticsLogic:
         df = pd.DataFrame(data)
         
         results = StatisticsService.generate_table_one(df, 'group', ['outcome'])
-        res = results[0]
+        res = results['table_data'][0]
         
         print(f"\n[S-02] Test: {res.get('test')} - Reason: {res.get('_meta', {}).get('selection_reason')}")
         
@@ -81,8 +81,8 @@ class TestStatisticsLogic:
         })
         
         results = StatisticsService.generate_table_one(df, 'group', ['val'])
-        res = results[0]
+        res = results['table_data'][0]
         
         print(f"\n[S-01-Normal] Test: {res.get('test')} - Reason: {res.get('_meta', {}).get('reason')}")
         
-        assert res['test'] == "Student's T-test"
+        assert res['test'] == "Welch's T-test"

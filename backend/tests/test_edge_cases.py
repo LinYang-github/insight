@@ -20,7 +20,7 @@ def test_edge_singular_matrix(singular_df):
     """
     # x1 and x2 are collinear
     # Match "Singular matrix" (case insensitive or exact)
-    with pytest.raises(ValueError, match="Singular matrix"):
+    with pytest.raises(ValueError, match="(?i)singular"):
         ModelingService.run_model(singular_df, 'linear', 'y', ['x1', 'x2'])
 
 def test_edge_gbk_encoding(gbk_df):

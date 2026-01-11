@@ -24,6 +24,17 @@ class ResultFormatter:
         """
         Formats float with specific precision.
         """
-        if val is None or np.isnan(val):
+        if val is None:
+            return None
+        # Handle numpy / list types
+        if isinstance(val, (list, tuple, np.ndarray)):
+            # If single element, extract it
+            if np.size(val) == 1:
+                val = np.array(val).item()
+            else:
+                # Cannot format array
+                return val
+        
+        if np.isnan(val):
             return None
         return float(f"{val:.{precision}f}")
