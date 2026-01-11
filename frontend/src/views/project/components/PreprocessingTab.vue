@@ -150,7 +150,7 @@ const missingData = computed(() => {
 
 const categoricalCols = computed(() => {
     if (!props.metadata) return []
-    return props.metadata.variables.filter(v => v.type === 'object' || v.type === 'category' || v.type === 'string')
+    return props.metadata.variables.filter(v => ['object', 'category', 'string', 'categorical', 'text/id'].includes(v.type) || (v.type === 'numerical' && v.unique_count < 10)) // Legacy fallback
 })
 
 const isNumeric = (type) => {

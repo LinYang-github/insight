@@ -38,7 +38,7 @@
             <el-table-column prop="name" label="变量名" />
             <el-table-column prop="type" label="类型">
                 <template #default="scope">
-                    <el-tag :type="scope.row.type === 'numerical' ? 'success' : 'warning'">{{ scope.row.type === 'numerical' ? '数值型' : (scope.row.type === 'categorical' ? '分类变量' : '文本') }}</el-tag>
+                    <el-tag :type="['numerical', 'continuous'].includes(scope.row.type) ? 'success' : 'warning'">{{ ['numerical', 'continuous'].includes(scope.row.type) ? '数值型' : (scope.row.type === 'categorical' ? '分类变量' : '文本') }}</el-tag>
                 </template>
             </el-table-column>
             <el-table-column prop="role" label="角色"/>
