@@ -72,20 +72,14 @@ class StatisticsService:
                 if row['type'] == 'numeric':
                     try:
                         if len(groups) == 2:
-                            try:
-                                lev_stat, lev_p = stats.levene(group_data[0], group_data[1])
-                                equal_var = lev_p >= 0.05
-                            except:
-                                equal_var = False 
+                            # Robustness Update: Always use Welch's T-test.
+                            # R and modern recommendations prefer Welch's over Student's t-test
+                            # as it is robust to unequal variances and unequal sample sizes.
                             
-                            if equal_var:
-                                test_name = 'Student\'s T-test'
-                                reason = "方差齐性检验通过 (Levene's P>=0.05)，假设方差相等。"
-                                stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=True)
-                            else:
-                                test_name = 'Welch\'s T-test'
-                                reason = "方差齐性检验显著 (Levene's P<0.05)，假设方差不相等。"
-                                stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
+                            test_name = 'Welch\'s T-test'
+                            # Optional: Still run Levene for informational purposes in meta, or just state robustness.
+                            reason = "采用 Welch's T-test (不假设方差相等)，以提高结果稳健性并与 R/SAS 默认行为保持一致。"
+                            stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
                                 
                             used_tests.add(test_name)
                             row['test'] = test_name

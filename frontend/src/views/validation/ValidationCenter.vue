@@ -25,7 +25,7 @@
           <el-icon class="el-icon--left"><VideoPlay /></el-icon>
           立即运行验证 (Run Self-Check)
         </el-button>
-        <el-button @click="downloadReport" disabled>
+        <el-button @click="downloadReport" :disabled="!reportData">
             <el-icon class="el-icon--left"><Download /></el-icon>
             导出报告
         </el-button>
@@ -85,15 +85,38 @@
                 <div class="test-header">
                     <h3>{{ test.test_name }}</h3>
                     <div class="test-actions">
-                        <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic_large.csv')" v-if="test.test_name.includes('Large')">
-                           <el-icon><Download /></el-icon> 下载测试数据 (Large)
-                        </el-button>
-                         <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic.csv')" v-else-if="test.test_name.includes('Logistic')">
-                           <el-icon><Download /></el-icon> 下载测试数据
-                        </el-button>
-                         <el-button size="small" text bg @click="handleDownloadData('benchmark_cox.csv')" v-else-if="test.test_name.includes('Cox')">
-                           <el-icon><Download /></el-icon> 下载测试数据
-                        </el-button>
+                         <el-button-group v-if="test.test_name.includes('Large')">
+                             <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic_large.csv')">
+                                <el-icon><Download /></el-icon> Data (Large)
+                             </el-button>
+                         </el-button-group>
+
+                         <el-button-group v-else-if="test.test_name.includes('Logistic')">
+                             <el-button size="small" text bg @click="handleDownloadData('benchmark_logistic.csv')">
+                                <el-icon><Download /></el-icon> Data
+                             </el-button>
+                             <el-button size="small" text bg @click="handleDownloadData('open_validation/benchmark_logistic.R')">
+                                <el-icon><Download /></el-icon> R Script
+                             </el-button>
+                         </el-button-group>
+
+                         <el-button-group v-else-if="test.test_name.includes('Cox')">
+                             <el-button size="small" text bg @click="handleDownloadData('benchmark_cox.csv')">
+                                <el-icon><Download /></el-icon> Data
+                             </el-button>
+                             <el-button size="small" text bg @click="handleDownloadData('open_validation/benchmark_cox.R')">
+                                <el-icon><Download /></el-icon> R Script
+                             </el-button>
+                         </el-button-group>
+
+                          <el-button-group v-else-if="test.test_name.includes('T-test')">
+                             <el-button size="small" text bg @click="handleDownloadData('benchmark_ttest.csv')">
+                                <el-icon><Download /></el-icon> Data
+                             </el-button>
+                             <el-button size="small" text bg @click="handleDownloadData('open_validation/benchmark_ttest.R')">
+                                <el-icon><Download /></el-icon> R Script
+                             </el-button>
+                         </el-button-group>
 
                         <el-tag :type="test.status === 'PASS' ? 'success' : 'danger'" style="margin-left: 12px">
                             {{ test.status }}
@@ -113,6 +136,11 @@
                             <span style="color: #909399">{{ scope.row.value_r }}</span>
                         </template>
                     </el-table-column>
+                    <el-table-column prop="value_sas" label="SAS 标准值 (Ref)" width="180">
+                         <template #default="scope">
+                            <span style="color: #409EFF">{{ scope.row.value_sas || 'N/A' }}</span>
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="delta" label="偏差 (Delta)" width="120">
                          <template #default="scope">
                             {{ scope.row.delta.toFixed(6) }}
@@ -125,10 +153,95 @@
                         </template>
                     </el-table-column>
                 </el-table>
+
+                <!-- Assumptions Section -->
+                <div v-if="test.assumptions && test.assumptions.length > 0" class="assumptions-section" style="margin-top: 12px; background: #f8f9fa; padding: 12px; border-radius: 4px;">
+                    <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #606266;">📊 自动假设检验 (Automated Assumption Checks)</h4>
+                    <el-table :data="test.assumptions" border size="small" style="width: 100%">
+                        <el-table-column prop="check" label="检验项目 (Assumption)" />
+                        <el-table-column prop="p_value" label="P值 (P-Value)" width="120">
+                            <template #default="scope">
+                                {{ scope.row.p_value != null ? scope.row.p_value.toFixed(4) : 'N/A' }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="status" label="状态" width="100">
+                             <template #default="scope">
+                                <el-tag :type="scope.row.status === 'PASS' ? 'success' : 'warning'" size="small" effect="dark">
+                                    {{ scope.row.status === 'PASS' ? 'Met' : 'Violated' }}
+                                </el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="message" label="结论 (Conclusion)" />
+                    </el-table>
+                </div>
                 <el-divider />
             </div>
         </div>
       </el-tab-pane>
+
+    <!-- Phase 3: Stress Test Sandbox Tab -->
+    <el-tab-pane label="压力测试沙箱 (Stress Sandbox)" name="sandbox">
+        <div class="sandbox-container">
+            <el-row :gutter="20">
+                <el-col :span="8">
+                    <el-card>
+                        <template #header>
+                            <div class="card-header">
+                                <span>🧪 实验配置 (Config)</span>
+                            </div>
+                        </template>
+                        <el-form label-position="top">
+                             <el-form-item label="基础数据集 (Dataset)">
+                                <el-select v-model="sandboxConfig.dataset" style="width: 100%">
+                                    <el-option label="Logistic Benchmark (GPA data)" value="logistic" />
+                                </el-select>
+                            </el-form-item>
+                             <el-form-item label="注入故障类型 (Fault Injection)">
+                                <el-select v-model="sandboxConfig.fault" style="width: 100%">
+                                    <el-option label="共线性注入 (Collinearity)" value="collinearity" />
+                                    <el-option label="缺失值注入 (Missing Data)" value="missing" />
+                                    <el-option label="离群值注入 (Outliers)" value="outliers" />
+                                </el-select>
+                            </el-form-item>
+                            <el-form-item label="强度 (Severity)">
+                                <el-slider v-model="sandboxConfig.severity" :min="0.1" :max="5.0" :step="0.1" show-input />
+                            </el-form-item>
+                            <el-button type="warning" style="width: 100%" @click="runStressTest" :loading="stressLoading">
+                                开始压力测试 (Run Stress Test)
+                            </el-button>
+                        </el-form>
+                    </el-card>
+                </el-col>
+                <el-col :span="16">
+                    <el-card v-if="stressResult">
+                        <template #header>
+                            <div class="card-header">
+                                <span>📋 测试报告 (Report)</span>
+                                <el-tag :type="stressResult.result.status === 'SUCCESS' ? 'success' : 'danger'">
+                                    {{ stressResult.result.status }}
+                                </el-tag>
+                            </div>
+                        </template>
+                        <div class="stress-report">
+                            <p><strong>操作 (Action):</strong> {{ stressResult.details.action }}</p>
+                            <p><strong>系统反馈 (Message):</strong> {{ stressResult.result.message }}</p>
+                            
+                            <div v-if="stressResult.result.model_summary">
+                                <h4>Model Summary Snippet:</h4>
+                                <!-- Simple check for singular matrix warning in summary if accessible, or just show it exists -->
+                                <pre style="background: #f4f4f5; padding: 10px; overflow: auto; max-height: 300px">{{ formatSummary(stressResult.result.model_summary) }}</pre>
+                            </div>
+                            <div v-if="stressResult.result.error">
+                                <h4>Error Details:</h4>
+                                <el-alert :title="stressResult.result.error" type="error" :closable="false" />
+                            </div>
+                        </div>
+                    </el-card>
+                    <el-empty v-else description="请左侧配置并运行测试" />
+                </el-col>
+            </el-row>
+        </div>
+    </el-tab-pane>
 
       <!-- Robustness Tests -->
       <el-tab-pane label="鲁棒性测试 (Robustness)" name="robustness">
@@ -163,7 +276,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { VideoPlay, Download } from '@element-plus/icons-vue'
-import { runValidation, downloadDataset } from '@/api/validation'
+import { runValidation, downloadDataset, generateReport, runStressTest as apiRunStressTest } from '@/api/validation'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
@@ -171,6 +284,15 @@ const activeTab = ref('scientific')
 const reportData = ref(null)
 const lastRunTime = ref('')
 const validationScenario = ref(false) // false = standard, true = large
+
+// Phase 3: Stress Test State
+const sandboxConfig = ref({
+    dataset: 'logistic',
+    fault: 'collinearity',
+    severity: 1.0
+})
+const stressResult = ref(null)
+const stressLoading = ref(false)
 
 const overallStatus = computed(() => {
     return reportData.value?.summary?.status || 'UNKNOWN'
@@ -187,6 +309,34 @@ const totalTests = computed(() => {
      return reportData.value?.summary?.total_tests || 0
 })
 
+const runStressTest = async () => {
+    stressLoading.value = true
+    stressResult.value = null
+    try {
+        const res = await apiRunStressTest(sandboxConfig.value)
+        stressResult.value = res.data
+        if (res.data.result.status === 'SUCCESS') {
+             ElMessage.success('压力测试执行完成')
+        } else {
+             ElMessage.warning('压力测试模型失败 (符合预期)')
+        }
+    } catch (error) {
+        ElMessage.error('服务调用失败')
+        console.error(error)
+    } finally {
+        stressLoading.value = false
+    }
+}
+
+const formatSummary = (summary) => {
+    // Basic formatting for the summary if it's a list of dicts or object
+    if (!summary) return ''
+    if (Array.isArray(summary)) {
+        return summary.map(row => `${row.variable}: ${row.coef.toFixed(4)} (p=${row.p_value})`).join('\n')
+    }
+    return JSON.stringify(summary, null, 2)
+}
+
 const handleRunValidation = async () => {
     loading.value = true
     try {
@@ -201,6 +351,7 @@ const handleRunValidation = async () => {
         loading.value = false
     }
 }
+
 
 const handleDownloadData = async (filename) => {
     try {
@@ -225,8 +376,21 @@ const formatNumber = (num) => {
     return num
 }
 
-const downloadReport = () => {
-    ElMessage.info('PDF 导出功能即将上线')
+const downloadReport = async () => {
+    if (!reportData.value) return
+    try {
+        const response = await generateReport(reportData.value)
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', 'Insight_Validation_Report.pdf')
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        ElMessage.success("报告已生成")
+    } catch (e) {
+        ElMessage.error("导出失败")
+    }
 }
 </script>
 

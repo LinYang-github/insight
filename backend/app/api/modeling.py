@@ -48,9 +48,29 @@ def run_model(current_user):
         
     # Use robust loading from DataService
     # Optimization
-    required = [target] + features
-    # Dedup
-    required = list(set(required))
+    
+    # 1. Handle Feature Objects (if frontend sends dicts)
+    feature_names = []
+    if features:
+        for f in features:
+            if isinstance(f, dict):
+                # Try common keys
+                feature_names.append(f.get('name') or f.get('value')) 
+            else:
+                feature_names.append(str(f))
+    features = feature_names
+
+    # 2. Handle Target (String vs Dict for Cox)
+    required_cols = []
+    if isinstance(target, dict):
+        required_cols.extend(target.values())
+    else:
+        required_cols.append(target)
+        
+    required_cols.extend(features)
+    
+    # Dedup strings
+    required = list(set(required_cols))
     
     df = DataService.load_data_optimized(dataset.filepath, columns=required)
         

@@ -1,5 +1,5 @@
 
-from flask import Blueprint, jsonify, send_from_directory, request
+from flask import Blueprint, jsonify, send_from_directory, request, send_file
 from app.services.validation_service import ValidationService
 
 validation_bp = Blueprint('validation', __name__, url_prefix='/api/validation')
@@ -57,4 +57,36 @@ def download_validation_data(filename):
         ValidationService.GOLDEN_DATA_DIR, 
         filename, 
         as_attachment=True
+    )
+
+@validation_bp.route('/stress-test', methods=['POST'])
+def run_stress_test():
+    """
+    Run an interactive stress test.
+    Input: {"dataset": "logistic", "fault": "collinearity", "severity": 1.0}
+    """
+    params = request.get_json() or {}
+    dataset = params.get('dataset', 'logistic')
+    fault = params.get('fault', 'collinearity')
+    severity = params.get('severity', 1.0)
+    
+    result = ValidationService.run_stress_test(dataset, fault, severity)
+    return jsonify(result)
+
+@validation_bp.route('/report', methods=['POST'])
+def download_report():
+    """
+    Generate PDF report from JSON data.
+    """
+    report_data = request.get_json()
+    if not report_data:
+        return jsonify({"error": "No report data provided"}), 400
+    
+    pdf_buffer = ValidationService.generate_pdf_report(report_data)
+    
+    return send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name='Insight_Validation_Report.pdf',
+        mimetype='application/pdf'
     )
