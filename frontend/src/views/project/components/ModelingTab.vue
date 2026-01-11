@@ -263,38 +263,82 @@
                         </el-table>
                     </el-tab-pane>
 
-                    <el-tab-pane label="评估图表 (Evaluation Plots)" v-if="results.plots">
+                    <el-tab-pane label="评估图表 (Clinical Eval)" v-if="config.model_type !== 'linear'">
+                        
+                        <!-- Time Selector for Survivor -->
+                        <div v-if="availableTimePoints.length > 0" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end;">
+                            <span style="font-size: 13px; color: #606266; margin-right: 10px;">预测时间点 (Time Point):</span>
+                            <el-radio-group v-model="evaluationTimePoint" size="small">
+                                <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">{{ t }} (Months)</el-radio-button>
+                            </el-radio-group>
+                        </div>
+                        
                         <el-row :gutter="20">
                             <!-- ROC -->
-                            <el-col :span="12" v-if="results.plots.roc" style="margin-bottom: 20px;">
+                            <el-col :span="12" v-if="activePlots.roc" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="roc-plot"
-                                    title="ROC Curve"
+                                    :title="config.model_type === 'cox' ? `Time-Dependent ROC (t=${evaluationTimePoint})` : 'ROC Curve'"
                                     :data="chartData.roc.data"
                                     :layout="chartData.roc.layout"
                                 />
                             </el-col>
                             
                             <!-- Calibration -->
-                            <el-col :span="12" v-if="results.plots.calibration" style="margin-bottom: 20px;">
+                            <el-col :span="12" v-if="activePlots.calibration" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="calibration-plot"
-                                    title="Calibration Plot"
+                                    :title="config.model_type === 'cox' ? `Calibration Plot (t=${evaluationTimePoint})` : 'Calibration Plot'"
                                     :data="chartData.calibration.data"
                                     :layout="chartData.calibration.layout"
                                 />
                             </el-col>
                             
                             <!-- DCA -->
-                             <el-col :span="12" v-if="results.plots.dca" style="margin-bottom: 20px;">
+                             <el-col :span="12" v-if="activePlots.dca" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="dca-plot"
-                                    title="Decision Curve (DCA)"
+                                    :title="config.model_type === 'cox' ? `Decision Curve (DCA) (t=${evaluationTimePoint})` : 'Decision Curve (DCA)'"
                                     :data="chartData.dca.data"
                                     :layout="chartData.dca.layout"
                                 />
                             </el-col>
                         </el-row>
+                    </el-tab-pane>
+
+                    <el-tab-pane label="列线图 (Nomogram)" v-if="nomogramData">
+                         <el-alert title="简易列线图评分表 (Scorekeeper)" type="info" :closable="false" style="margin-bottom: 15px">
+                             <div>
+                                 列线图的本质是基于回归系数的线性加权求和。此处提供变量系数表，可用于构建个体化评分工具。
+                                 <br/>
+                                 <b>预测公式:</b> P = 1 / (1 + exp(-TotalScore)) [Logistic] 或 S(t) = S0(t)^exp(TotalScore) [Cox]
+                             </div>
+                         </el-alert>
+                         
+                         <!-- Intercept / Baseline (Cox) -->
+                         <div v-if="nomogramData.intercept" style="margin-bottom: 10px;">
+                             <b>截距 (Intercept / Base Score):</b> {{ nomogramData.intercept.toFixed(4) }}
+                         </div>
+                         <div v-if="nomogramData.baseline_survival" style="margin-bottom: 10px;">
+                             <b>基线生存概率 (Baseline Survival S0(t)):</b>
+                             <span v-for="bs in nomogramData.baseline_survival.filter(x => availableTimePoints.includes(x[0]))" :key="bs[0]" style="margin-right: 15px">
+                                 t={{ bs[0] }}: {{ bs[1].toFixed(4) }}
+                             </span>
+                         </div>
+                         
+                         <el-table :data="nomogramData.vars" style="width: 100%" stripe border size="small">
+                             <el-table-column prop="name" label="变量 (Variable)" />
+                             <el-table-column prop="coef" label="系数/得分权重 (Coef)">
+                                <template #default="scope">
+                                    {{ scope.row.coef.toFixed(4) }}
+                                </template>
+                             </el-table-column>
+                             <el-table-column :label="config.model_type === 'logistic' ? 'OR' : 'HR'">
+                                <template #default="scope">
+                                    {{ scope.row.or ? scope.row.or.toFixed(3) : (scope.row.hr ? scope.row.hr.toFixed(3) : '-') }}
+                                </template>
+                             </el-table-column>
+                         </el-table>
                     </el-tab-pane>
 
                     <el-tab-pane label="假设检验 (Assumptions)">
@@ -617,16 +661,71 @@ const runModel = async () => {
         results.value = data.results
         ElMessage.success('模型运行成功')
         
-        if (results.value.plots) {
-            await nextTick()
-            renderEvaluationPlots(results.value.plots)
-        }
+        // Charts are rendered reactively via activePlots watcher
     } catch (error) {
         ElMessage.error(error.response?.data?.message || '模型运行失败')
     } finally {
         loading.value = false
     }
 }
+
+// --- Clinical Evaluation Logic ---
+const evaluationTimePoint = ref(null)
+
+const availableTimePoints = computed(() => {
+    if (!results.value || !results.value.clinical_eval || !results.value.clinical_eval.dca) return []
+    // Get keys (time points)
+    const keys = Object.keys(results.value.clinical_eval.dca).map(Number).sort((a,b) => a-b)
+    return keys
+})
+
+// Set default time point when results change
+watch(() => results.value, (val) => {
+    if (val && val.clinical_eval && val.clinical_eval.dca) {
+        const keys = Object.keys(val.clinical_eval.dca).map(Number).sort((a,b) => a-b)
+        if (keys.length > 0) evaluationTimePoint.value = keys[0]
+    }
+})
+
+const activePlots = computed(() => {
+    if (!results.value) return {}
+    
+    // 1. Cox Time-Dependent
+    if (config.model_type === 'cox' && results.value.clinical_eval) {
+        const t = evaluationTimePoint.value
+        if (!t) return {}
+        return {
+            roc: results.value.clinical_eval.roc[t],
+            dca: results.value.clinical_eval.dca[t],
+            calibration: results.value.clinical_eval.calibration[t]
+        }
+    }
+    
+    // 2. Logistic / Standard
+    if (results.value.plots) {
+        return results.value.plots
+    }
+    
+    return {}
+})
+
+// Auto-render when plots change (Time switch or New Model)
+watch(activePlots, (plots) => {
+    if (plots) renderEvaluationPlots(plots)
+}, { deep: true })
+
+const nomogramData = computed(() => {
+    if (!results.value) return null
+    // Logistic
+    if (config.model_type === 'logistic' && results.value.plots && results.value.plots.nomogram) {
+        return results.value.plots.nomogram
+    }
+    // Cox
+    if (config.model_type === 'cox' && results.value.clinical_eval && results.value.clinical_eval.nomogram) {
+        return results.value.clinical_eval.nomogram
+    }
+    return null
+})
 
 const selectedCategoricalVars = computed(() => {
     if (!props.metadata || !config.features || config.features.length === 0) return []

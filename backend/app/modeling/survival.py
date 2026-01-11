@@ -75,7 +75,81 @@ class CoxStrategy(BaseModelStrategy):
         except Exception as e:
              pass
 
-        return self._format_results(cph, ph_test_results)
+        # --- Clinical Evaluation (DCA, Calibration, Time-Dep ROC) ---
+        from app.services.evaluation_service import EvaluationService
+        clinical_eval = {
+            'dca': {},
+            'calibration': {},
+            'roc': {},
+            'nomogram': {}
+        }
+        
+        try:
+            # 1. Determine Time Points (1y, 3y, 5y if units are months)
+            # Heuristic: check max duration
+            max_dur = data[time_col].max()
+            points = []
+            if max_dur > 12: points.append(12)
+            if max_dur > 36: points.append(36)
+            if max_dur > 60: points.append(60)
+            
+            # If no points (short study), use median
+            if not points:
+                points = [int(data[time_col].median())]
+                
+            # 2. Loop points
+            for t in points:
+                # Calibration
+                cal = EvaluationService.calculate_survival_calibration(cph, data, time_col, event_col, t)
+                clinical_eval['calibration'][t] = cal
+                
+                # DCA
+                dca = EvaluationService.calculate_survival_dca(cph, data, time_col, event_col, t)
+                clinical_eval['dca'][t] = dca
+                
+                # Time-Dep ROC (Simple approx for now: binary classification at T)
+                # Use survival function at T as score for event
+                # Score = 1 - S(t)
+                surv_df = cph.predict_survival_function(data, times=[t])
+                y_score = 1 - surv_df.iloc[0].values
+                
+                # Truth at T: 
+                # Defined as: Event happened by T?
+                # Requires censoring handling.
+                # For simplified ROC (Concurrent Validity), exclude censored before T.
+                mask = (data[time_col] > t) | ((data[time_col] <= t) & (data[event_col] == 1))
+                y_true = (data.loc[mask, time_col] <= t).astype(int)
+                y_score_masked = y_score[mask]
+                
+                if len(np.unique(y_true)) > 1:
+                     from sklearn.metrics import roc_curve, auc
+                     fpr, tpr, _ = roc_curve(y_true, y_score_masked)
+                     roc_auc = auc(fpr, tpr)
+                     clinical_eval['roc'][t] = {
+                         'fpr': fpr.tolist(),
+                         'tpr': tpr.tolist(),
+                         'auc': roc_auc
+                     }
+            
+            # 3. Nomogram Data
+            nomogram_data = {
+                'baseline_survival': cph.baseline_survival_.reset_index().values.tolist(), # [[t, s(t)], ...]
+                'vars': []
+            }
+            summary_df = cph.summary
+            for name, row in summary_df.iterrows():
+                nomogram_data['vars'].append({
+                    'name': name,
+                    'coef': row['coef'],
+                    'hr': row['exp(coef)']
+                })
+            clinical_eval['nomogram'] = nomogram_data
+            
+        except Exception as e:
+            print(f"Cox Clinical Evaluation Failed: {e}")
+            # Do not fail the whole model run
+
+        return self._format_results(cph, ph_test_results, clinical_eval)
 
     def _diagnose_separation(self, df: pd.DataFrame, features: list, event_col: str) -> "str | None":
         """
@@ -113,7 +187,7 @@ class CoxStrategy(BaseModelStrategy):
                 continue
         return None
 
-    def _format_results(self, cph, ph_results=None):
+    def _format_results(self, cph, ph_results=None, clinical_eval=None):
         summary = []
         
         # Parse PH results if available
@@ -145,19 +219,11 @@ class CoxStrategy(BaseModelStrategy):
         }
         
         if ph_results is not None:
-             # Need global test? cph.check_assumptions() usually output it.
-             # proportional_hazard_test returns object.
-             # The result usually doesn't clearly expose a SINGLE global p-value in a simple property 
-             # without checking documentation. 
-             # Wait, documentation says it returns a StatisticalResult object. 
-             # It performs a test for each variable + global.
-             # The result.summary index has variable names, does it have 'Global'?
-             # Usually not directly in result.summary unless one specific transform?
-             # Let's check keys of summary.
              pass 
 
         return {
             'model_type': 'cox',
             'summary': summary,
-            'metrics': metrics
+            'metrics': metrics,
+            'clinical_eval': clinical_eval
         }

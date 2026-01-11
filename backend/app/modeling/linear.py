@@ -104,6 +104,20 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         from app.utils.evaluation import ModelEvaluator
         metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob)
         
+        # 3. Nomogram Data (Coefficients for Scorekeeper)
+        nomogram_data = {
+            'intercept': res.params.get('const', 0),
+            'vars': []
+        }
+        for name, coef in res.params.items():
+            if name == 'const': continue
+            nomogram_data['vars'].append({
+                'name': name,
+                'coef': coef,
+                'or': np.exp(coef)
+            })
+        plots['nomogram'] = nomogram_data
+        
         # 5-Fold Cross Validation
         from sklearn.model_selection import KFold
         from sklearn.metrics import roc_auc_score
