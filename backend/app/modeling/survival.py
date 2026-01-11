@@ -86,97 +86,87 @@ class CoxStrategy(BaseModelStrategy):
             'nomogram': {}
         }
         
+        # 1. Nomogram Generation (Independent)
         try:
-            # 1. Determine Time Points (1y, 3y, 5y if units are months)
-            # Heuristic: check max duration
+            from app.utils.nomogram_generator import NomogramGenerator
+            
+            original_df = params.get('original_df', data) # Fallback to 'data' (which is processed) if missing
+            original_features = params.get('original_features', features)
+            
+            max_t = data[time_col].max()
+            qt = np.quantile(data.loc[data[event_col]==1, time_col], [0.25, 0.5, 0.75])
+            nomogram_times = sorted(list(set([int(q) for q in qt])))
+            
+            nomogram_spec = NomogramGenerator.generate_spec(
+                cph, 
+                original_df, 
+                original_features, 
+                nomogram_times
+            )
+            if nomogram_spec:
+                clinical_eval['nomogram'] = nomogram_spec
+        except Exception as e:
+            print(f"Nomogram Generation Failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # 2. Determine Time Points for Eval Charts
+        try:
             max_dur = data[time_col].max()
             points = []
             if max_dur > 12: points.append(12)
             if max_dur > 36: points.append(36)
             if max_dur > 60: points.append(60)
-            
-            # If no points (short study), use median
             if not points:
                 points = [int(data[time_col].median())]
                 
-            # 2. Loop points
+            # 3. Loop points (Granular Error Handling)
             for t in points:
                 # Calibration
-                cal = EvaluationService.calculate_survival_calibration(cph, data, time_col, event_col, t)
-                clinical_eval['calibration'][t] = cal
+                try:
+                    cal = EvaluationService.calculate_survival_calibration(cph, data, time_col, event_col, t)
+                    clinical_eval['calibration'][t] = cal
+                except Exception: pass
                 
                 # DCA
-                dca = EvaluationService.calculate_survival_dca(cph, data, time_col, event_col, t)
-                clinical_eval['dca'][t] = dca
+                try:
+                    dca = EvaluationService.calculate_survival_dca(cph, data, time_col, event_col, t)
+                    clinical_eval['dca'][t] = dca
+                except Exception: pass
                 
-                # Time-Dep ROC (Simple approx for now: binary classification at T)
-                # Use survival function at T as score for event
-                # Score = 1 - S(t)
-                surv_df = cph.predict_survival_function(data, times=[t])
-                y_score = 1 - surv_df.iloc[0].values
-                
-                # Truth at T: 
-                # Defined as: Event happened by T?
-                # Requires censoring handling.
-                # For simplified ROC (Concurrent Validity), exclude censored before T.
-                mask = (data[time_col] > t) | ((data[time_col] <= t) & (data[event_col] == 1))
-                y_true = (data.loc[mask, time_col] <= t).astype(int)
-                y_score_masked = y_score[mask]
-                
-                if len(np.unique(y_true)) > 1:
-                    from sklearn.metrics import roc_curve, auc
-                    fpr, tpr, _ = roc_curve(y_true, y_score_masked)
-                    roc_auc = auc(fpr, tpr)
-                    clinical_eval['roc'][t] = {
-                        'fpr': fpr.tolist(),
-                        'tpr': tpr.tolist(),
-                        'auc': roc_auc
+                # Time-Dep ROC
+                try:
+                    surv_df = cph.predict_survival_function(data, times=[t])
+                    y_score = 1 - surv_df.iloc[0].values
+                    mask = (data[time_col] > t) | ((data[time_col] <= t) & (data[event_col] == 1))
+                    y_true = (data.loc[mask, time_col] <= t).astype(int)
+                    y_score_masked = y_score[mask]
+                    
+                    if len(np.unique(y_true)) > 1:
+                        from sklearn.metrics import roc_curve, auc
+                        fpr, tpr, _ = roc_curve(y_true, y_score_masked)
+                        roc_auc = auc(fpr, tpr)
+                        clinical_eval['roc'][t] = {
+                            'fpr': fpr.tolist(),
+                            'tpr': tpr.tolist(),
+                            'auc': roc_auc
+                        }
+                    
+                    # Store predictions (NRI/IDI)
+                    clinical_eval['predictions'][t] = {
+                        'y_true': y_true.tolist(),
+                        'y_pred': y_score_masked.tolist()
                     }
+                except Exception: pass
 
-                # Extended Metrics (Se, Sp, Brier)
-                ext_metrics = EvaluationService.calculate_survival_metrics_at_t(cph, data, time_col, event_col, t)
-                clinical_eval['extended_metrics'][t] = ext_metrics
-                
-                # Store predictions for Model Comparison (NRI/IDI)
-                # Keep lightweight: only masked/valid set
-                clinical_eval['predictions'][t] = {
-                    'y_true': y_true.tolist(),
-                    'y_pred': y_score_masked.tolist()
-                }
-            
-            # 3. Nomogram Data (Advanced Interactive Spec)
-            try:
-                from app.utils.nomogram_generator import NomogramGenerator
-                
-                original_df = params.get('original_df', data) # Fallback to 'data' (which is processed) if missing
-                original_features = params.get('original_features', features)
-                
-                # Heuristic Time Points: 1/4, 2/4, 3/4 quartiles of event times?
-                # Or Max/5, Max/3?
-                # Let's align with the evaluation time points 't' calculated above?
-                # Above we iterate t in [max_time / 2].
-                # Let's pick 3 standardized points for the Nomogram axis
-                max_t = data[time_col].max()
-                qt = np.quantile(data.loc[data[event_col]==1, time_col], [0.25, 0.5, 0.75])
-                # Round to nice integers
-                nomogram_times = [int(q) for q in qt]
-                nomogram_times = sorted(list(set(nomogram_times))) # unique
-                
-                nomogram_spec = NomogramGenerator.generate_spec(
-                    cph, 
-                    original_df, 
-                    original_features, 
-                    nomogram_times
-                )
-                if nomogram_spec:
-                    clinical_eval['nomogram'] = nomogram_spec
-            except Exception as e:
-                print(f"Nomogram Generation Failed: {e}")
-                import traceback
-                traceback.print_exc()
-                # Fallback to simple table (implemented previously?) 
-                # Actually we replaced it. So if fail, no nomogram.
-                pass
+                # Extended Metrics
+                try:
+                    ext_metrics = EvaluationService.calculate_survival_metrics_at_t(cph, data, time_col, event_col, t)
+                    clinical_eval['extended_metrics'][t] = ext_metrics
+                except Exception: pass
+
+        except Exception as e:
+            print(f"Clinical Evaluation Setup Failed: {e}")
             
         except Exception as e:
             print(f"Cox Clinical Evaluation Failed: {e}")
@@ -236,13 +226,13 @@ class CoxStrategy(BaseModelStrategy):
 
             row = {
                 'variable': name,
-                'coef': ResultFormatter.format_float(cph.params_[name], 3),
-                'se': ResultFormatter.format_float(cph.standard_errors_[name], 3),
-                'p_value': cph.summary.loc[name, 'p'],
-                'hr': ResultFormatter.format_float(cph.hazard_ratios_[name], 2),
-                'hr_ci_lower': ResultFormatter.format_float(np.exp(cph.confidence_intervals_.loc[name].iloc[0]), 2),
-                'hr_ci_upper': ResultFormatter.format_float(np.exp(cph.confidence_intervals_.loc[name].iloc[1]), 2),
-                'ph_test_p': ph_p
+                'coef': float(cph.params_[name]),
+                'se': float(cph.standard_errors_[name]),
+                'p_value': float(cph.summary.loc[name, 'p']),
+                'hr': float(cph.hazard_ratios_[name]),
+                'hr_ci_lower': float(np.exp(cph.confidence_intervals_.loc[name].iloc[0])),
+                'hr_ci_upper': float(np.exp(cph.confidence_intervals_.loc[name].iloc[1])),
+                'ph_test_p': ph_p # This one can stay string or float depending on formatter
             }
             summary.append(row)
             
@@ -259,12 +249,17 @@ class CoxStrategy(BaseModelStrategy):
             'n_events': int(n_events)
         }
         
-        if ph_results is not None:
-             pass 
+        plots = {}
+        if clinical_eval:
+             plots['nomogram'] = clinical_eval.get('nomogram')
+             plots['roc'] = clinical_eval.get('roc')
+             plots['calibration'] = clinical_eval.get('calibration')
+             plots['dca'] = clinical_eval.get('dca')
 
         return {
             'model_type': 'cox',
             'summary': summary,
             'metrics': metrics,
-            'clinical_eval': clinical_eval
+            'clinical_eval': clinical_eval,
+            'plots': plots
         }
