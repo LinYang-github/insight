@@ -93,13 +93,101 @@
                     </template>
                     <el-table :data="tableData" stripe border size="small">
                         <el-table-column prop="name" label="模型名称" width="150" />
-                        <el-table-column prop="auc" label="AUC (95% CI)" width="180">
+                        <el-table-column prop="auc" label="C-index / AUC (95% CI)" width="180">
                             <template #default="scope">
-                                <b>{{ scope.row.auc }}</b>
-                                <span class="ci-text">{{ scope.row.auc_ci }}</span>
+                                {{ scope.row.auc }} <span style="color: gray">{{ scope.row.auc_ci }}</span>
                             </template>
                         </el-table-column>
-                        <el-table-column prop="n" label="样本量 (N)" width="100" />
+                        
+                        <el-table-column label="P值 (模型提升)" width="130">
+                            <template #header>
+                                P for Improvement
+                                <el-tooltip content="似然比检验 (LRT) P值。用于评估新加入的变量是否带来统计学显著的性能提升 (P<0.05)。而不只是看AUC数值增加。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
+                            <template #default="scope">
+                                <span v-if="scope.row.lrt_p !== undefined">
+                                     <span :style="{fontWeight: scope.row.lrt_p < 0.05 ? 'bold' : 'normal', color: scope.row.lrt_p < 0.05 ? 'red' : 'black'}">
+                                        {{ scope.row.lrt_p < 0.001 ? '< 0.001' : scope.row.lrt_p.toFixed(3) }}
+                                     </span>
+                                </span>
+                                <span v-else style="color: #ccc">-</span>
+                            </template>
+                        </el-table-column>
+                        
+                        <el-table-column label="AIC (变化)" width="110">
+                            <template #header>
+                                AIC (Delta)
+                                <el-tooltip content="赤池信息准则。数值越低越好。绿色数字(-x.x)代表模型拟合/复杂度平衡更佳。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
+                            <template #default="scope">
+                                {{ scope.row.aic }}
+                                <div v-if="scope.row.delta_aic" :style="{color: scope.row.delta_aic < -2 ? 'green' : (scope.row.delta_aic > 2 ? 'red' : 'gray'), fontSize: '11px', fontWeight: 'bold'}">
+                                     ({{ scope.row.delta_aic > 0 ? '+' : '' }}{{ scope.row.delta_aic.toFixed(1) }})
+                                </div>
+                            </template>
+                        </el-table-column>
+
+                        <el-table-column label="BIC (变化)" width="110">
+                            <template #header>
+                                BIC (Delta)
+                                <el-tooltip content="贝叶斯信息准则。数值越低越好。比AIC惩罚更重，更倾向于简单模型。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
+                            <template #default="scope">
+                                {{ scope.row.bic }}
+                                <div v-if="scope.row.delta_bic" :style="{color: scope.row.delta_bic < -2 ? 'green' : (scope.row.delta_bic > 2 ? 'red' : 'gray'), fontSize: '11px', fontWeight: 'bold'}">
+                                     ({{ scope.row.delta_bic > 0 ? '+' : '' }}{{ scope.row.delta_bic.toFixed(1) }})
+                                </div>
+                            </template>
+                        </el-table-column>
+
+                        <el-table-column label="NRI" align="center">
+                            <template #header>
+                                NRI
+                                <el-tooltip content="净重分类改善指数。>0 表示新模型能更准确地将患者分入正确风险组。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
+                            <el-table-column label="Estimate (95% CI)" width="150">
+                                <template #default="scope">
+                                    <span v-if="scope.row.nri_display" :style="{color: scope.row.nri > 0 ? 'green' : 'red', fontWeight: 'bold'}">
+                                        {{ scope.row.nri_display }}
+                                    </span>
+                                    <span v-else>
+                                        <el-tooltip v-if="scope.row.nri_error" :content="'计算失败: ' + scope.row.nri_error" placement="top">
+                                            <span style="color: #E6A23C; cursor: help; border-bottom: 1px dashed #E6A23C">计算失败</span>
+                                        </el-tooltip>
+                                        <span v-else style="color: #ccc">-</span>
+                                    </span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="P value" width="80">
+                                <template #default="scope">
+                                    <span v-if="scope.row.nri_p !== undefined">{{ scope.row.nri_p < 0.001 ? '<.001' : scope.row.nri_p.toFixed(3) }}</span>
+                                    <span v-else style="color: #ccc">-</span>
+                                </template>
+                            </el-table-column>
+                        </el-table-column>
+
+                        <el-table-column label="IDI" align="center">
+                            <template #header>
+                                IDI
+                                <el-tooltip content="综合判别改善指数。>0 表示新模型预测概率的整体区分度提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
+                            <el-table-column label="Estimate (95% CI)" width="150">
+                                <template #default="scope">
+                                    <span v-if="scope.row.idi_display" :style="{color: scope.row.idi > 0 ? 'green' : 'red', fontWeight: 'bold'}">
+                                        {{ scope.row.idi_display }}
+                                    </span>
+                                    <span v-else style="color: #ccc">-</span>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="P value" width="80">
+                                <template #default="scope">
+                                    <span v-if="scope.row.idi_p !== undefined">{{ scope.row.idi_p < 0.001 ? '<.001' : scope.row.idi_p.toFixed(3) }}</span>
+                                    <span v-else style="color: #ccc">-</span>
+                                </template>
+                            </el-table-column>
+                        </el-table-column>
+
+                        <el-table-column prop="n" label="N" width="70" />
                         <el-table-column prop="features" label="包含特征">
                              <template #default="scope">
                                  <el-tag v-for="f in scope.row.features" :key="f" size="small" style="margin-right: 4px">{{ f }}</el-tag>
@@ -197,9 +285,28 @@ const tableData = computed(() => {
     return results.value.map(r => ({
         name: r.name,
         auc: r.metrics?.auc ? r.metrics.auc.toFixed(3) : '-',
-        auc_ci: r.metrics?.auc_ci ? `(${r.metrics.auc_ci})` : '', // Backend might not send CI yet for simple run
+        auc_ci: r.metrics?.auc_ci ? `(${r.metrics.auc_ci})` : '', 
         n: r.n,
-        features: r.features
+        features: r.features,
+        // New Metrics
+        aic: r.metrics?.aic ? r.metrics.aic.toFixed(1) : '-',
+        bic: r.metrics?.bic ? r.metrics.bic.toFixed(1) : '-',
+        delta_aic: r.metrics?.delta_aic,
+        delta_bic: r.metrics?.delta_bic,
+        nri: r.metrics?.nri,
+        nri_display: (r.metrics?.nri !== undefined && r.metrics?.nri !== null) 
+            ? `${r.metrics.nri.toFixed(3)} (${r.metrics.nri_ci || '?'})` 
+            : null,
+        nri_p: r.metrics?.nri_p,
+        nri_error: r.metrics?.nri_error,
+        
+        idi: r.metrics?.idi,
+        idi_display: (r.metrics?.idi !== undefined && r.metrics?.idi !== null) 
+            ? `${r.metrics.idi.toFixed(3)} (${r.metrics.idi_ci || '?'})` 
+            : null,
+        idi_p: r.metrics?.idi_p,
+        
+        lrt_p: r.metrics?.lrt_p
     }))
 })
 

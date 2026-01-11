@@ -746,6 +746,15 @@ class AdvancedModelingService:
         
         # 3. Loop Models
         for config in model_configs:
+            def calc_ci_str(auc, n1, n2):
+                if n1 <= 0 or n2 <= 0: return "-"
+                q1 = auc / (2 - auc)
+                q2 = 2 * auc**2 / (1 + auc)
+                se = np.sqrt((auc*(1-auc) + (n1-1)*(q1-auc**2) + (n2-1)*(q2-auc**2)) / (n1*n2))
+                lower = max(0, auc - 1.96*se)
+                upper = min(1, auc + 1.96*se)
+                return f"{lower:.3f}-{upper:.3f}"
+
             name = config['name']
             feats = config['features']
             
@@ -753,12 +762,54 @@ class AdvancedModelingService:
                 metrics = {}
                 roc_data = []
                 
+                metrics = {}
+                roc_data = []
+                # Store raw outputs for comparison
+                raw_pred = None
+                raw_y = None
+                
                 if model_type == 'logistic':
-                    # Use ModelingService for standard Logistic
-                    model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
-                    metrics = model_res.get('metrics', {})
-                    if 'plots' in model_res and 'roc' in model_res['plots']:
-                         roc_data = model_res['plots']['roc'] 
+                    # Local fit for full control (consistent with Cox block)
+                    # Prepare formula
+                    formula = f"{target} ~ {' + '.join(feats)}"
+                    if not feats: formula = f"{target} ~ 1"
+                    
+                    try:
+                        # Statsmodels Logit
+                        # Data must be numeric for statsmodels? DataService.preprocess handled it?
+                        # df_clean is strict complete case
+                        # Convert to dummy vars if needed? 
+                        # smf handles formulas (categorical) automatically if string/category type.
+                        model = smf.logit(formula=formula, data=df_clean).fit(disp=0)
+                        
+                        # Metrics
+                        metrics['aic'] = model.aic
+                        metrics['bic'] = model.bic
+                        metrics['ll'] = model.llf
+                        metrics['r2'] = model.prsquared # Pseudo R2
+                        metrics['k'] = len(model.params)
+                        
+                        # Predictions (Probability)
+                        y_prob = model.predict(df_clean)
+                        y_true = df_clean[target]
+                        
+                        # ROC
+                        fpr, tpr, _ = roc_curve(y_true, y_prob)
+                        metrics['auc'] = calc_auc(fpr, tpr)
+                        metrics['auc_ci'] = calc_ci_str(metrics['auc'], sum(y_true), len(y_true)-sum(y_true))
+                        
+                        roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
+                        
+                        raw_pred = y_prob.values
+                        raw_y = y_true.values
+                        
+                    except Exception as e:
+                        print(e)
+                        # Fallback to simple run if statsmodels fails (e.g. perfect separation)
+                        model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
+                        metrics = model_res.get('metrics', {})
+                        if 'plots' in model_res and 'roc' in model_res['plots']:
+                             roc_data = model_res['plots']['roc']
 
                 elif model_type == 'cox':
                     # Custom implementation for Cox ROC
@@ -770,48 +821,61 @@ class AdvancedModelingService:
                     cph = CoxPHFitter()
                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=" + ".join(feats))
                     
-                    # C-Index
-                    c_index = cph.concordance_index_
-                    metrics['auc'] = c_index # Show C-index in AUC column for now
-                    metrics['auc_ci'] = f"C-idx"
+                    # Fit Stats
+                    metrics['c_index'] = cph.concordance_index_
+                    metrics['auc'] = metrics['c_index'] # Ensure Frontend receives 'auc' for Table
+                    metrics['aic'] = cph.AIC_partial_
+                    metrics['ll'] = cph.log_likelihood_
+                    n_events = cph.event_observed.sum()
+                    k = len(cph.params_)
+                    metrics['k'] = k
+                    metrics['bic'] = -2 * metrics['ll'] + k * np.log(n_events)
                     
                     # Time-Dependent ROC Logic (at Median)
-                    # Get Partial Hazard (Risk Score)
                     risk_score = cph.predict_partial_hazard(temp_df)
                     
-                    # Define Binary Outcome at T=Median
-                    # Case: Event occurred at or before Median (Event=1, Time<=Med)
-                    # Control: Survived past Median (Time>Med)
-                    # Exclude: Censored before Median (Event=0, Time<=Med)
+                    # For NRI/IDI, we need Probabilities at a specific time T (Median)
+                    # S(t) -> Prob(Event <= t) = 1 - S(t)
+                    surv_df = cph.predict_survival_function(temp_df, times=[median_time])
+                    y_prob = 1 - surv_df.iloc[0].values # Array of probs
                     
+                    # Define Binary Outcome at T=Median for ROC/Validation
                     mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= median_time)
                     mask_control = (temp_df[target] > median_time)
-                    
                     valid_mask = mask_case | mask_control
+                    
                     y_binary = mask_case[valid_mask].astype(int)
-                    y_scores = risk_score[valid_mask]
+                    y_score_valid = y_prob[valid_mask]
                     
                     if len(y_binary.unique()) > 1:
-                        fpr, tpr, _ = roc_curve(y_binary, y_scores)
+                        fpr, tpr, _ = roc_curve(y_binary, y_score_valid)
                         roc_auc = calc_auc(fpr, tpr)
-                        # We might overwrite metrics['auc'] with this Time-Dep AUC or separate it
-                        # Let's keep C-index in table, but plot this ROC.
-                        # Actually standard practice: Plot this ROC, show this AUC in plot legend.
-                        # Table shows C-index? Or this AUC?
-                        # Let's update metrics['auc'] to this ROC AUC to match plot.
-                        metrics['auc'] = roc_auc
-                        metrics['auc_ci'] = f"at Median={median_time:.1f}"
+                        
+                        # Use C-index as primary metric for Table 3, but keep Time-Dep AUC for plot legend if needed
+                        # metrics['auc'] = metrics['c_index'] (Already set)
+                        metrics['auc_ci'] = calc_ci_str(metrics['c_index'], n_events, n_samples-n_events)
+                        metrics['td_auc'] = roc_auc # Store for potential use
                         
                         roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
                     else:
-                        metrics['error'] = "Not enough events at median time for ROC"
+                        metrics['auc'] = cph.concordance_index_
+                        metrics['auc_ci'] = calc_ci_str(metrics['auc'], n_events, n_samples-n_events)
+                        
+                    # Store raw for comparison (Use VALID mask for apples-to-apples?)
+                    # If we use valid mask, we drop censored before T.
+                    # Both models must use SAME mask.
+                    # Since df_clean and median_time are same, valid_mask is same for all models.
+                    raw_pred = y_prob[valid_mask]
+                    raw_y = y_binary.values
                 
                 results.append({
                     'name': name,
                     'features': feats,
                     'n': n_samples,
                     'metrics': metrics,
-                    'roc_data': roc_data
+                    'roc_data': roc_data,
+                    'raw_pred': raw_pred.tolist() if raw_pred is not None else [],
+                    'raw_y': raw_y.tolist() if raw_y is not None else []
                 })
                 
             except Exception as e:
@@ -821,6 +885,68 @@ class AdvancedModelingService:
                     'error': str(e)
                 })
                 
+        # 4. Compute Comparison Metrics (NRI, IDI) vs Baseline (Model 1)
+        if len(results) >= 2:
+            from app.services.evaluation_service import EvaluationService
+            from scipy.stats import chi2
+            base_model = results[0]
+            
+            for i in range(1, len(results)):
+                # Only compare if both have valid predictions
+                curr = results[i]
+                
+                # Check metrics availability
+                if 'aic' in base_model['metrics'] and 'aic' in curr['metrics']:
+                    curr['metrics']['delta_aic'] = curr['metrics']['aic'] - base_model['metrics']['aic']
+                
+                if 'bic' in base_model['metrics'] and 'bic' in curr['metrics']:
+                    curr['metrics']['delta_bic'] = curr['metrics']['bic'] - base_model['metrics']['bic']
+                    
+                # Likelihood Ratio Test (LRT) P-value
+                # 2 * (LL_new - LL_old) ~ Chi2(df)
+                if 'll' in base_model['metrics'] and 'll' in curr['metrics']:
+                     ll_base = base_model['metrics']['ll']
+                     ll_curr = curr['metrics']['ll']
+                     k_base = base_model['metrics'].get('k', 0)
+                     k_curr = curr['metrics'].get('k', 0)
+                     
+                     if k_curr > k_base: # Nested model assumption (adding vars)
+                         lrt_stat = 2 * (ll_curr - ll_base)
+                         df = k_curr - k_base
+                         if lrt_stat > 0:
+                             p_val = chi2.sf(lrt_stat, df)
+                             curr['metrics']['lrt_p'] = p_val
+                             curr['metrics']['lrt_stat'] = lrt_stat
+                    
+                # NRI / IDI
+                # Ensure raw data is available
+                if ('raw_y' in base_model and 'raw_pred' in base_model and 
+                    'raw_y' in curr and 'raw_pred' in curr):
+                    
+                    y_true = np.array(base_model['raw_y'])
+                    p_base = np.array(base_model['raw_pred'])
+                    p_curr = np.array(curr['raw_pred'])
+                    
+                    # Validate lengths
+                    if len(y_true) > 0 and len(y_true) == len(p_curr):
+                         try:
+                             nri_idi = EvaluationService.calculate_nri_idi(y_true, p_base, p_curr)
+                             curr['metrics']['nri'] = nri_idi['nri']
+                             curr['metrics']['nri_p'] = nri_idi.get('nri_p')
+                             curr['metrics']['nri_ci'] = nri_idi.get('nri_ci')
+                             
+                             curr['metrics']['idi'] = nri_idi['idi']
+                             curr['metrics']['idi_p'] = nri_idi.get('idi_p')
+                             curr['metrics']['idi_ci'] = nri_idi.get('idi_ci')
+                         except Exception as e:
+                             print(f"NRI Calc Error: {e}")
+                             curr['metrics']['nri_error'] = str(e)
+                             
+        # Clean up huge raw arrays
+        for r in results:
+            if 'raw_pred' in r: del r['raw_pred']
+            if 'raw_y' in r: del r['raw_y']
+            
         return {
             'comparison_data': results,
             'methodology': AdvancedModelingService._generate_comparison_methodology()

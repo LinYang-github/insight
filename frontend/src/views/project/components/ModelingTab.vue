@@ -142,6 +142,25 @@
                     <div class="result-header">
                         <span>运行结果</span>
                         <div>
+                             <el-button 
+                                 v-if="!baselineResult" 
+                                 size="small" 
+                                 @click="setAsBaseline"
+                                 title="设为基线模型 (Model 1)"
+                             >
+                                设为基线
+                             </el-button>
+                             <el-button 
+                                 v-else 
+                                 type="warning" 
+                                 plain 
+                                 size="small" 
+                                 @click="compareWithBaseline"
+                                 title="与基线模型对比 (Model 2 vs Model 1)"
+                             >
+                                 对比基线
+                             </el-button>
+                             
                              <el-button type="info" plain size="small" @click="copyMethodology" :icon="CopyDocument">复制方法学</el-button>
                              <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
                         </div>
@@ -266,11 +285,40 @@
                     <el-tab-pane label="评估图表 (Clinical Eval)" v-if="config.model_type !== 'linear'">
                         
                         <!-- Time Selector for Survivor -->
-                        <div v-if="availableTimePoints.length > 0" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: flex-end;">
-                            <span style="font-size: 13px; color: #606266; margin-right: 10px;">预测时间点 (Time Point):</span>
-                            <el-radio-group v-model="evaluationTimePoint" size="small">
-                                <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">{{ t }} (Months)</el-radio-button>
-                            </el-radio-group>
+                        <div v-if="availableTimePoints.length > 0" style="margin-bottom: 20px;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 15px;">
+                                <span style="font-size: 13px; color: #606266; margin-right: 10px;">预测时间点 (Time Point):</span>
+                                <el-radio-group v-model="evaluationTimePoint" size="small">
+                                    <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">{{ t }} (Months)</el-radio-button>
+                                </el-radio-group>
+                            </div>
+                            
+                            <!-- Extended Metrics Table -->
+                            <el-descriptions v-if="currentExtendedMetrics" title="Discrimination & Calibration Metrics" :column="3" border size="small">
+                                <el-descriptions-item label="Sensitivity (Recall)">
+                                    {{ currentExtendedMetrics.sensitivity.toFixed(3) }}
+                                    <span style="font-size: 10px; color: gray;">(at optimal cutoff)</span>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Specificity">
+                                    {{ currentExtendedMetrics.specificity.toFixed(3) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Youden Index">
+                                    {{ currentExtendedMetrics.youden_index.toFixed(3) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="PPV (+Pred Val)">
+                                    {{ currentExtendedMetrics.ppv.toFixed(3) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="NPV (-Pred Val)">
+                                    {{ currentExtendedMetrics.npv.toFixed(3) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Brier Score">
+                                    {{ currentExtendedMetrics.brier_score.toFixed(3) }}
+                                    <el-tag size="small" type="success" v-if="currentExtendedMetrics.brier_score < 0.25">Good</el-tag>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="Optimal Cutoff">
+                                    {{ currentExtendedMetrics.optimal_threshold.toFixed(3) }}
+                                </el-descriptions-item>
+                            </el-descriptions>
                         </div>
                         
                         <el-row :gutter="20">
@@ -392,6 +440,67 @@
            </el-card>
        </el-col>
     </el-row>
+
+    <!-- Comparison Dialog -->
+    <el-dialog v-model="showComparisonDialog" title="模型对比分析 (Model Comparison Report)" width="70%">
+        <div v-if="comparisonMetrics">
+            <h3>1. 基本拟合指标对比 (Model Fit Statistics)</h3>
+            <el-table :data="[comparisonMetrics.basic.c_index, comparisonMetrics.basic.aic, comparisonMetrics.basic.bic, comparisonMetrics.basic.ll]" border size="small" stripe>
+                <el-table-column label="指标 (Metric)">
+                    <template #default="scope">
+                        <span v-if="scope.$index === 0"><b>C-index</b> (Higher is better)</span>
+                        <span v-if="scope.$index === 1"><b>AIC</b> (Lower is better)</span>
+                        <span v-if="scope.$index === 2"><b>BIC</b> (Lower is better)</span>
+                        <span v-if="scope.$index === 3"><b>Log-Likelihood</b> (Higher is better)</span>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="'Baseline (Model 1)'" prop="m1">
+                    <template #default="scope">{{ scope.row.m1.toFixed(3) }}</template>
+                </el-table-column>
+                <el-table-column :label="'Current (Model 2)'" prop="m2">
+                    <template #default="scope">{{ scope.row.m2.toFixed(3) }}</template>
+                </el-table-column>
+                <el-table-column label="差异 (Difference)" prop="diff">
+                    <template #default="scope">
+                        <span :style="{ fontWeight: 'bold', color: scope.row.diff > 0 ? (scope.$index === 1 || scope.$index === 2 ? 'red' : 'green') : (scope.$index === 1 || scope.$index === 2 ? 'green' : 'red') }">
+                            {{ scope.row.diff > 0 ? '+' : '' }}{{ scope.row.diff.toFixed(3) }}
+                        </span>
+                        
+                        <!-- Auto Interpretation Tags -->
+                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="scope.$index === 0 && scope.row.diff > 0.01">Improved</el-tag>
+                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="(scope.$index === 1 || scope.$index === 2) && scope.row.diff < -2">Improved</el-tag>
+                    </template>
+                </el-table-column>
+            </el-table>
+            
+            <h3 style="margin-top: 20px">2. 改善与增量价值 (Reclassification & Incremental Value)</h3>
+            <div v-if="comparisonMetrics.reclassification">
+                <el-alert type="info" :closable="false" style="margin-bottom: 10px">
+                    基于预测时间点 T = {{ comparisonMetrics.reclassification.time_point }} (Months) 计算。
+                    反映了加入新变量后，模型对个体风险分类的改善程度。
+                </el-alert>
+                <el-descriptions :column="2" border>
+                    <el-descriptions-item label="NRI (连续净重分类改善指数)">
+                        <span style="font-size: 16px; font-weight: bold">{{ comparisonMetrics.reclassification.nri.toFixed(4) }}</span>
+                        <div style="font-size: 12px; color: gray; margin-top: 4px">
+                            Interpretation: NRI > 0 意味着模型正确地将发生事件者归为更高风险，或将未发生者归为更低风险。
+                        </div>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="IDI (综合判别改善指数)">
+                        <span style="font-size: 16px; font-weight: bold">{{ comparisonMetrics.reclassification.idi.toFixed(4) }}</span>
+                        <div style="font-size: 12px; color: gray; margin-top: 4px">
+                            Interpretation: IDI > 0 意味着新模型提高了平均预测概率的区分度。
+                        </div>
+                    </el-descriptions-item>
+                </el-descriptions>
+            </div>
+            <div v-else>
+                <el-alert type="warning" :closable="false" title="无法计算 NRI/IDI">
+                     可能是因为两个模型选择的评估时间点不一致，或未能匹配到相同的样本。请确保在相同的筛选条件下运行模型。
+                </el-alert>
+            </div>
+        </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -445,7 +554,9 @@ const metricTooltips = {
     'cv_auc_std': '5折交叉验证AUC标准差：评估模型表现的稳定性，值越小越稳定。',
     'aic': '赤池信息量：衡量模型拟合优度与参数复杂度的平衡，越小代表模型越精简有效。',
     'bic': '贝叶斯信息量：类似AIC，但对参数数量惩罚更重，常用于模型筛选，越小越好。',
-    'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近1越好。'
+    'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近1越好。',
+    'log_likelihood': 'Log-Likelihood (对数似然): 越高越好，表示模型对数据的解释程度。',
+    'n_events': 'Event Count (事件数): 分析中观察到的终点事件总数。'
 }
 
 const modelOptions = [
@@ -467,6 +578,8 @@ const config = reactive({
         learning_rate: 0.1
     }
 })
+
+
 
 const autoSuggestRoles = async () => {
     if (!props.datasetId) return
@@ -696,6 +809,12 @@ watch(() => results.value, (val) => {
     }
 })
 
+const currentExtendedMetrics = computed(() => {
+    if (!results.value || !results.value.clinical_eval || !results.value.clinical_eval.extended_metrics) return null
+    if (evaluationTimePoint.value === null) return null
+    return results.value.clinical_eval.extended_metrics[evaluationTimePoint.value]
+})
+
 const activePlots = computed(() => {
     if (!results.value) return {}
     
@@ -883,6 +1002,94 @@ const exportResults = async () => {
 
 // Removed downloadPlot function as it is now handled by InsightChart component
 // const downloadPlot = async (divId, filename, format = 'png') => { ... }
+
+// --- Model Comparison Logic ---
+const baselineResult = ref(null)
+const showComparisonDialog = ref(false)
+const comparisonMetrics = ref(null)
+
+const setAsBaseline = () => {
+    if (!results.value) return
+    baselineResult.value = JSON.parse(JSON.stringify(results.value))
+    ElMessage.success('当前模型已设为基线 (Model 1)')
+}
+
+const calculateNRI_IDI = (y_true, p_old, p_new) => {
+    let up_event = 0, down_event = 0, n_event = 0;
+    let up_nonevent = 0, down_nonevent = 0, n_nonevent = 0;
+    let idi_event_sum = 0, idi_nonevent_sum = 0;
+
+    for (let i = 0; i < y_true.length; i++) {
+        const diff = p_new[i] - p_old[i];
+        if (y_true[i] === 1) {
+            n_event++;
+            if (p_new[i] > p_old[i]) up_event++;
+            if (p_new[i] < p_old[i]) down_event++;
+            idi_event_sum += diff;
+        } else {
+            n_nonevent++;
+            if (p_new[i] < p_old[i]) down_nonevent++; // Better for non-event
+            if (p_new[i] > p_old[i]) up_nonevent++;   // Worse
+            idi_nonevent_sum += diff;
+        }
+    }
+
+    if (n_event === 0 || n_nonevent === 0) return { nri: 0, idi: 0 };
+
+    const nri_event = (up_event - down_event) / n_event;
+    const nri_nonevent = (down_nonevent - up_nonevent) / n_nonevent;
+    const nri = nri_event + nri_nonevent;
+
+    const idi = (idi_event_sum / n_event) - (idi_nonevent_sum / n_nonevent);
+    
+    return { nri, idi };
+}
+
+const compareWithBaseline = () => {
+    if (!baselineResult.value || !results.value) return;
+
+    const m1 = baselineResult.value.metrics;
+    const m2 = results.value.metrics;
+    
+    // Safety check for keys
+    const getVal = (m, k) => m && m[k] !== undefined ? parseFloat(m[k]) : 0;
+
+    const cmp = {
+        models: {
+            m1_name: 'Baseline (Model 1)',
+            m2_name: 'Current (Model 2)'
+        },
+        basic: {
+            c_index: { m1: getVal(m1, 'c_index'), m2: getVal(m2, 'c_index'), diff: getVal(m2, 'c_index') - getVal(m1, 'c_index') },
+            aic: { m1: getVal(m1, 'aic'), m2: getVal(m2, 'aic'), diff: getVal(m2, 'aic') - getVal(m1, 'aic') },
+            bic: { m1: getVal(m1, 'bic'), m2: getVal(m2, 'bic'), diff: getVal(m2, 'bic') - getVal(m1, 'bic') },
+            ll: { m1: getVal(m1, 'log_likelihood'), m2: getVal(m2, 'log_likelihood'), diff: getVal(m2, 'log_likelihood') - getVal(m1, 'log_likelihood') }
+        },
+        reclassification: null
+    }
+    
+    // NRI / IDI
+    const t = evaluationTimePoint.value;
+    if (t && baselineResult.value.clinical_eval && results.value.clinical_eval) {
+         const pred1 = baselineResult.value.clinical_eval.predictions?.[t];
+         const pred2 = results.value.clinical_eval.predictions?.[t];
+         
+         if (pred1 && pred2) {
+             // Validate lengths
+             if (pred1.y_true.length === pred2.y_true.length) {
+                 const res = calculateNRI_IDI(pred1.y_true, pred1.y_pred, pred2.y_pred);
+                 cmp.reclassification = {
+                     time_point: t,
+                     nri: res.nri,
+                     idi: res.idi
+                 };
+             }
+         }
+    }
+    
+    comparisonMetrics.value = cmp;
+    showComparisonDialog.value = true;
+}
 </script>
 
 

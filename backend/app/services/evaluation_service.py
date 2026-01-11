@@ -173,3 +173,164 @@ class EvaluationService:
         y_true = (df_eval[duration_col] <= time_point).astype(int)
         
         return EvaluationService.calculate_dca(y_true, y_prob, thresholds)
+
+    @staticmethod
+    def calculate_binary_metrics_at_threshold(y_true, y_prob):
+        """
+        Calculate Se, Sp, PPV, NPV, Youden at the Optimal Threshold (Max Youden).
+        
+        Returns:
+            dict: { 'metrics': {...}, 'optimal_threshold': float }
+        """
+        fpr, tpr, thresholds = roc_curve(y_true, y_prob)
+        
+        # Calculate Youden Index for all thresholds
+        # Youden = TPR - FPR = TPR - (1 - Specificity) = Sensitivity + Specificity - 1
+        youden_indices = tpr - fpr
+        best_idx = np.argmax(youden_indices)
+        best_threshold = thresholds[best_idx]
+        max_youden = youden_indices[best_idx]
+        
+        # Binary predictions at best threshold
+        y_pred = (y_prob >= best_threshold).astype(int)
+        
+        from sklearn.metrics import confusion_matrix
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+        
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+        ppv = tp / (tp + fp) if (tp + fp) > 0 else 0
+        npv = tn / (tn + fn) if (tn + fn) > 0 else 0
+        
+        return {
+            'optimal_threshold': float(best_threshold),
+            'sensitivity': float(sensitivity),
+            'specificity': float(specificity),
+            'ppv': float(ppv),
+            'npv': float(npv),
+            'youden_index': float(max_youden)
+        }
+
+    @staticmethod
+    def calculate_brier_score(y_true, y_prob):
+        """
+        Calculate Brier Score for binary outcomes.
+        """
+        from sklearn.metrics import brier_score_loss
+        return brier_score_loss(y_true, y_prob)
+
+    @staticmethod
+    def calculate_survival_metrics_at_t(model, df, duration_col, event_col, time_point):
+        """
+        Calculate advanced metrics (Se, Sp, Brier) for Survival Model at T.
+        Uses exclusion mask for censoring before T (Concurrent Validity).
+        """
+        # 1. Predict 1-S(t)
+        surv_df = model.predict_survival_function(df, times=[time_point])
+        prob_event = 1 - surv_df.iloc[0].values
+        
+        # 2. Mask
+        mask = (df[duration_col] > time_point) | ((df[duration_col] <= time_point) & (df[event_col] == 1))
+        df_eval = df[mask]
+        y_prob = prob_event[mask]
+        y_true = (df_eval[duration_col] <= time_point).astype(int)
+        
+        if len(y_true) == 0:
+            return {}
+            
+        # Binary Metrics (Se, Sp, etc.)
+        binary_res = EvaluationService.calculate_binary_metrics_at_threshold(y_true, y_prob)
+        
+        # Brier Score
+        brier = EvaluationService.calculate_brier_score(y_true, y_prob)
+        
+        # Merge
+        binary_res['brier_score'] = float(brier)
+        
+        # GND Test (Simplified Chi-Square of Deciles)
+        # Reuse logic from calibration
+        try:
+            calib = EvaluationService.calculate_survival_calibration(model, df, duration_col, event_col, time_point, n_bins=10)
+            # calib has mean_pred and obs_event (prob_true)
+            # Need N per bin to calculate counts
+            # Re-running binning locally is safer or return N in calibration
+            # Simplification: Skip formal P-value for now, Brier score is main calibration metric requested.
+            pass
+        except:
+            pass
+            
+        return binary_res
+
+    @staticmethod
+    def calculate_nri_idi(y_true, p_old, p_new):
+        """
+        Calculate Continuous NRI and IDI with SE and P-value.
+        """
+        from scipy.stats import norm
+        
+        y_true = np.array(y_true)
+        p_old = np.array(p_old)
+        p_new = np.array(p_new)
+        
+        # Masks
+        event_mask = (y_true == 1)
+        nonevent_mask = (y_true == 0)
+        
+        n_events = np.sum(event_mask)
+        n_nonevents = np.sum(nonevent_mask)
+        
+        if n_events == 0 or n_nonevents == 0:
+            return {}
+            
+        # --- NRI (Continuous) ---
+        # Event Group
+        p_up_e = np.mean(p_new[event_mask] > p_old[event_mask])
+        p_down_e = np.mean(p_new[event_mask] < p_old[event_mask])
+        nri_e = p_up_e - p_down_e
+        
+        # Non-Event Group
+        p_down_ne = np.mean(p_new[nonevent_mask] < p_old[nonevent_mask])
+        p_up_ne = np.mean(p_new[nonevent_mask] > p_old[nonevent_mask])
+        nri_ne = p_down_ne - p_up_ne
+        
+        nri = nri_e + nri_ne
+        
+        # SE for NRI
+        # Var(NRI_e) = (p_up + p_down - (p_up - p_down)^2) / N
+        var_e = (p_up_e + p_down_e - nri_e**2) / n_events
+        var_ne = (p_down_ne + p_up_ne - nri_ne**2) / n_nonevents
+        se_nri = np.sqrt(var_e + var_ne)
+        
+        z_nri = nri / se_nri if se_nri > 0 else 0
+        p_nri = 2 * (1 - norm.cdf(abs(z_nri)))
+        
+        # CI
+        nri_lower = nri - 1.96 * se_nri
+        nri_upper = nri + 1.96 * se_nri
+        
+        # --- IDI ---
+        diff = p_new - p_old
+        idi_e = np.mean(diff[event_mask])
+        idi_ne = np.mean(diff[nonevent_mask])
+        idi = idi_e - idi_ne
+        
+        # SE for IDI
+        # SE = sqrt( SE_diff_e^2 + SE_diff_ne^2 )
+        se_diff_e = np.std(diff[event_mask], ddof=1) / np.sqrt(n_events)
+        se_diff_ne = np.std(diff[nonevent_mask], ddof=1) / np.sqrt(n_nonevents)
+        se_idi = np.sqrt(se_diff_e**2 + se_diff_ne**2)
+        
+        z_idi = idi / se_idi if se_idi > 0 else 0
+        p_idi = 2 * (1 - norm.cdf(abs(z_idi)))
+        
+        idi_lower = idi - 1.96 * se_idi
+        idi_upper = idi + 1.96 * se_idi
+        
+        return {
+            'nri': float(nri),
+            'nri_p': float(p_nri),
+            'nri_ci': f"{nri_lower:.3f}-{nri_upper:.3f}",
+            'idi': float(idi),
+            'idi_p': float(p_idi),
+            'idi_ci': f"{idi_lower:.3f}-{idi_upper:.3f}"
+        }

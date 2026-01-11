@@ -81,6 +81,8 @@ class CoxStrategy(BaseModelStrategy):
             'dca': {},
             'calibration': {},
             'roc': {},
+            'extended_metrics': {},
+            'predictions': {},
             'nomogram': {}
         }
         
@@ -122,14 +124,25 @@ class CoxStrategy(BaseModelStrategy):
                 y_score_masked = y_score[mask]
                 
                 if len(np.unique(y_true)) > 1:
-                     from sklearn.metrics import roc_curve, auc
-                     fpr, tpr, _ = roc_curve(y_true, y_score_masked)
-                     roc_auc = auc(fpr, tpr)
-                     clinical_eval['roc'][t] = {
-                         'fpr': fpr.tolist(),
-                         'tpr': tpr.tolist(),
-                         'auc': roc_auc
-                     }
+                    from sklearn.metrics import roc_curve, auc
+                    fpr, tpr, _ = roc_curve(y_true, y_score_masked)
+                    roc_auc = auc(fpr, tpr)
+                    clinical_eval['roc'][t] = {
+                        'fpr': fpr.tolist(),
+                        'tpr': tpr.tolist(),
+                        'auc': roc_auc
+                    }
+
+                # Extended Metrics (Se, Sp, Brier)
+                ext_metrics = EvaluationService.calculate_survival_metrics_at_t(cph, data, time_col, event_col, t)
+                clinical_eval['extended_metrics'][t] = ext_metrics
+                
+                # Store predictions for Model Comparison (NRI/IDI)
+                # Keep lightweight: only masked/valid set
+                clinical_eval['predictions'][t] = {
+                    'y_true': y_true.tolist(),
+                    'y_pred': y_score_masked.tolist()
+                }
             
             # 3. Nomogram Data (Advanced Interactive Spec)
             try:
@@ -233,9 +246,17 @@ class CoxStrategy(BaseModelStrategy):
             }
             summary.append(row)
             
+        n_events = cph.event_observed.sum()
+        k = len(cph.params_)
+        ll = cph.log_likelihood_
+        bic = -2 * ll + k * np.log(n_events)
+        
         metrics = {
             'c_index': ResultFormatter.format_float(cph.concordance_index_, 3),
-            'aic': ResultFormatter.format_float(cph.AIC_partial_, 2)
+            'aic': ResultFormatter.format_float(cph.AIC_partial_, 2),
+            'bic': ResultFormatter.format_float(bic, 2),
+            'log_likelihood': ResultFormatter.format_float(ll, 2),
+            'n_events': int(n_events)
         }
         
         if ph_results is not None:
