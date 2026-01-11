@@ -134,6 +134,11 @@ class ModelingService:
                     df_processed[event_col] = codes
             # -------------------------------
             
+            # Inject original data for advanced visualizations (Nomogram)
+            # We copy specific metadata needed for visualization that might be lost during preprocessing
+            model_params['original_df'] = df
+            model_params['original_features'] = features
+            
             results = strategy.fit(df_processed, target, new_features, model_params)
             
             # --- Generate Interpretation (Decoupling) ---

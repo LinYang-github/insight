@@ -315,30 +315,38 @@
                              </div>
                          </el-alert>
                          
-                         <!-- Intercept / Baseline (Cox) -->
-                         <div v-if="nomogramData.intercept" style="margin-bottom: 10px;">
-                             <b>截距 (Intercept / Base Score):</b> {{ nomogramData.intercept.toFixed(4) }}
-                         </div>
-                         <div v-if="nomogramData.baseline_survival" style="margin-bottom: 10px;">
-                             <b>基线生存概率 (Baseline Survival S0(t)):</b>
-                             <span v-for="bs in nomogramData.baseline_survival.filter(x => availableTimePoints.includes(x[0]))" :key="bs[0]" style="margin-right: 15px">
-                                 t={{ bs[0] }}: {{ bs[1].toFixed(4) }}
-                             </span>
+                         <!-- New Interactive Nomogram (Cox) -->
+                         <div v-if="nomogramData.axes">
+                              <NomogramVisualizer :spec="nomogramData" />
                          </div>
                          
-                         <el-table :data="nomogramData.vars" style="width: 100%" stripe border size="small">
-                             <el-table-column prop="name" label="变量 (Variable)" />
-                             <el-table-column prop="coef" label="系数/得分权重 (Coef)">
-                                <template #default="scope">
-                                    {{ scope.row.coef.toFixed(4) }}
-                                </template>
-                             </el-table-column>
-                             <el-table-column :label="config.model_type === 'logistic' ? 'OR' : 'HR'">
-                                <template #default="scope">
-                                    {{ scope.row.or ? scope.row.or.toFixed(3) : (scope.row.hr ? scope.row.hr.toFixed(3) : '-') }}
-                                </template>
-                             </el-table-column>
-                         </el-table>
+                         <!-- Legacy/Simple Table (Logistic & Fallback) -->
+                         <div v-else>
+                             <!-- Intercept / Baseline (Cox) -->
+                             <div v-if="nomogramData.intercept" style="margin-bottom: 10px;">
+                                 <b>截距 (Intercept / Base Score):</b> {{ nomogramData.intercept.toFixed(4) }}
+                             </div>
+                             <div v-if="nomogramData.baseline_survival" style="margin-bottom: 10px;">
+                                 <b>基线生存概率 (Baseline Survival S0(t)):</b>
+                                 <span v-for="bs in nomogramData.baseline_survival.filter(x => availableTimePoints.includes(x[0]))" :key="bs[0]" style="margin-right: 15px">
+                                     t={{ bs[0] }}: {{ bs[1].toFixed(4) }}
+                                 </span>
+                             </div>
+                             
+                             <el-table :data="nomogramData.vars" style="width: 100%" stripe border size="small">
+                                 <el-table-column prop="name" label="变量 (Variable)" />
+                                 <el-table-column prop="coef" label="系数/得分权重 (Coef)">
+                                    <template #default="scope">
+                                        {{ scope.row.coef.toFixed(4) }}
+                                    </template>
+                                 </el-table-column>
+                                 <el-table-column :label="config.model_type === 'logistic' ? 'OR' : 'HR'">
+                                    <template #default="scope">
+                                        {{ scope.row.or ? scope.row.or.toFixed(3) : (scope.row.hr ? scope.row.hr.toFixed(3) : '-') }}
+                                    </template>
+                                 </el-table-column>
+                             </el-table>
+                         </div>
                     </el-tab-pane>
 
                     <el-tab-pane label="假设检验 (Assumptions)">
@@ -406,6 +414,7 @@ import InterpretationPanel from './InterpretationPanel.vue'
 
 
 import InsightChart from './InsightChart.vue'
+import NomogramVisualizer from './NomogramVisualizer.vue'
 
 import { QuestionFilled, ArrowDown, Setting, CopyDocument, MagicStick } from '@element-plus/icons-vue'
 

@@ -131,19 +131,39 @@ class CoxStrategy(BaseModelStrategy):
                          'auc': roc_auc
                      }
             
-            # 3. Nomogram Data
-            nomogram_data = {
-                'baseline_survival': cph.baseline_survival_.reset_index().values.tolist(), # [[t, s(t)], ...]
-                'vars': []
-            }
-            summary_df = cph.summary
-            for name, row in summary_df.iterrows():
-                nomogram_data['vars'].append({
-                    'name': name,
-                    'coef': row['coef'],
-                    'hr': row['exp(coef)']
-                })
-            clinical_eval['nomogram'] = nomogram_data
+            # 3. Nomogram Data (Advanced Interactive Spec)
+            try:
+                from app.utils.nomogram_generator import NomogramGenerator
+                
+                original_df = params.get('original_df', data) # Fallback to 'data' (which is processed) if missing
+                original_features = params.get('original_features', features)
+                
+                # Heuristic Time Points: 1/4, 2/4, 3/4 quartiles of event times?
+                # Or Max/5, Max/3?
+                # Let's align with the evaluation time points 't' calculated above?
+                # Above we iterate t in [max_time / 2].
+                # Let's pick 3 standardized points for the Nomogram axis
+                max_t = data[time_col].max()
+                qt = np.quantile(data.loc[data[event_col]==1, time_col], [0.25, 0.5, 0.75])
+                # Round to nice integers
+                nomogram_times = [int(q) for q in qt]
+                nomogram_times = sorted(list(set(nomogram_times))) # unique
+                
+                nomogram_spec = NomogramGenerator.generate_spec(
+                    cph, 
+                    original_df, 
+                    original_features, 
+                    nomogram_times
+                )
+                if nomogram_spec:
+                    clinical_eval['nomogram'] = nomogram_spec
+            except Exception as e:
+                print(f"Nomogram Generation Failed: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fallback to simple table (implemented previously?) 
+                # Actually we replaced it. So if fail, no nomogram.
+                pass
             
         except Exception as e:
             print(f"Cox Clinical Evaluation Failed: {e}")
