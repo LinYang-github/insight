@@ -200,6 +200,39 @@
                  <template #header>
                     <div class="card-header">
                         <span>📈 纵向趋势分析 (Slope Analysis)</span>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                             <!-- Melt Actions -->
+                             <template v-if="slopeMode === 'melt'">
+                                <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
+                                    <template #reference>
+                                        <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                                    </template>
+                                    <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
+                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                    </el-radio-group>
+                                </el-popover>
+                                <el-button type="primary" @click="handleMelt" :loading="calculating" :disabled="!canMelt">
+                                    开始转换 (Convert)
+                                </el-button>
+                             </template>
+
+                             <!-- Slope Actions -->
+                             <template v-if="slopeMode === 'calc'">
+                                <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
+                                    <template #reference>
+                                        <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+                                    </template>
+                                    <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
+                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                    </el-radio-group>
+                                </el-popover>
+                                <el-button type="primary" @click="handleSlope" :loading="calculating" :disabled="!canSlope">
+                                    计算斜率 (Calculate Slope)
+                                </el-button>
+                             </template>
+                        </div>
                     </div>
                 </template>
                 
@@ -232,20 +265,7 @@
                                  <el-button size="small" @click="addMeltPoint" icon="Plus">添加时间点</el-button>
                              </el-form-item>
                              
-                             <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
-                                <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
-                                    <template #reference>
-                                        <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-                                    </template>
-                                    <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
-                                    </el-radio-group>
-                                </el-popover>
-                                 <el-button type="primary" @click="handleMelt" :loading="calculating" :disabled="!canMelt">
-                                    开始转换 (Convert)
-                                </el-button>
-                             </div>
+
                          </el-form>
                     </el-tab-pane>
                     
@@ -285,20 +305,7 @@
                                      </el-form-item>
                                 </el-col>
                              </el-row>
-                             <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
-                                <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
-                                    <template #reference>
-                                        <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-                                    </template>
-                                    <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
-                                    </el-radio-group>
-                                </el-popover>
-                                <el-button type="primary" @click="handleSlope" :loading="calculating" :disabled="!canSlope">
-                                    计算斜率 (Calculate Slope)
-                                </el-button>
-                            </div>
+
                         </el-form>
                     </el-tab-pane>
                 </el-tabs>
