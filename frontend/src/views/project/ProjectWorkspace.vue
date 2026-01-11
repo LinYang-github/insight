@@ -87,40 +87,40 @@
          <div v-else-if="activeTabName === 'data-mgmt'">
              <DataManagementTab 
                 :datasets="datasetList"
-                :activeDatasetId="dataset?.id"
+                :activeDatasetId="dataset?.dataset_id || dataset?.id"
                 @dataset-switched="handleSwitchDataset" 
                 @refresh-list="fetchDatasetList"
              />
          </div>
          <div v-else-if="activeTabName === 'preprocessing'">
-             <PreprocessingTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" @dataset-created="handleDatasetCreated" />
+             <PreprocessingTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" @dataset-created="handleDatasetCreated" />
          </div>
          <div v-else-if="activeTabName === 'clinical'">
-             <ClinicalTab :dataset="dataset" :metadata="dataset?.metadata" @dataset-updated="handleDatasetUpdate" />
+             <ClinicalTab v-if="dataset?.dataset_id" :dataset="dataset" :metadata="dataset.metadata" @dataset-updated="handleDatasetUpdate" />
          </div>
          <div v-else-if="activeTabName === 'table1'">
-             <TableOneTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <TableOneTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'eda'">
-             <EdaTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <EdaTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'survival'">
-             <SurvivalTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <SurvivalTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'psm'">
-             <PsmTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" @dataset-created="handleDatasetCreated" />
+             <PsmTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" @dataset-created="handleDatasetCreated" />
          </div>
          <div v-else-if="activeTabName === 'modeling'">
-              <ModelingTab :projectId="route.params.id" :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+              <ModelingTab v-if="dataset?.dataset_id" :projectId="route.params.id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'advanced'">
-             <AdvancedModelingTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <AdvancedModelingTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'viz'">
-             <ClinicalVizTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <ClinicalVizTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
          <div v-else-if="activeTabName === 'longitudinal'">
-             <LongitudinalTab :datasetId="dataset?.dataset_id" :metadata="dataset?.metadata" />
+             <LongitudinalTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
     </el-main>
   </el-container>
@@ -149,6 +149,7 @@ import DataManagementTab from './components/DataManagementTab.vue'
 import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
 import ClinicalVizTab from './components/ClinicalVizTab.vue'
 import LongitudinalTab from './components/LongitudinalTab.vue'
+import PsmTab from './components/PsmTab.vue'
 import api from '../../api/client'
 
 import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer } from '@element-plus/icons-vue'
@@ -229,8 +230,13 @@ const handleDatasetCreated = (newDatasetId) => {
 }
 
 const handleSwitchDataset = async (targetDataset) => {
-    dataset.value = targetDataset
-    await persistActiveDataset(targetDataset.id || targetDataset.dataset_id)
+    // Normalize dataset object to ensure dataset_id exists
+    const normalized = {
+        ...targetDataset,
+        dataset_id: targetDataset.dataset_id || targetDataset.id
+    }
+    dataset.value = normalized
+    await persistActiveDataset(normalized.dataset_id)
 }
 
 onMounted(() => {

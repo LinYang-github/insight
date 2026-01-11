@@ -15,10 +15,10 @@
                             根据肌酐、年龄、性别等指标自动计算肾小球滤过率 (eGFR)。
                         </div>
                         <el-radio-group v-model="egfrMethod" class="method-select">
-                            <el-radio label="egfr_ckdepi2021" border>CKD-EPI 2021 (推荐)</el-radio>
-                            <el-radio label="egfr_ckdepi2009" border>CKD-EPI 2009</el-radio>
-                            <el-radio label="egfr_mdrd" border>MDRD (简化版)</el-radio>
-                            <el-radio label="egfr_schwartz" border>Schwartz (儿童)</el-radio>
+                            <el-radio value="egfr_ckdepi2021" border>CKD-EPI 2021 (推荐)</el-radio>
+                            <el-radio value="egfr_ckdepi2009" border>CKD-EPI 2009</el-radio>
+                            <el-radio value="egfr_mdrd" border>MDRD (简化版)</el-radio>
+                            <el-radio value="egfr_schwartz" border>Schwartz (儿童)</el-radio>
                         </el-radio-group>
                     </el-collapse-item>
                     
@@ -51,8 +51,8 @@
                                     <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                                 </template>
                                 <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                    <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                    <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                    <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
                                 </el-radio-group>
                             </el-popover>
                              <el-button type="primary" @click="handleDerive" :loading="calculating" :disabled="!canCalculate">
@@ -148,8 +148,8 @@
                                     <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                                 </template>
                                 <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                    <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                    <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                    <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                    <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
                                 </el-radio-group>
                             </el-popover>
                             <el-button type="primary" @click="handleStage" :loading="calculating" :disabled="!canStage">
@@ -204,7 +204,7 @@
                 </template>
                 
                 <el-tabs v-model="slopeMode">
-                    <el-tab-pane label="步骤 1: 宽表转长表" name="melt">
+                    <el-tab-pane value="步骤 1: 宽表转长表" name="melt">
                         <el-alert title="什么是宽表转长表?" type="info" :closable="false" style="margin-bottom: 20px">
                              <div style="line-height: 1.6">
                                  纵向分析（如计算斜率、线性混合模型）需要数据处于<b>长格式 (Long Format)</b>。
@@ -238,8 +238,8 @@
                                         <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                                     </template>
                                     <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                        <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                        <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
                                     </el-radio-group>
                                 </el-popover>
                                  <el-button type="primary" @click="handleMelt" :loading="calculating" :disabled="!canMelt">
@@ -249,7 +249,7 @@
                          </el-form>
                     </el-tab-pane>
                     
-                    <el-tab-pane label="步骤 2: 计算斜率" name="calc">
+                    <el-tab-pane value="步骤 2: 计算斜率" name="calc">
                         <el-alert title="如何解读斜率 (Slope)?" type="success" :closable="false" style="margin-bottom: 20px">
                              <div>
                                  <b>定义</b>: eGFR 随时间变化的速率 (ml/min/1.73m²/year)。
@@ -291,8 +291,8 @@
                                         <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                                     </template>
                                     <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                        <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                        <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                        <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                        <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
                                     </el-radio-group>
                                 </el-popover>
                                 <el-button type="primary" @click="handleSlope" :loading="calculating" :disabled="!canSlope">

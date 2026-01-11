@@ -25,8 +25,8 @@
                                 <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                             </template>
                             <el-radio-group v-model="saveMode" style="display: flex; flex-direction: column; align-items: flex-start;">
-                                <el-radio label="new" size="small">另存为新数据集 (Save as New)</el-radio>
-                                <el-radio label="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
+                                <el-radio value="new" size="small">另存为新数据集 (Save as New)</el-radio>
+                                <el-radio value="overwrite" size="small">覆盖当前数据集 (Overwrite)</el-radio>
                             </el-radio-group>
                         </el-popover>
                         <el-divider direction="vertical" />

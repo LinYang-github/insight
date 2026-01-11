@@ -37,6 +37,9 @@ class PreprocessingService:
             elif method == 'mean':
                 if pd.api.types.is_numeric_dtype(df[col]):
                     val = df[col].mean()
+                    # If column is integer (including nullable Int64), cast to float to accept mean (likely float)
+                    if pd.api.types.is_integer_dtype(df[col]):
+                        df[col] = df[col].astype(float)
                     df[col] = df[col].fillna(val)
             elif method == 'median':
                 if pd.api.types.is_numeric_dtype(df[col]):
@@ -85,7 +88,7 @@ class PreprocessingService:
         """
         if overwrite_id:
             # Overwrite existing dataset
-            target_dataset = Dataset.query.get(overwrite_id)
+            target_dataset = db.session.get(Dataset, overwrite_id)
             if not target_dataset:
                 raise ValueError("Overwrite target not found")
             
@@ -93,12 +96,11 @@ class PreprocessingService:
             new_filepath = target_dataset.filepath
             new_dataset = target_dataset
             
-            # Save CSV (Overwrite)
-            new_df.to_csv(new_filepath, index=False)
+            # Save Data (Overwrite)
+            DataService.save_dataframe(new_df, new_filepath)
             
             # Update Metadata
             try:
-                from app.services.data_service import DataService
                 meta = DataService.get_initial_metadata(new_filepath)
                 new_dataset.meta_data = meta
             except Exception as e:
@@ -109,7 +111,7 @@ class PreprocessingService:
             
         else:
             # Create NEW dataset
-            original = Dataset.query.get(original_dataset_id)
+            original = db.session.get(Dataset, original_dataset_id)
             if not original:
                 raise ValueError("Original dataset not found")
     
@@ -123,8 +125,8 @@ class PreprocessingService:
             new_filename = f"{name_part}_{suffix}{ext}"
             new_filepath = os.path.join(dir_name, new_filename)
             
-            # Save CSV
-            new_df.to_csv(new_filepath, index=False)
+            # Save Data (DuckDB or CSV)
+            DataService.save_dataframe(new_df, new_filepath)
             
             # Create DB entry
             new_dataset = Dataset(
@@ -137,7 +139,6 @@ class PreprocessingService:
             )
             # Generate metadata
             try:
-                from app.services.data_service import DataService
                 meta = DataService.get_initial_metadata(new_filepath)
                 new_dataset.meta_data = meta
             except Exception as e:

@@ -81,7 +81,7 @@ def get_metadata(current_user, project_id):
     
     # Prioritize active_dataset_id
     if project.active_dataset_id:
-        dataset = Dataset.query.get(project.active_dataset_id)
+        dataset = db.session.get(Dataset, project.active_dataset_id)
         if dataset and dataset.project_id != project.id:
             dataset = None # Safety check
             
@@ -119,7 +119,9 @@ def download_dataset(current_user, dataset_id):
     """
     Download dataset. Automatically converts DuckDB to CSV.
     """
-    dataset = Dataset.query.get_or_404(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
     if dataset.project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403
 

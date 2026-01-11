@@ -6,6 +6,7 @@ import io
 from app import create_app, db
 from app.models.dataset import Dataset
 from app.models.project import Project
+from app.services.data_service import DataService
 
 @pytest.fixture
 def app():
@@ -56,8 +57,8 @@ def test_encoding_api_flow(app, client, auth_header, sample_project_dataset):
     
     # Check new dataset columns
     with app.app_context():
-        new_ds = Dataset.query.get(new_id)
-        df = pd.read_csv(new_ds.filepath)
+        new_ds = db.session.get(Dataset, new_id)
+        df = DataService.load_data(new_ds.filepath)
         # 'gender' should be gone, replaced by 'gender_Male' or similar (drop_first=True)
         assert 'gender' not in df.columns
         # gender_Male should exist (since Female is usually first alphabetically and dropped as ref)

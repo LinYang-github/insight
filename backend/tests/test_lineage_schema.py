@@ -4,11 +4,11 @@ from app import create_app, db
 from app.models.dataset import Dataset
 from sqlalchemy import text
 
+from app.config import TestConfig
+
 @pytest.fixture
 def app_context():
-    app = create_app()
-    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///:memory:"
-    app.config['TESTING'] = True
+    app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
         yield app

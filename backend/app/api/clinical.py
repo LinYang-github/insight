@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from app.services.preprocessing_service import PreprocessingService
 from app.services.data_service import DataService
 from app.models.dataset import Dataset
-from app.api.auth import db
+from app import db
 from app.api.middleware import token_required
 import pandas as pd
 import traceback
@@ -30,7 +30,7 @@ def derive_egfr(current_user):
     if not all([dataset_id, formula_type, params]):
         return jsonify({'message': 'Missing required parameters'}), 400
         
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
@@ -77,7 +77,7 @@ def stage_ckd(current_user):
     if not all([dataset_id, params]) or not params.get('egfr'):
         return jsonify({'message': 'Missing required parameters'}), 400
         
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
@@ -120,7 +120,7 @@ def melt_data(current_user):
     if not all([dataset_id, id_col, time_mapping]):
         return jsonify({'message': 'Missing required parameters'}), 400
         
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         
@@ -163,7 +163,7 @@ def calculate_slope(current_user):
     if not all([dataset_id, id_col, time_col, value_col]):
         return jsonify({'message': 'Missing required parameters'}), 400
         
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset or dataset.project.user_id != current_user.id:
         return jsonify({'message': 'Dataset not found or unauthorized'}), 404
         

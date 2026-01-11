@@ -8,10 +8,10 @@
                 </div>
                 <div class="header-right">
                     <el-radio-group v-model="viewMode" size="small">
-                        <el-radio-button label="list">
+                        <el-radio-button value="list">
                             <el-icon><List /></el-icon> 列表 (List)
                         </el-radio-button>
-                        <el-radio-button label="tree">
+                        <el-radio-button value="tree">
                             <el-icon><Connection /></el-icon> 血缘 (Lineage)
                         </el-radio-button>
                     </el-radio-group>

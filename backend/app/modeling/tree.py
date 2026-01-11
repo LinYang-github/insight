@@ -110,7 +110,7 @@ class TreeModelStrategy(BaseModelStrategy):
             if is_clf: 
                 return xgb.XGBClassifier(n_estimators=n_est, max_depth=depth, learning_rate=lr, 
                                        subsample=subsample, colsample_bytree=colsample,
-                                       random_state=42, use_label_encoder=False, eval_metric='logloss')
+                                       random_state=42, eval_metric='logloss')
             else: 
                 return xgb.XGBRegressor(n_estimators=n_est, max_depth=depth, learning_rate=lr, 
                                       subsample=subsample, colsample_bytree=colsample,

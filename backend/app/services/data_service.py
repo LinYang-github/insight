@@ -14,6 +14,22 @@ class DataService:
     MAX_FILE_SIZE_MB = 200
 
     @staticmethod
+    def save_dataframe(df, filepath):
+        """
+        Save DataFrame to file, handling DuckDB or CSV based on extension.
+        """
+        if filepath.endswith('.duckdb'):
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            con = duckdb.connect(filepath)
+            try:
+                con.sql("CREATE OR REPLACE TABLE data AS SELECT * FROM df")
+            finally:
+                con.close()
+        else:
+            df.to_csv(filepath, index=False)
+
+    @staticmethod
     def ingest_data(raw_filepath, db_filepath):
         """
         Ingest raw file (CSV/Excel) into a persistent DuckDB file.
@@ -22,6 +38,9 @@ class DataService:
             raw_filepath (str): Path to temporary raw file.
             db_filepath (str): Target path for .duckdb file.
         """
+        if os.path.exists(db_filepath):
+            os.remove(db_filepath)
+
         con = duckdb.connect(db_filepath)
         try:
             if raw_filepath.endswith('.csv'):

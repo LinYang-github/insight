@@ -10,10 +10,10 @@
 
         <div class="header-right">
           <div class="common-nav" v-if="userStore.user">
-            <el-link :underline="false" @click="router.push('/dashboard')" class="nav-item">
+            <el-link underline="never" @click="router.push('/dashboard')" class="nav-item">
               <el-icon><Odometer /></el-icon> 首页
             </el-link>
-            <el-link :underline="false" @click="router.push('/validation')" class="nav-item">
+            <el-link underline="never" @click="router.push('/validation')" class="nav-item">
               <el-icon><CircleCheck /></el-icon> 质量与验证
             </el-link>
           </div>

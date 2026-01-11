@@ -32,7 +32,6 @@
          <template #header>
             <div class="card-header">
                 <span>数据集元数据 ({{ metadata.row_count }} 行)</span>
-                <el-button type="primary" size="small" icon="Download" @click="handleDownload" v-if="dataset">下载 CSV</el-button>
             </div>
          </template>
          <el-table :data="metadata.variables" style="width: 100%" stripe border>

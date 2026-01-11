@@ -65,7 +65,7 @@
                 >
                     <el-table-column prop="variable" label="Variable" width="180">
                         <template #default="scope">
-                            <el-link type="primary" :underline="false" @click.stop="openDistribution(scope.row.variable)">
+                            <el-link type="primary" underline="never" @click.stop="openDistribution(scope.row.variable)">
                                 {{ scope.row.variable }}
                             </el-link>
                         </template>

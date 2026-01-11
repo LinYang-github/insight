@@ -74,6 +74,9 @@ def delete_project(current_user, project_id):
     project = Project.query.get_or_404(project_id)
     if project.author != current_user:
         return jsonify({'message': 'Permission denied'}), 403
+    project.active_dataset_id = None
+    db.session.commit()
+    
     db.session.delete(project)
     db.session.commit()
     return jsonify({'message': 'Project deleted'}), 200

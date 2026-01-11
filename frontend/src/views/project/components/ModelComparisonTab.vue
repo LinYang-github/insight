@@ -27,8 +27,8 @@
                     <el-form label-position="top">
                         <el-form-item label="模型类型 (Model Type)">
                             <el-radio-group v-model="modelType">
-                                <el-radio-button label="logistic">Logistic Regression</el-radio-button>
-                                <el-radio-button label="cox">Cox Regression</el-radio-button>
+                                <el-radio-button value="logistic">Logistic Regression</el-radio-button>
+                                <el-radio-button value="cox">Cox Regression</el-radio-button>
                             </el-radio-group>
                         </el-form-item>
 

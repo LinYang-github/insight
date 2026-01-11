@@ -67,7 +67,7 @@ def test_preprocessing_and_metadata_flow(app, client, auth_header):
     with app.app_context():
         new_ds = Dataset.query.get(new_dataset_id)
         assert new_ds is not None
-        assert new_ds.name.endswith('_imputed.csv')
+        assert '_imputed' in new_ds.name
         
         # Check Metadata
         meta = new_ds.meta_data

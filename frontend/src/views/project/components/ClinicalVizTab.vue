@@ -12,8 +12,8 @@
           <el-form label-position="top">
             <el-form-item label="模型类型 (Model Type)">
               <el-radio-group v-model="config.model_type">
-                <el-radio label="logistic">Logistic回归</el-radio>
-                <el-radio label="cox">Cox生存分析</el-radio>
+                <el-radio value="logistic">Logistic回归</el-radio>
+                <el-radio value="cox">Cox生存分析</el-radio>
               </el-radio-group>
             </el-form-item>
 

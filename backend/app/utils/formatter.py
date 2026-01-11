@@ -4,6 +4,7 @@ app.utils.formatter.py
 工具模块：负责统计结果的标准化格式化。
 确保 P 值、回归系数等在显示给用户前符合医学学术规范。
 """
+import pandas as pd
 import numpy as np
 
 class ResultFormatter:
@@ -13,7 +14,7 @@ class ResultFormatter:
         按照 APA 学术规范格式化 P 值。
         P < 0.001 显示为 "<0.001"，其余保留 3 位小数。
         """
-        if p_value is None or np.isnan(p_value):
+        if pd.isna(p_value):
             return "N/A"
         if p_value < 0.001:
             return "<0.001"
@@ -35,6 +36,6 @@ class ResultFormatter:
                 # Cannot format array
                 return val
         
-        if np.isnan(val):
+        if pd.isna(val):
             return None
         return float(f"{val:.{precision}f}")

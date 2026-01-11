@@ -4,6 +4,7 @@ from app.models.dataset import Dataset
 from app.services.data_service import DataService
 from app.services.advanced_modeling_service import AdvancedModelingService
 from app.services.modeling_service import ModelingService
+from app import db
 
 advanced_bp = Blueprint('advanced', __name__)
 
@@ -14,7 +15,7 @@ def fit_rcs(current_user):
     dataset_id = data.get('dataset_id')
     
     # Load Data
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
@@ -57,7 +58,7 @@ def subgroup_analysis(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
@@ -91,7 +92,7 @@ def calculate_cif(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
@@ -118,7 +119,7 @@ def generate_nomogram(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
@@ -152,7 +153,7 @@ def compare_models(current_user):
     data = request.get_json()
     dataset_id = data.get('dataset_id')
     
-    dataset = Dataset.query.get(dataset_id)
+    dataset = db.session.get(Dataset, dataset_id)
     if not dataset:
         return jsonify({'message': 'Dataset not found'}), 404
         
