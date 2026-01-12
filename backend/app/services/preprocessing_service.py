@@ -20,7 +20,7 @@ class PreprocessingService:
 
         Args:
             df (pd.DataFrame): 原始数据集。
-            strategies (dict): 策略映射，格式如 { "变量名": "mean"|"median"|"mode"|"drop" }。
+            strategies (dict): 策略映射，格式如 { "变量名": "mean"|"median"|"mode"|"drop"|"mice" }。
 
         Returns:
             pd.DataFrame: 处理后的新 DataFrame。
@@ -28,6 +28,10 @@ class PreprocessingService:
         # copy to avoid mutating original if needed (though here we want to return new one)
         df = df.copy()
 
+        # 1. Handle Simple Imputation & Drop first
+        # (Doing this first ensures they provide complete data for MICE predictors if needed)
+        mice_cols = []
+        
         for col, method in strategies.items():
             if col not in df.columns:
                 continue
@@ -37,9 +41,9 @@ class PreprocessingService:
             elif method == 'mean':
                 if pd.api.types.is_numeric_dtype(df[col]):
                     val = df[col].mean()
-                    # If column is integer (including nullable Int64), cast to float to accept mean (likely float)
+                    # If column is integer (including nullable Int64), cast to float to accept mean
                     if pd.api.types.is_integer_dtype(df[col]):
-                        df[col] = df[col].astype(float)
+                         df[col] = df[col].astype(float)
                     df[col] = df[col].fillna(val)
             elif method == 'median':
                 if pd.api.types.is_numeric_dtype(df[col]):
@@ -49,7 +53,47 @@ class PreprocessingService:
                 if not df[col].mode().empty:
                     val = df[col].mode()[0]
                     df[col] = df[col].fillna(val)
+            elif method == 'mice':
+                # Defer MICE
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    mice_cols.append(col)
+        
+        # 2. Handle MICE
+        if mice_cols:
+            try:
+                from sklearn.experimental import enable_iterative_imputer
+                from sklearn.impute import IterativeImputer
+                
+                # Use all numeric columns as context for MICE
+                numeric_df = df.select_dtypes(include=[np.number])
+                
+                # To be safe, MICE needs at least 2 columns usually? 
+                # Or it uses itself if univariate? (IterativeImputer acts as simple regression if multivariate)
+                if numeric_df.shape[1] > 0:
+                    # We only need to impute if there are still NaNs in the mice_cols
+                    # (Though strategies[col]=='mice' implies we want to fix it)
+                    cols_to_impute = [c for c in mice_cols if df[c].isnull().any()]
                     
+                    if cols_to_impute:
+                        imputer = IterativeImputer(max_iter=10, random_state=0)
+                        # Fit transform on ALL numeric (imputes all missing numeric actually)
+                        imputed_matrix = imputer.fit_transform(numeric_df)
+                        
+                        # Convert back to DF
+                        imputed_df = pd.DataFrame(imputed_matrix, columns=numeric_df.columns, index=numeric_df.index)
+                        
+                        # Update original df with imputed values for requested cols
+                        for col in mice_cols:
+                            if col in imputed_df.columns:
+                                df[col] = imputed_df[col]
+            except ImportError:
+                 # Fallback if sklearn version issue or not installed
+                 print("Warning: MICE requires sklearn>=0.21. Basic mean imputation used as fallback.")
+                 for col in mice_cols:
+                     df[col] = df[col].fillna(df[col].mean())
+            except Exception as e:
+                 print(f"MICE failed: {e}")
+                 
         return df
 
     @staticmethod

@@ -56,8 +56,14 @@
                     
                      <el-form-item>
                         <el-checkbox v-model="config.save" border>匹配成功后，自动保存为新数据集</el-checkbox>
-                        <GlossaryTooltip term="caliper" style="margin-left: 10px">关于匹配设置</GlossaryTooltip>
-                    </el-form-item>
+                     </el-form-item>
+                     <el-form-item label="卡钳值 (Caliper)">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <el-input-number v-model="config.caliper" :step="0.01" :min="0" :max="0.5" style="width: 150px" />
+                            <GlossaryTooltip term="caliper">推荐值: 0.02 - 0.05 (绝对值) 或 0.2*SD</GlossaryTooltip>
+                        </div>
+                        <div style="font-size: 12px; color: #909399;">设置允许的最大倾向性评分差异。值越小匹配越精确，但样本流失可能越多。</div>
+                     </el-form-item>
                 </el-form>
                 
                 <el-alert

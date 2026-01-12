@@ -88,7 +88,12 @@
                     <template #header>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
                             <span>统计对比结果 (Statistics)</span>
-                            <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">复制研究方法</el-button>
+                            <div>
+                                <el-button v-if="results" size="small" type="success" plain @click="copyTableData" style="margin-right: 10px;">
+                                    <el-icon style="margin-right: 4px"><DocumentCopy /></el-icon> 复制表格数据
+                                </el-button>
+                                <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">复制研究方法</el-button>
+                            </div>
                         </div>
                         
                         <!-- 时间点选择器 (Cox专用) -->
@@ -146,13 +151,18 @@
                                 <el-tooltip content="净重分类改善指数。>0 表示新模型能更准确地划分风险组。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
-                                <div v-if="scope.row.nri !== '-'" :style="{color: parseFloat(scope.row.nri) > 0 ? 'green' : 'red', fontWeight: 'bold'}">
-                                    {{ scope.row.nri }}
-                                </div>
-                                <div v-if="scope.row.nri_p" style="font-size: 11px; color: gray">
-                                    P={{ scope.row.nri_p }}
-                                </div>
-                                <span v-else-if="scope.row.nri === '-'">-</span>
+                                <template v-if="scope.row.nri !== '-'">
+                                    <div :style="{color: parseFloat(scope.row.nri) > 0 ? '#2E7D32' : '#D32F2F', fontWeight: 'bold'}">
+                                        {{ scope.row.nri }}
+                                    </div>
+                                    <div style="font-size: 11px; color: #606266; margin-bottom: 2px;">
+                                        ({{ scope.row.nri_ci }})
+                                    </div>
+                                    <div v-if="scope.row.nri_p && scope.row.nri_p !== '-'" style="font-size: 11px; color: #909399">
+                                        P={{ scope.row.nri_p }}
+                                    </div>
+                                </template>
+                                <span v-else style="color: #ccc">-</span>
                             </template>
                         </el-table-column>
 
@@ -162,13 +172,18 @@
                                 <el-tooltip content="综合判别改善指数。反映整体预测概率的改善程度。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
-                                <div v-if="scope.row.idi !== '-'" :style="{color: parseFloat(scope.row.idi) > 0 ? 'green' : 'red', fontWeight: 'bold'}">
-                                    {{ scope.row.idi }}
-                                </div>
-                                <div v-if="scope.row.idi_p" style="font-size: 11px; color: gray">
-                                    P={{ scope.row.idi_p }}
-                                </div>
-                                <span v-else-if="scope.row.idi === '-'">-</span>
+                                <template v-if="scope.row.idi !== '-'">
+                                    <div :style="{color: parseFloat(scope.row.idi) > 0 ? '#2E7D32' : '#D32F2F', fontWeight: 'bold'}">
+                                        {{ scope.row.idi }}
+                                    </div>
+                                    <div style="font-size: 11px; color: #606266; margin-bottom: 2px;">
+                                        ({{ scope.row.idi_ci }})
+                                    </div>
+                                    <div v-if="scope.row.idi_p && scope.row.idi_p !== '-'" style="font-size: 11px; color: #909399">
+                                        P={{ scope.row.idi_p }}
+                                    </div>
+                                </template>
+                                <span v-else style="color: #ccc">-</span>
                             </template>
                         </el-table-column>
 
@@ -341,15 +356,17 @@ const tableData = computed(() => {
                 const tm = m.time_dependent[t]
                 return {
                     ...base,
-                    auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
+                auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
                     auc_ci: tm.auc_ci || '-',
                     nri: tm.nri !== undefined ? tm.nri.toFixed(3) : '-',
                     nri_p: tm.nri_p !== undefined ? (tm.nri_p < 0.001 ? '<0.001' : tm.nri_p.toFixed(3)) : '-',
+                    nri_ci: tm.nri_ci || '-',
                     idi: tm.idi !== undefined ? tm.idi.toFixed(3) : '-',
-                    idi_p: tm.idi_p !== undefined ? (tm.idi_p < 0.001 ? '<0.001' : tm.idi_p.toFixed(3)) : '-'
+                    idi_p: tm.idi_p !== undefined ? (tm.idi_p < 0.001 ? '<0.001' : tm.idi_p.toFixed(3)) : '-',
+                    idi_ci: tm.idi_ci || '-'
                 }
             } else {
-                 return { ...base, auc: '-', auc_ci: '-', nri: '-', nri_p: '-', idi: '-', idi_p: '-' }
+                 return { ...base, auc: '-', auc_ci: '-', nri: '-', nri_p: '-', nri_ci: '-', idi: '-', idi_p: '-', idi_ci: '-' }
             }
         } else {
             // Logistic
@@ -359,12 +376,58 @@ const tableData = computed(() => {
                 auc_ci: m.auc_ci || '-',
                 nri: m.nri !== undefined ? m.nri.toFixed(3) : '-',
                 nri_p: m.nri_p !== undefined ? (m.nri_p < 0.001 ? '<0.001' : m.nri_p.toFixed(3)) : '-',
+                nri_ci: m.nri_ci || '-',
                 idi: m.idi !== undefined ? m.idi.toFixed(3) : '-',
-                idi_p: m.idi_p !== undefined ? (m.idi_p < 0.001 ? '<0.001' : m.idi_p.toFixed(3)) : '-'
+                idi_p: m.idi_p !== undefined ? (m.idi_p < 0.001 ? '<0.001' : m.idi_p.toFixed(3)) : '-',
+                idi_ci: m.idi_ci || '-'
             }
         }
     })
 })
+
+import { DocumentCopy } from '@element-plus/icons-vue'
+
+// ... existing code ...
+
+const copyTableData = () => {
+    if (!results.value || !tableData.value) return
+    
+    // Headers
+    const headers = [
+        '模型名称', 
+        'AUC/C-index', 'AUC 95% CI', 
+        'P Value (LRT)', 
+        'AIC', 'Delta AIC', 
+        'NRI', 'NRI P-Value', 'NRI 95% CI',
+        'IDI', 'IDI P-Value', 'IDI 95% CI',
+        '样本量', '纳入变量'
+    ]
+    
+    // Rows
+    const rows = tableData.value.map(row => [
+        row.name,
+        row.auc, row.auc_ci,
+        row.p_lrt,
+        row.aic, row.delta_aic !== undefined ? row.delta_aic : '-',
+        row.nri, row.nri_p, row.nri_ci || '-',
+        row.idi, row.idi_p, row.idi_ci || '-',
+        row.n,
+        row.features.join(' + ')
+    ])
+    
+    // TSV Content (Tab separated for Paste)
+    const tsvContent = [
+        headers.join('\t'),
+        ...rows.map(r => r.join('\t'))
+    ].join('\n')
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(tsvContent).then(() => {
+        ElMessage.success('表格数据已复制，可直接粘贴到 Excel')
+    }).catch(err => {
+        ElMessage.error('复制失败: ' + err)
+    })
+}
 
 // Plotting
 const renderPlot = () => {

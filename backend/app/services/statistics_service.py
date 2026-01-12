@@ -16,6 +16,11 @@ class StatisticsService:
         生成基线特征表 (Table 1)。
         
         医学研究中，Table 1 通常用于展示研究人群的基线特征，并按照暴露因素或处理组（Treatment）进行分组对比。
+        
+        Logic Update (v1.1):
+        - 自动进行正态性检验 (Shapiro-Wilk / KS)。
+        - 依据正态性选择参数检验 (T-test/ANOVA) 或非参数检验 (Mann-Whitney/Kruskal-Wallis)。
+        - 描述统计量自适应：正态 -> Mean ± SD; 非正态 -> Median [IQR]。
 
         Args:
             df (pd.DataFrame): 包含变量的数据集。
@@ -41,61 +46,111 @@ class StatisticsService:
         used_tests = set()
         
         for var in variables:
-            # ... (Existing loop logic) ...
             if var not in df.columns: 
                 continue
             if var == group_by:
                 continue
                 
+            # Basic Type Check
+            is_numeric = pd.api.types.is_numeric_dtype(df[var])
+            
+            # Normality Check (only for numeric)
+            is_normal = True 
+            if is_numeric:
+                # Test normality on valid data
+                valid_data = df[var].dropna()
+                if len(valid_data) >= 3: # Shapiro requires N >= 3
+                    is_normal = StatisticsService._test_normality(valid_data)
+                
             row = {
                 'variable': var,
-                'type': 'numeric' if pd.api.types.is_numeric_dtype(df[var]) else 'categorical'
+                'type': 'numeric' if is_numeric else 'categorical',
+                'is_normal': is_normal
             }
             
             # 1. Overall Stats
-            row['overall'] = StatisticsService._calc_stats(df[var])
+            row['overall'] = StatisticsService._calc_stats(df[var], is_normal=is_normal)
             
             if group_by:
-                # ... (Existing group logic) ...
                 group_stats = {}
                 group_data = [] 
                 
+                # Check normality per group? 
+                # Rigorous: If ANY group is non-normal, use non-parametric for all.
+                all_groups_normal = True
+                
                 for g in groups:
                     sub_df = df[df[group_by] == g]
-                    group_stats[str(g)] = StatisticsService._calc_stats(sub_df[var])
-                    group_data.append(sub_df[var].dropna())
+                    valid_sub = sub_df[var].dropna()
                     
+                    if is_numeric and len(valid_sub) >= 3:
+                         g_normal = StatisticsService._test_normality(valid_sub)
+                         if not g_normal: all_groups_normal = False
+                    
+                    group_data.append(valid_sub)
+
+                # Final Normality Decision for Inference
+                # If numeric and at least one group is non-normal -> Non-Parametric
+                test_is_normal = is_numeric and all_groups_normal
+                
+                # Update row['is_normal'] to reflect the inference basis (consistency)
+                # Or keep overall normality for description? 
+                # Usually Table 1 description matches the test assumption.
+                row['is_normal'] = test_is_normal
+                
+                # Re-calc Overall with new normal flag?
+                if test_is_normal != is_normal:
+                     row['overall'] = StatisticsService._calc_stats(df[var], is_normal=test_is_normal)
+
+                # Calc Group Stats
+                for i, g in enumerate(groups):
+                     sub_df = df[df[group_by] == g]
+                     group_stats[str(g)] = StatisticsService._calc_stats(sub_df[var], is_normal=test_is_normal)
+                
                 row['groups'] = group_stats
                 test_meta = {}
                     
                 # Hypothesis Test Selection
-                if row['type'] == 'numeric':
+                if is_numeric:
                     try:
                         if len(groups) == 2:
-                            # Robustness Update: Always use Welch's T-test.
-                            # R and modern recommendations prefer Welch's over Student's t-test
-                            # as it is robust to unequal variances and unequal sample sizes.
-                            
-                            test_name = 'Welch\'s T-test'
-                            # Optional: Still run Levene for informational purposes in meta, or just state robustness.
-                            reason = "采用 Welch's T-test (不假设方差相等)，以提高结果稳健性并与 R/SAS 默认行为保持一致。"
-                            stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
+                            if test_is_normal:
+                                # Parametric: Welch's T-test
+                                test_name = 'Welch\'s T-test'
+                                reason = "数据服从正态分布，采用 Welch's T-test。"
+                                stat, p = stats.ttest_ind(group_data[0], group_data[1], equal_var=False)
+                            else:
+                                # Non-Parametric: Mann-Whitney U
+                                test_name = 'Mann-Whitney U Test'
+                                reason = "数据不服从正态分布，采用 Mann-Whitney U Test。"
+                                stat, p = stats.mannwhitneyu(group_data[0], group_data[1], alternative='two-sided')
                                 
                             used_tests.add(test_name)
                             row['test'] = test_name
                             test_meta = MetadataBuilder.build_test_meta(test_name, reason)
                         else:
-                            stat, p = stats.f_oneway(*group_data)
-                            test_name = 'ANOVA'
-                            used_tests.add('ANOVA')
-                            row['test'] = 'ANOVA'
-                            test_meta = MetadataBuilder.build_test_meta('ANOVA', "多组比较，采用单因素方差分析。")
-                    except Exception:
+                            # > 2 Groups
+                            if test_is_normal:
+                                # ANOVA
+                                test_name = 'ANOVA'
+                                reason = "多组比较且服从正态分布，采用单因素方差分析 (ANOVA)。"
+                                stat, p = stats.f_oneway(*group_data)
+                            else:
+                                # Kruskal-Wallis
+                                test_name = 'Kruskal-Wallis H Test'
+                                reason = "多组比较且不服从正态分布，采用 Kruskal-Wallis H Test。"
+                                stat, p = stats.kruskal(*group_data)
+
+                            used_tests.add(test_name)
+                            row['test'] = test_name
+                            test_meta = MetadataBuilder.build_test_meta(test_name, reason)
+                            
+                    except Exception as e:
                         p = None
                         row['test'] = 'Error'
                         
                 else:
-                    # Categorical: Chi-square
+                    # Categorical: Chi-square / Fisher
                     ct = pd.crosstab(df[var], df[group_by])
                     try:
                         stat, p, dof, expected = stats.chi2_contingency(ct)
@@ -136,16 +191,23 @@ class StatisticsService:
         lines = []
         
         # 1. Descriptive
-        lines.append("Baseline characteristics were described as mean ± standard deviation (SD) for continuous variables with normal distribution, and median (interquartile range, IQR) for non-normally distributed variables.")
+        lines.append("Continuous variables were evaluated for normality using the Shapiro-Wilk test (or Kolmogorov-Smirnov test for large samples).")
+        lines.append("Normally distributed continuous variables were described as mean ± standard deviation (SD), while non-normally distributed variables were expressed as median (interquartile range, IQR).")
         lines.append("Categorical variables were presented as frequency (percentage).")
         
         # 2. Inference
         if has_group and tests:
             test_desc = []
             if "Student's T-test" in tests or "Welch's T-test" in tests:
-                test_desc.append("Student's t-test or Welch's t-test for continuous variables")
+                test_desc.append("Student's/Welch's t-test for normally distributed continuous variables")
+            if "Mann-Whitney U Test" in tests:
+                test_desc.append("Mann-Whitney U test for non-normally distributed continuous variables")
+                
             if "ANOVA" in tests:
-                test_desc.append("Analysis of Variance (ANOVA) for continuous variables")
+                test_desc.append("Analysis of Variance (ANOVA) for normally distributed continuous variables")
+            if "Kruskal-Wallis H Test" in tests:
+                test_desc.append("Kruskal-Wallis H test for non-normally distributed continuous variables")
+                
             if "Chi-square" in tests:
                 test_desc.append("Chi-square test for categorical variables")
             if "Fisher Exact Test" in tests:
@@ -172,21 +234,46 @@ class StatisticsService:
              return {"text_template": "变量 {var} 在各组间分布均衡 (P={p})。", "params": {"var": var_name, "p": p_str, "test": test_name}, "level": "success"}
 
     @staticmethod
-    def _calc_stats(series):
+    def _test_normality(series):
+        """
+        Shapiro-Wilk test for normality.
+        Return True if p > 0.05 (Fail to reject H0: Normal), False otherwise.
+        For N > 5000, use Kolmogorov-Smirnov test to avoid p-value bias.
+        """
+        try:
+            # Drop NaN and ensure numeric
+            clean_s = pd.to_numeric(series.dropna(), errors='coerce').dropna()
+            if len(clean_s) < 3: return True # Too few samples, assume normal to avoid issues or defaulting.
+            
+            if len(clean_s) > 5000:
+                # KS Test comparing to standard normal (after standardization)
+                # Standardize
+                z_score = (clean_s - clean_s.mean()) / clean_s.std()
+                stat, p = stats.kstest(z_score, 'norm')
+            else:
+                stat, p = stats.shapiro(clean_s)
+            
+            return p > 0.05
+        except:
+            return True # Default to Parametric on error
+
+    @staticmethod
+    def _calc_stats(series, is_normal=True):
         # ... (Existing) ...
         n = len(series)
         missing = series.isnull().sum()
         if pd.api.types.is_numeric_dtype(series):
             clean_s = series.dropna()
-            if clean_s.empty: return {'mean': 0, 'sd': 0}
+            if clean_s.empty: return {'mean': 0, 'sd': 0, 'desc': 'N/A'}
+            
+            # Basic stats
             mean = clean_s.mean()
             sd = clean_s.std()
             median = clean_s.median()
             q25 = clean_s.quantile(0.25)
             q75 = clean_s.quantile(0.75)
-            # Add Shapiro check for normality? For methodology purposes maybe? 
-            # For now simplified: assume Mean/SD displayed (as per frontend).
-            return {
+            
+            stats_dict = {
                 'n': int(n), 'missing': int(missing),
                 'mean': ResultFormatter.format_float(mean, 2),
                 'sd': ResultFormatter.format_float(sd, 2),
@@ -194,6 +281,14 @@ class StatisticsService:
                 'q25': ResultFormatter.format_float(q25, 2),
                 'q75': ResultFormatter.format_float(q75, 2)
             }
+            
+            # Format Description string based on Normality
+            if is_normal:
+                stats_dict['desc'] = f"{stats_dict['mean']} ± {stats_dict['sd']}"
+            else:
+                stats_dict['desc'] = f"{stats_dict['median']} [{stats_dict['q25']}, {stats_dict['q75']}]"
+                
+            return stats_dict
         else:
             clean_s = series.dropna()
             if clean_s.empty: return {}
@@ -289,7 +384,7 @@ class StatisticsService:
              return {"text_template": "各组生存曲线**无显著差异** (Log-rank P={p})。组间生存概率分布相似。", "params": { "p": p_str }, "level": "info"}
 
     @staticmethod
-    def perform_psm(df, treatment, covariates):
+    def perform_psm(df, treatment, covariates, caliper=None):
         """
         执行倾向性评分匹配 (PSM, Propensity Score Matching)。
         
@@ -300,11 +395,14 @@ class StatisticsService:
             df (pd.DataFrame): 原始数据集。
             treatment (str): 处理变量（0/1），1 代表实验组，0 代表对照组。
             covariates (list): 需要匹配的协变量（混杂因素）。
+            caliper (float, optional): 卡钳值。如果指定，匹配时的最大允许距离。
+                                     通常建议设为 0.2 * SD(logit_ps)，或绝对值如 0.05。
 
         Algorithm:
             1. 使用逻辑回归估算倾向性得分 (Propensity Score)。
             2. 使用最近邻匹配 (Nearest Neighbor Matching) 进行 1:1 匹配。
-            3. 计算匹配前后的标准化均数差 (SMD) 以评估平衡性。
+            3. 如果设置了 Caliper，剔除距离超过阈值的配对。
+            4. 计算匹配前后的标准化均数差 (SMD) 以评估平衡性。
 
         Returns:
             dict: 匹配后的索引列表、平衡性统计指标及样本量变化。
@@ -320,10 +418,6 @@ class StatisticsService:
         T = data[treatment]
         X = data[covariates]
         
-        # Encode categoricals if any? For MVP assume numeric or preprocessed.
-        # Ideally should use get_dummies here if not done.
-        # Let's assume user did One-Hot in Preprocessing step? 
-        # But we accept raw columns. If categorical text, LogReg fails.
         # Auto-encode for PS estimation:
         X_encoded = pd.get_dummies(X, drop_first=True)
         
@@ -348,24 +442,63 @@ class StatisticsService:
         
         # Get matched control indices
         # indices is (n_treated, 1) array of indices into 'control' dataframe (iloc)
-        matched_control_ilocs = indices.flatten()
-        matched_control = control.iloc[matched_control_ilocs]
+        # distances is (n_treated, 1)
         
-        # Combine
-        matched_data = pd.concat([treated, matched_control])
+        matched_indices_list = []
+        visited_control_indices = set() # Optional: prevent replacement? 1:1 without replacement is standard.
+        # However, simple NN with replacement is easier. 
+        # Standard PSM is usually without replacement (greedy).
+        # sklearn NN finds neighbors independently (with replacement effectively if mulitple treated match same control).
+        
+        # Let's enforce 1:1 without replacement GREEDY match if possible? 
+        # For MVP, let's allow replacement or just keep simple. The user asked for Caliper.
+        # But if we use replacement, standard error calculation is complex.
+        # Let's simple check caliper first.
+        
+        valid_matches = [] # (treated_idx_in_data, control_idx_in_data)
+        
+        # Iterate matches
+        for i in range(len(treated)):
+            dist = distances[i][0]
+            if caliper is not None and dist > caliper:
+                continue # Drop this treated unit (no match within caliper)
+                
+            ctr_iloc = indices[i][0]
+            
+            # If we want without replacement, we need to handle collisions.
+            # Simple approach: If multiple treated match same control, taking the best one is hard with just kneighbors.
+            # We would need to calculate all pairs.
+            # For this 'Shortcoming Analysis' context, Caliper is the P1 key.
+            # We will keep replacement behavior (or whatever current logic is) but filter by caliper.
+            # Actually, standard clinical papers prefer 1:1 WITHOUT replacement.
+            # The previous implementation allowed replacement implicitly (kneighbors returns independent best).
+            
+            valid_matches.append((treated.index[i], control.index[ctr_iloc]))
+
+        # Reconstruct Matched Data
+        # Flatten tuple list
+        if not valid_matches:
+            raise ValueError(f"No matches found within caliper {caliper}.")
+            
+        t_idxs = [m[0] for m in valid_matches]
+        c_idxs = [m[1] for m in valid_matches]
+        
+        # Handle duplicates if replacement allowed? 
+        # If we just concat, we might have duplicate controls.
+        matched_treated = data.loc[t_idxs]
+        matched_control = data.loc[c_idxs]
+        
+        matched_data = pd.concat([matched_treated, matched_control])
         
         # 3. Balance Check (SMD)
         balance_stats = []
         for var in covariates:
              # Before
-            mean_t_pre = treated[var].mean() if pd.api.types.is_numeric_dtype(treated[var]) else 0 # Simp
+            mean_t_pre = treated[var].mean() if pd.api.types.is_numeric_dtype(treated[var]) else 0 
             mean_c_pre = control[var].mean() if pd.api.types.is_numeric_dtype(control[var]) else 0
-            # For categorical, mean of dummy is prop.
-            # If not numeric, convert to dummy for SMD? Ideally yes.
-            # Simplified SMD: (Mean1 - Mean0) / pooled_std
             
             smd_pre = StatisticsService._calc_smd(treated, control, var)
-            smd_post = StatisticsService._calc_smd(treated, matched_control, var)
+            smd_post = StatisticsService._calc_smd(matched_treated, matched_control, var)
             
             balance_stats.append({
                 'variable': var,
@@ -378,7 +511,133 @@ class StatisticsService:
             'balance': balance_stats,
             'n_treated': len(treated),
             'n_control': len(control),
-            'n_matched': len(matched_data)
+            'n_matched_pairs': len(valid_matches),
+            'n_matched': len(matched_data),
+            'caliper': caliper
+        }
+
+    @staticmethod
+    def perform_iptw(df, treatment, covariates, weight_type='ATE', stabilized=True, truncate=True):
+        """
+        执行逆概率加权 (IPTW, Inverse Probability of Treatment Weighting).
+
+        Args:
+           df: DataFrame
+           treatment: str (0/1)
+           covariates: list[str]
+           weight_type: 'ATE' (default) or 'ATT'
+           stabilized: bool (default True). Multiply by marginal probability P(T).
+           truncate: bool (default True). Truncate extreme weights (1st/99th percentile).
+           
+        Returns:
+           dict: {
+               'weights': list[float],
+               'balance': list[dict], # SMD table
+               'n_treated': int,
+               'n_control': int,
+               'ess_treated': float, # Effective Sample Size
+               'ess_control': float
+           }
+        """
+        if treatment not in df.columns:
+             raise ValueError(f"Treatment '{treatment}' not found.")
+             
+        cols = [treatment] + covariates
+        data = df[cols].dropna().copy()
+        
+        # 1. PS Estimation
+        T = data[treatment]
+        X = data[covariates]
+        X_encoded = pd.get_dummies(X, drop_first=True)
+        
+        ps_model = LogisticRegression(solver='liblinear')
+        ps_model.fit(X_encoded, T)
+        
+        ps = ps_model.predict_proba(X_encoded)[:, 1]
+        data['ps'] = ps
+        
+        # 2. Weight Calculation
+        # Avoid division by zero
+        data['ps'] = data['ps'].clip(1e-6, 1 - 1e-6)
+        
+        p_t = T.mean() # Marginal Prob P(T=1)
+        
+        if weight_type == 'ATE':
+            if stabilized:
+                # W = T * P(T)/ps + (1-T) * (1-P(T))/(1-ps)
+                data['weight'] = np.where(T==1, p_t / data['ps'], (1-p_t) / (1-data['ps']))
+            else:
+                data['weight'] = np.where(T==1, 1 / data['ps'], 1 / (1-data['ps']))
+                
+        elif weight_type == 'ATT':
+            # Target is Treated. W(T=1)=1.
+            # Stabilized ATT usually doesn't apply (SMW is for ATE), but can scale by P(T)? 
+            # Standard ATT W: T=1 -> 1, T=0 -> ps/(1-ps)
+            data['weight'] = np.where(T==1, 1, data['ps'] / (1-data['ps']))
+            
+        # 3. Truncation
+        if truncate:
+            lower = data['weight'].quantile(0.01)
+            upper = data['weight'].quantile(0.99)
+            data['weight'] = data['weight'].clip(lower, upper)
+            
+        # 4. Effective Sample Size (ESS)
+        # ESS = (Sum W)^2 / Sum (W^2)
+        def calc_ess(weights):
+            return (weights.sum()**2) / (weights**2).sum()
+            
+        ess_treated = calc_ess(data[data[treatment]==1]['weight'])
+        ess_control = calc_ess(data[data[treatment]==0]['weight'])
+        
+        # 5. Balance Check (Weighted SMD)
+        balance_stats = []
+        
+        # Weighted Variance Calculation
+        def weighted_avg_var(val, w):
+            avg = np.average(val, weights=w)
+            # Variance
+            # S^2 = Sum(w * (x - avg)^2) / Sum(w) * (N/(N-1)) ? Or just reliability weights.
+            # Simplified: Sum(w * (x-avg)^2) / Sum(w)
+            variance = np.average((val - avg)**2, weights=w)
+            return avg, variance
+
+        for var in covariates:
+            # Pre (Unweighted)
+            t_pre = data[data[treatment]==1][var]
+            c_pre = data[data[treatment]==0][var]
+            
+            if pd.api.types.is_numeric_dtype(t_pre):
+                 smd_pre = StatisticsService._calc_smd(data[data[treatment]==1], data[data[treatment]==0], var)
+                 
+                 # Post (Weighted)
+                 t_w = data[data[treatment]==1]['weight']
+                 c_w = data[data[treatment]==0]['weight']
+                 
+                 m1, v1 = weighted_avg_var(t_pre, t_w)
+                 m0, v0 = weighted_avg_var(c_pre, c_w)
+                 
+                 pooled_std_w = np.sqrt((v1 + v0)/2)
+                 if pooled_std_w == 0: smd_post = 0
+                 else: smd_post = abs(m1 - m0) / pooled_std_w
+            else:
+                 smd_pre = 0 # Placeholder for categorical
+                 smd_post = 0
+            
+            balance_stats.append({
+                'variable': var,
+                'smd_pre': smd_pre,
+                'smd_post': smd_post
+            })
+            
+        # Sort indices to match original df
+        return {
+            'weights': data['weight'].tolist(), # Aligned with processed data rows
+            'indices': data.index.tolist(),
+            'balance': balance_stats,
+            'n_treated': int(data[treatment].sum()),
+            'n_control': int(len(data) - data[treatment].sum()),
+            'ess_treated': float(ess_treated),
+            'ess_control': float(ess_control)
         }
 
     @staticmethod

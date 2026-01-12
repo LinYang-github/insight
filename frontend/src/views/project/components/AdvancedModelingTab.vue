@@ -71,6 +71,22 @@
                         <div v-if="processRCSInterpretation()" style="margin-bottom: 10px;">
                             <el-alert :title="processRCSInterpretation()" type="info" :closable="false" show-icon />
                         </div>
+                        
+                        <div v-if="rcsData && rcsData.ph_test" style="margin-bottom: 10px;">
+                             <el-alert 
+                                :title="rcsData.ph_test.message" 
+                                :type="rcsData.ph_test.is_violated ? 'warning' : 'success'" 
+                                :closable="false" 
+                                show-icon
+                             >
+                                <div style="margin-top: 5px;">
+                                    <b>Global Test P-value: {{ rcsData.ph_test.p_value.toFixed(3) }}</b>
+                                    <div v-if="rcsData.ph_test.is_violated" style="margin-top: 5px;">
+                                        P &lt; 0.05 提示模型可能违反比例风险假设。此时 HR 可能随时间变化，建议考虑分层 Cox (Stratified Cox) 或时变系数模型。
+                                    </div>
+                                </div>
+                             </el-alert>
+                        </div>
                         <div id="rcs-plot" style="width: 100%; height: 600px; background: #fff;"></div>
                         <div v-if="!rcsData" class="placeholder-text" style="height: 100px;">请配置参数并运行以查看结果</div>
                     </el-card>

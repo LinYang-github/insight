@@ -174,6 +174,9 @@ class AdvancedModelingService:
             results['ref_value'] = ref_value
             results['p_non_linear'] = None # To do: LRT if needed
             
+            # PH Assumption Check
+            results['ph_test'] = AdvancedModelingService.check_ph_assumption(cph, df_clean)
+            
         elif model_type == 'logistic':
             # Statsmodels Logit
             cov_str = " + ".join(covariates) if covariates else "1" # 1 for intercept only if no covariates
@@ -269,6 +272,43 @@ class AdvancedModelingService:
         return (f"Restricted cubic splines (RCS) with {knots} knots were used to model the non-linear "
                 f"relationship between the continuous exposure and outcome using {model_name} models. "
                 "Tests for non-linearity was performed.")
+
+    @staticmethod
+    def check_ph_assumption(cph, df_train, p_threshold=0.05):
+        """
+        Check Proportional Hazards Assumption using Schoenfeld Residuals.
+        """
+        from lifelines.statistics import proportional_hazard_test
+        try:
+            # Drop columns not in cph to avoid issues? 
+            # proportional_hazard_test needs the dataset used for fitting.
+            # cph object usually has it but we pass it explicitly to be safe.
+            # Note: df_train must contain duration and event cols.
+            results = proportional_hazard_test(cph, df_train, time_transform='km')
+            summary = results.summary # DataFrame
+            
+            # Check if any variable violates PH
+            min_p = summary['p'].min()
+            is_violated = min_p < p_threshold
+            
+            # Format details
+            details = {}
+            for idx, row in summary.iterrows():
+                details[str(idx)] = {
+                    'p': float(row['p']),
+                    'test_statistic': float(row['test_statistic']),
+                    'is_violated': row['p'] < p_threshold
+                }
+
+            return {
+                'is_violated': bool(is_violated),
+                'p_value': float(min_p), # The most significant P violation
+                'details': details,
+                'message': "违反比例风险假定 (PH Assumption Violation)" if is_violated else "满足比例风险假定"
+            }
+        except Exception as e:
+            # print(f"PH Test failed: {e}")
+            return None
 
     @staticmethod
     def perform_subgroup(df, target, event_col, exposure, subgroups, covariates, model_type='cox'):
@@ -786,9 +826,10 @@ class AdvancedModelingService:
                         metrics['aic'] = model.aic
                         metrics['bic'] = model.bic
                         metrics['ll'] = model.llf
+                        metrics['n'] = len(df_clean)  # Add Sample Size
                         metrics['r2'] = model.prsquared # Pseudo R2
                         metrics['k'] = len(model.params)
-                        
+
                         # Predictions (Probability)
                         y_prob = model.predict(df_clean)
                         y_true = df_clean[target]
@@ -808,6 +849,8 @@ class AdvancedModelingService:
                         # Fallback to simple run if statsmodels fails (e.g. perfect separation)
                         model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
                         metrics = model_res.get('metrics', {})
+                        # Ensure n is present even in fallback
+                        metrics['n'] = len(df_clean)
                         if 'plots' in model_res and 'roc' in model_res['plots']:
                              roc_data = model_res['plots']['roc']
 
@@ -827,6 +870,7 @@ class AdvancedModelingService:
                     metrics['aic'] = cph.AIC_partial_
                     metrics['ll'] = cph.log_likelihood_
                     n_events = cph.event_observed.sum()
+                    metrics['n'] = len(temp_df) # Add Sample Size
                     k = len(cph.params_)
                     metrics['k'] = k
                     metrics['bic'] = -2 * metrics['ll'] + k * np.log(n_events)
