@@ -821,9 +821,9 @@ class AdvancedModelingService:
                     cph = CoxPHFitter()
                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=" + ".join(feats))
                     
-                    # Fit Stats
+                    # Fit Stats (Global)
                     metrics['c_index'] = cph.concordance_index_
-                    metrics['auc'] = metrics['c_index'] # Ensure Frontend receives 'auc' for Table
+                    metrics['auc'] = metrics['c_index'] 
                     metrics['aic'] = cph.AIC_partial_
                     metrics['ll'] = cph.log_likelihood_
                     n_events = cph.event_observed.sum()
@@ -831,116 +831,191 @@ class AdvancedModelingService:
                     metrics['k'] = k
                     metrics['bic'] = -2 * metrics['ll'] + k * np.log(n_events)
                     
-                    # Time-Dependent ROC Logic (at Median)
-                    risk_score = cph.predict_partial_hazard(temp_df)
+                    # Time-Dependent Metrics Loop
+                    # Determine points (reuse logic or simple heuristic)
+                    max_dur = temp_df[target].max()
+                    points = []
+                    time_unit = 'months'
+                    if max_dur > 730: # Roughly 2 years
+                        time_unit = 'days'
+                        candidates = [365, 730, 1095, 1460, 1825] # 1, 2, 3, 4, 5 years
+                        for c in candidates:
+                             if max_dur > c: points.append(c)
+                    else: # Assume months if max duration is less than 2 years
+                        time_unit = 'months'
+                        candidates = [12, 24, 36, 48, 60] # 1, 2, 3, 4, 5 years
+                        for c in candidates:
+                             if max_dur > c: points.append(c)
                     
-                    # For NRI/IDI, we need Probabilities at a specific time T (Median)
-                    # S(t) -> Prob(Event <= t) = 1 - S(t)
-                    surv_df = cph.predict_survival_function(temp_df, times=[median_time])
-                    y_prob = 1 - surv_df.iloc[0].values # Array of probs
+                    # Always include median if no points or just as default
+                    median_time = int(temp_df[target].median())
+                    if not points: points = [median_time]
                     
-                    # Define Binary Outcome at T=Median for ROC/Validation
-                    mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= median_time)
-                    mask_control = (temp_df[target] > median_time)
-                    valid_mask = mask_case | mask_control
+                    metrics['time_dependent'] = {}
+                    metrics['time_unit'] = time_unit
+                    metrics['available_time_points'] = points
                     
-                    y_binary = mask_case[valid_mask].astype(int)
-                    y_score_valid = y_prob[valid_mask]
+                    raw_preds_dict = {} # t -> prob
                     
-                    if len(y_binary.unique()) > 1:
-                        fpr, tpr, _ = roc_curve(y_binary, y_score_valid)
-                        roc_auc = calc_auc(fpr, tpr)
+                    for t in points:
+                        # S(t) -> Prob(Event <= t) = 1 - S(t)
+                        surv_df = cph.predict_survival_function(temp_df, times=[t])
+                        y_prob = 1 - surv_df.iloc[0].values
                         
-                        # Use C-index as primary metric for Table 3, but keep Time-Dep AUC for plot legend if needed
-                        # metrics['auc'] = metrics['c_index'] (Already set)
-                        metrics['auc_ci'] = calc_ci_str(metrics['c_index'], n_events, n_samples-n_events)
-                        metrics['td_auc'] = roc_auc # Store for potential use
+                        # Validation Mask at T
+                        mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= t)
+                        mask_control = (temp_df[target] > t)
+                        valid_mask = mask_case | mask_control
                         
-                        roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
-                    else:
-                        metrics['auc'] = cph.concordance_index_
-                        metrics['auc_ci'] = calc_ci_str(metrics['auc'], n_events, n_samples-n_events)
+                        y_binary = mask_case[valid_mask].astype(int)
+                        y_score_valid = y_prob[valid_mask]
                         
-                    # Store raw for comparison (Use VALID mask for apples-to-apples?)
-                    # If we use valid mask, we drop censored before T.
-                    # Both models must use SAME mask.
-                    # Since df_clean and median_time are same, valid_mask is same for all models.
-                    raw_pred = y_prob[valid_mask]
-                    raw_y = y_binary.values
-                
-                results.append({
+                        t_metrics = {}
+                        if len(y_binary.unique()) > 1:
+                            fpr, tpr, _ = roc_curve(y_binary, y_score_valid)
+                            t_auc = calc_auc(fpr, tpr)
+                            t_metrics['auc'] = t_auc
+                            t_metrics['auc_ci'] = calc_ci_str(t_auc, sum(y_binary), len(y_binary)-sum(y_binary))
+                            t_metrics['roc_data'] = [{'fpr': f, 'tpr': v} for f, v in zip(fpr, tpr)]
+                        else:
+                            t_metrics['auc'] = 0.5
+                            t_metrics['auc_ci'] = "-"
+                            
+                        metrics['time_dependent'][t] = t_metrics
+                        
+                        # Store raw preds for NRI calculation later
+                        # We need consistent indexing for NRI
+                        # Store full array (y_prob) and let NRI function handle masking
+                        raw_preds_dict[t] = y_prob
+                    
+                    # Store raw outputs for NRI (Comparison step)
+                    # For Cox, raw_pred is now a dict of {t: y_prob}
+                    raw_pred = raw_preds_dict
+                    raw_y = {
+                        'time': temp_df[target].values,
+                        'event': temp_df[event_col].values
+                    }
+
+                model_res = {
                     'name': name,
                     'features': feats,
-                    'n': n_samples,
-                    'metrics': metrics,
-                    'roc_data': roc_data,
-                    'raw_pred': raw_pred.tolist() if raw_pred is not None else [],
-                    'raw_y': raw_y.tolist() if raw_y is not None else []
+                    'metrics': metrics
+                }
+                if model_type == 'logistic': # Only logistic has a single ROC curve
+                    model_res['roc_data'] = roc_data
+                
+                results.append({
+                    'model_res': model_res,
+                    'raw_pred': raw_pred,
+                    'raw_y': raw_y
                 })
                 
             except Exception as e:
-                # If one fails (e.g. perfect separation on subset), we report it
+                print(f"Model {name} failed: {e}")
+                import traceback
+                traceback.print_exc()
                 results.append({
-                    'name': name,
-                    'error': str(e)
+                    'model_res': {'name': name, 'error': str(e)},
+                    'raw_pred': None,
+                    'raw_y': None
                 })
-                
-        # 4. Compute Comparison Metrics (NRI, IDI) vs Baseline (Model 1)
-        if len(results) >= 2:
+
+        # 2. Calculate NRI/IDI if base model exists (Model 0 = Base)
+        # Only feasible if models share same rows. We assumed strict complete case above.
+        if len(results) >= 2 and results[0]['raw_pred'] is not None:
             from app.services.evaluation_service import EvaluationService
             from scipy.stats import chi2
-            base_model = results[0]
+            base = results[0]
             
             for i in range(1, len(results)):
-                # Only compare if both have valid predictions
                 curr = results[i]
+                if curr['raw_pred'] is None: continue
                 
-                # Check metrics availability
-                if 'aic' in base_model['metrics'] and 'aic' in curr['metrics']:
-                    curr['metrics']['delta_aic'] = curr['metrics']['aic'] - base_model['metrics']['aic']
+                # Check model type
+                if model_type == 'logistic':
+                    # Standard NRI
+                    try:
+                        nri_res = EvaluationService.calculate_nri_idi(
+                            base['raw_y'],
+                            base['raw_pred'],
+                            curr['raw_pred']
+                        )
+                        # Add to current model metrics
+                        curr['model_res']['metrics'].update(nri_res)
+                    except Exception as e:
+                        print(f"NRI failed for logistic model {curr['model_res']['name']}: {e}")
+                        
+                elif model_type == 'cox':
+                    # Time-Dependent NRI for each T
+                    # base['raw_pred'] is {t: prob}, curr['raw_pred'] is {t: prob}
+                    # raw_y is {'time', 'event'}
+                    
+                    base_preds = base['raw_pred']
+                    curr_preds = curr['raw_pred']
+                    time_points = curr['model_res']['metrics'].get('available_time_points', [])
+                    
+                    for t in time_points:
+                        if t not in base_preds or t not in curr_preds: continue
+                        
+                        p_base = base_preds[t]
+                        p_curr = curr_preds[t]
+                        
+                        # Construct Binary Target at T
+                        times = base['raw_y']['time']
+                        events = base['raw_y']['event']
+                        
+                        # Mask: Censored before T are excluded
+                        mask_case = (events == 1) & (times <= t)
+                        mask_control = (times > t)
+                        valid = mask_case | mask_control
+                        
+                        y_true = mask_case[valid].astype(int)
+                        y_prob_base = p_base[valid]
+                        y_prob_curr = p_curr[valid]
+                        
+                        try:
+                            nri_res = EvaluationService.calculate_nri_idi(
+                                y_true,
+                                y_prob_base,
+                                y_prob_curr
+                            )
+                            # Add to time_dependent metrics
+                            # e.g. metrics['time_dependent'][t]['nri'] = ...
+                            if t in curr['model_res']['metrics']['time_dependent']:
+                                curr['model_res']['metrics']['time_dependent'][t].update(nri_res)
+                                
+                        except Exception as e:
+                            print(f"NRI at t={t} failed for Cox model {curr['model_res']['name']}: {e}")
+
+            # Likelihood Ratio Test (LRT) and AIC/BIC comparison (Global)
+            base_model_metrics = base['model_res']['metrics']
+            for i in range(1, len(results)):
+                curr = results[i]
+                if curr['raw_pred'] is None: continue # Skip if model failed
+                curr_model_metrics = curr['model_res']['metrics']
+
+                if 'aic' in base_model_metrics and 'aic' in curr_model_metrics:
+                    curr_model_metrics['delta_aic'] = curr_model_metrics['aic'] - base_model_metrics['aic']
                 
-                if 'bic' in base_model['metrics'] and 'bic' in curr['metrics']:
-                    curr['metrics']['delta_bic'] = curr['metrics']['bic'] - base_model['metrics']['bic']
+                if 'bic' in base_model_metrics and 'bic' in curr_model_metrics:
+                    curr_model_metrics['delta_bic'] = curr_model_metrics['bic'] - base_model_metrics['bic']
                     
                 # Likelihood Ratio Test (LRT) P-value
                 # 2 * (LL_new - LL_old) ~ Chi2(df)
-                if 'll' in base_model['metrics'] and 'll' in curr['metrics']:
-                     ll_base = base_model['metrics']['ll']
-                     ll_curr = curr['metrics']['ll']
-                     k_base = base_model['metrics'].get('k', 0)
-                     k_curr = curr['metrics'].get('k', 0)
+                if 'll' in base_model_metrics and 'll' in curr_model_metrics:
+                     ll_base = base_model_metrics['ll']
+                     ll_curr = curr_model_metrics['ll']
+                     k_base = base_model_metrics.get('k', 0)
+                     k_curr = curr_model_metrics.get('k', 0)
                      
                      if k_curr > k_base: # Nested model assumption (adding vars)
                          lrt_stat = 2 * (ll_curr - ll_base)
-                         df = k_curr - k_base
+                         df_diff = k_curr - k_base
                          if lrt_stat > 0:
-                             p_val = chi2.sf(lrt_stat, df)
-                             curr['metrics']['lrt_p'] = p_val
-                             curr['metrics']['lrt_stat'] = lrt_stat
-                    
-                # NRI / IDI
-                # Ensure raw data is available
-                if ('raw_y' in base_model and 'raw_pred' in base_model and 
-                    'raw_y' in curr and 'raw_pred' in curr):
-                    
-                    y_true = np.array(base_model['raw_y'])
-                    p_base = np.array(base_model['raw_pred'])
-                    p_curr = np.array(curr['raw_pred'])
-                    
-                    # Validate lengths
-                    if len(y_true) > 0 and len(y_true) == len(p_curr):
-                         try:
-                             nri_idi = EvaluationService.calculate_nri_idi(y_true, p_base, p_curr)
-                             curr['metrics']['nri'] = nri_idi['nri']
-                             curr['metrics']['nri_p'] = nri_idi.get('nri_p')
-                             curr['metrics']['nri_ci'] = nri_idi.get('nri_ci')
-                             
-                             curr['metrics']['idi'] = nri_idi['idi']
-                             curr['metrics']['idi_p'] = nri_idi.get('idi_p')
-                             curr['metrics']['idi_ci'] = nri_idi.get('idi_ci')
-                         except Exception as e:
-                             print(f"NRI Calc Error: {e}")
-                             curr['metrics']['nri_error'] = str(e)
+                             p_val = chi2.sf(lrt_stat, df_diff)
+                             curr['model_res']['metrics']['p_lrt'] = float(p_val)
+                             curr['model_res']['metrics']['lrt_stat'] = float(lrt_stat)
+
                              
         # Clean up huge raw arrays
         for r in results:
@@ -948,7 +1023,7 @@ class AdvancedModelingService:
             if 'raw_y' in r: del r['raw_y']
             
         return {
-            'comparison_data': results,
+            'comparison_data': [r['model_res'] for r in results],
             'methodology': AdvancedModelingService._generate_comparison_methodology()
         }
 

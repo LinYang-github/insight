@@ -1,12 +1,12 @@
 <template>
     <div class="model-comparison-container">
         <el-row :gutter="20">
-            <!-- Left: Config Panel -->
+            <!-- 左侧：模型配置面板 -->
             <el-col :span="8">
                 <el-card shadow="never" class="config-card">
                     <template #header>
                         <div class="card-header">
-                            <span>🛠️ 模型配置器 (Model Builder)</span>
+                            <span>🛠️ 模型对比配置 (Model Builder)</span>
                         </div>
                     </template>
                     
@@ -18,28 +18,28 @@
                         style="margin-bottom: 20px"
                     >
                         <div>
-                            对比多个模型在<b>完全相同样本 (Same N)</b> 上的表现。
+                            比较多个模型在<b>完全相同样本 (Same N)</b> 上的表现。
                             <br/>
-                            用于证明联合指标优于单指标 (AUC 提升)。
+                            用于评估新加入变量是否显著提升了模型的预测效能（AUC/NRI/IDI）。
                         </div>
                     </el-alert>
 
                     <el-form label-position="top">
                         <el-form-item label="模型类型 (Model Type)">
                             <el-radio-group v-model="modelType">
-                                <el-radio-button value="logistic">Logistic Regression</el-radio-button>
-                                <el-radio-button value="cox">Cox Regression</el-radio-button>
+                                <el-radio-button value="logistic">Logistic 回归</el-radio-button>
+                                <el-radio-button value="cox">Cox 生存回归</el-radio-button>
                             </el-radio-group>
                         </el-form-item>
 
-                        <el-form-item :label="modelType === 'cox' ? '时间变量 (Time Variable)' : '结局变量 (Target Outcome)'" required>
-                            <el-select v-model="target" filterable placeholder="Select Variable">
+                        <el-form-item :label="modelType === 'cox' ? '随访时间 (Time Variable)' : '结局变量 (Target Outcome)'" required>
+                            <el-select v-model="target" filterable placeholder="选择变量">
                                 <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" />
                             </el-select>
                         </el-form-item>
 
-                        <el-form-item v-if="modelType === 'cox'" label="事件状态 (Event Status 0/1)" required>
-                            <el-select v-model="eventCol" filterable placeholder="Select Event (1=Occurred)">
+                        <el-form-item v-if="modelType === 'cox'" label="事件状态 (Event Status)" required>
+                            <el-select v-model="eventCol" filterable placeholder="选择事件列 (1=发生)">
                                 <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" />
                             </el-select>
                         </el-form-item>
@@ -49,148 +49,133 @@
                             
                             <div v-for="(model, index) in modelConfigs" :key="index" class="model-row">
                                 <div class="model-header">
-                                    <span class="model-index">Model {{ index + 1 }}</span>
+                                    <span class="model-index">模型 {{ index + 1 }}</span>
                                     <el-button type="danger" link size="small" @click="removeModel(index)" v-if="modelConfigs.length > 2">
-                                        Remove
+                                        删除
                                     </el-button>
                                 </div>
                                 
-                                <el-input v-model="model.name" placeholder="模型名称 (e.g. Model A)" style="margin-bottom: 5px" />
+                                <el-input v-model="model.name" placeholder="模型名称 (如: 基础模型)" style="margin-bottom: 5px" />
                                 
-                                <el-select v-model="model.features" multiple filterable placeholder="选择特征 (Features)" collapse-tags>
+                                <el-select v-model="model.features" multiple filterable placeholder="选择纳入变量 (Features)" collapse-tags>
                                     <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" :disabled="v.name === target" />
                                 </el-select>
                             </div>
                         </div>
 
                         <el-button type="default" style="width: 100%; margin-top: 10px; margin-bottom: 20px" @click="addModel">
-                            + 添加对比模型
+                            + 添加模型
                         </el-button>
 
                         <el-button type="primary" size="large" style="width: 100%" @click="runComparison" :loading="loading" :disabled="!isValid">
-                            🚀 开始对比 (Run Comparison)
+                            🚀 开始对比分析 (Run)
                         </el-button>
                     </el-form>
                 </el-card>
             </el-col>
 
-            <!-- Right: Visualization -->
+            <!-- 右侧：可视化结果 -->
             <el-col :span="16">
                 <div class="viz-area">
                     <div id="comparison-plot" style="width: 100%; height: 500px; background: #fff;"></div>
                     <div v-if="!results" class="placeholder-overlay">
-                        配置模型以查看 ROC 对比
+                        配置完成并点击运行以查看 ROC 曲线对比
                     </div>
                 </div>
 
-                <!-- Result Table -->
+                <!-- 结果统计表 -->
                 <el-card shadow="never" style="margin-top: 20px" v-if="results">
                     <template #header>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>统计对比表 (Statistics)</span>
-                            <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">Copy Methods</el-button>
+                            <span>统计对比结果 (Statistics)</span>
+                            <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">复制研究方法</el-button>
+                        </div>
+                        
+                        <!-- 时间点选择器 (Cox专用) -->
+                        <div v-if="modelType === 'cox' && availableTimePoints.length > 0" style="margin-top: 10px; display: flex; align-items: center; justify-content: flex-end;">
+                             <span style="font-size: 12px; margin-right: 15px; color: gray">预测截止时间点:</span>
+                             <el-radio-group v-model="selectedTimePoint" size="small">
+                                 <el-radio-button v-for="t in availableTimePoints" :key="t" :label="t" :value="t">
+                                     {{ t }} ({{ timeUnit }})
+                                 </el-radio-button>
+                             </el-radio-group>
                         </div>
                     </template>
+
                     <el-table :data="tableData" stripe border size="small">
-                        <el-table-column prop="name" label="模型名称" width="150" />
-                        <el-table-column prop="auc" label="C-index / AUC (95% CI)" width="180">
+                        <el-table-column prop="name" label="模型名称" width="130" fixed="left" />
+                        
+                        <el-table-column label="C-index / AUC (95% CI)" width="180">
                             <template #default="scope">
-                                {{ scope.row.auc }} <span style="color: gray">{{ scope.row.auc_ci }}</span>
+                                <span style="font-weight: bold">{{ scope.row.auc }}</span> 
+                                <span style="color: gray; font-size: 11px; margin-left: 4px">{{ scope.row.auc_ci }}</span>
                             </template>
                         </el-table-column>
                         
-                        <el-table-column label="P值 (模型提升)" width="130">
+                        <el-table-column label="P 值 (模型提升)" width="120">
                             <template #header>
-                                P for Improvement
-                                <el-tooltip content="似然比检验 (LRT) P值。用于评估新加入的变量是否带来统计学显著的性能提升 (P<0.05)。而不只是看AUC数值增加。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                模型提升 P 值
+                                <el-tooltip content="基于似然比检验 (LRT)。评估相比基础模型，新模型是否带来了统计学显著的性能提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
-                                <span v-if="scope.row.lrt_p !== undefined">
-                                     <span :style="{fontWeight: scope.row.lrt_p < 0.05 ? 'bold' : 'normal', color: scope.row.lrt_p < 0.05 ? 'red' : 'black'}">
-                                        {{ scope.row.lrt_p < 0.001 ? '< 0.001' : scope.row.lrt_p.toFixed(3) }}
+                                <span v-if="scope.row.p_lrt !== undefined && scope.row.p_lrt !== '-'">
+                                     <span :style="{fontWeight: scope.row.p_lrt < 0.05 ? 'bold' : 'normal', color: scope.row.p_lrt < 0.05 ? 'red' : 'black'}">
+                                        {{ scope.row.p_lrt < 0.001 ? '< 0.001' : scope.row.p_lrt.toFixed(3) }}
                                      </span>
                                 </span>
                                 <span v-else style="color: #ccc">-</span>
                             </template>
                         </el-table-column>
                         
-                        <el-table-column label="AIC (变化)" width="110">
+                        <el-table-column label="AIC (变化量)" width="110">
                             <template #header>
-                                AIC (Delta)
-                                <el-tooltip content="赤池信息准则。数值越低越好。绿色数字(-x.x)代表模型拟合/复杂度平衡更佳。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                AIC (变化)
+                                <el-tooltip content="赤池信息准则。数值越低模型越优。负值代表相比前一模型拟合度提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
                                 {{ scope.row.aic }}
-                                <div v-if="scope.row.delta_aic" :style="{color: scope.row.delta_aic < -2 ? 'green' : (scope.row.delta_aic > 2 ? 'red' : 'gray'), fontSize: '11px', fontWeight: 'bold'}">
+                                <div v-if="scope.row.delta_aic !== undefined" :style="{color: scope.row.delta_aic < -2 ? 'green' : (scope.row.delta_aic > 2 ? 'red' : 'gray'), fontSize: '11px'}">
                                      ({{ scope.row.delta_aic > 0 ? '+' : '' }}{{ scope.row.delta_aic.toFixed(1) }})
                                 </div>
                             </template>
                         </el-table-column>
 
-                        <el-table-column label="BIC (变化)" width="110">
+                        <el-table-column label="NRI (Estimate/P)" align="center" width="160">
                             <template #header>
-                                BIC (Delta)
-                                <el-tooltip content="贝叶斯信息准则。数值越低越好。比AIC惩罚更重，更倾向于简单模型。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                NRI (改善指数)
+                                <el-tooltip content="净重分类改善指数。>0 表示新模型能更准确地划分风险组。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
-                                {{ scope.row.bic }}
-                                <div v-if="scope.row.delta_bic" :style="{color: scope.row.delta_bic < -2 ? 'green' : (scope.row.delta_bic > 2 ? 'red' : 'gray'), fontSize: '11px', fontWeight: 'bold'}">
-                                     ({{ scope.row.delta_bic > 0 ? '+' : '' }}{{ scope.row.delta_bic.toFixed(1) }})
+                                <div v-if="scope.row.nri !== '-'" :style="{color: parseFloat(scope.row.nri) > 0 ? 'green' : 'red', fontWeight: 'bold'}">
+                                    {{ scope.row.nri }}
                                 </div>
+                                <div v-if="scope.row.nri_p" style="font-size: 11px; color: gray">
+                                    P={{ scope.row.nri_p }}
+                                </div>
+                                <span v-else-if="scope.row.nri === '-'">-</span>
                             </template>
                         </el-table-column>
 
-                        <el-table-column label="NRI" align="center">
+                        <el-table-column label="IDI (Estimate/P)" align="center" width="160">
                             <template #header>
-                                NRI
-                                <el-tooltip content="净重分类改善指数。>0 表示新模型能更准确地将患者分入正确风险组。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                IDI (判别改进)
+                                <el-tooltip content="综合判别改善指数。反映整体预测概率的改善程度。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
-                            <el-table-column label="Estimate (95% CI)" width="150">
-                                <template #default="scope">
-                                    <span v-if="scope.row.nri_display" :style="{color: scope.row.nri > 0 ? 'green' : 'red', fontWeight: 'bold'}">
-                                        {{ scope.row.nri_display }}
-                                    </span>
-                                    <span v-else>
-                                        <el-tooltip v-if="scope.row.nri_error" :content="'计算失败: ' + scope.row.nri_error" placement="top">
-                                            <span style="color: #E6A23C; cursor: help; border-bottom: 1px dashed #E6A23C">计算失败</span>
-                                        </el-tooltip>
-                                        <span v-else style="color: #ccc">-</span>
-                                    </span>
-                                </template>
-                            </el-table-column>
-                            <el-table-column label="P value" width="80">
-                                <template #default="scope">
-                                    <span v-if="scope.row.nri_p !== undefined">{{ scope.row.nri_p < 0.001 ? '<.001' : scope.row.nri_p.toFixed(3) }}</span>
-                                    <span v-else style="color: #ccc">-</span>
-                                </template>
-                            </el-table-column>
+                            <template #default="scope">
+                                <div v-if="scope.row.idi !== '-'" :style="{color: parseFloat(scope.row.idi) > 0 ? 'green' : 'red', fontWeight: 'bold'}">
+                                    {{ scope.row.idi }}
+                                </div>
+                                <div v-if="scope.row.idi_p" style="font-size: 11px; color: gray">
+                                    P={{ scope.row.idi_p }}
+                                </div>
+                                <span v-else-if="scope.row.idi === '-'">-</span>
+                            </template>
                         </el-table-column>
 
-                        <el-table-column label="IDI" align="center">
-                            <template #header>
-                                IDI
-                                <el-tooltip content="综合判别改善指数。>0 表示新模型预测概率的整体区分度提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
-                            </template>
-                            <el-table-column label="Estimate (95% CI)" width="150">
-                                <template #default="scope">
-                                    <span v-if="scope.row.idi_display" :style="{color: scope.row.idi > 0 ? 'green' : 'red', fontWeight: 'bold'}">
-                                        {{ scope.row.idi_display }}
-                                    </span>
-                                    <span v-else style="color: #ccc">-</span>
-                                </template>
-                            </el-table-column>
-                            <el-table-column label="P value" width="80">
-                                <template #default="scope">
-                                    <span v-if="scope.row.idi_p !== undefined">{{ scope.row.idi_p < 0.001 ? '<.001' : scope.row.idi_p.toFixed(3) }}</span>
-                                    <span v-else style="color: #ccc">-</span>
-                                </template>
-                            </el-table-column>
-                        </el-table-column>
-
-                        <el-table-column prop="n" label="N" width="70" />
-                        <el-table-column prop="features" label="包含特征">
+                        <el-table-column prop="n" label="样本量" width="80" />
+                        <el-table-column label="納入变量" min-width="150">
                              <template #default="scope">
-                                 <el-tag v-for="f in scope.row.features" :key="f" size="small" style="margin-right: 4px">{{ f }}</el-tag>
+                                 <el-tag v-for="f in scope.row.features" :key="f" size="small" style="margin-right: 4px; margin-bottom: 2px">{{ f }}</el-tag>
                              </template>
                         </el-table-column>
                     </el-table>
@@ -201,199 +186,277 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import AdvancedModelingService from '@/services/advanced_modeling_service'
 import Plotly from 'plotly.js-dist-min'
-import api from '../../../api/client'
 
 const props = defineProps({
     datasetId: Number,
     metadata: Object
 })
 
-// Variables
-const allVars = computed(() => props.metadata?.variables || [])
-
 // State
-const modelType = ref('logistic')
+const modelType = ref('cox') // logistic, cox
 const target = ref('')
 const eventCol = ref('')
-const modelConfigs = ref([
-    { name: 'Model 1 (Base)', features: [] },
-    { name: 'Model 2 (Test)', features: [] }
-])
 const loading = ref(false)
 const results = ref(null)
+const selectedTimePoint = ref(null)
+
+// Computed
+const allVars = computed(() => {
+    if (!props.metadata || !props.metadata.variables) return []
+    return props.metadata.variables
+})
+
+const modelConfigs = ref([
+    { name: 'Model A (Base)', features: [] },
+    { name: 'Model B (New)', features: [] }
+])
+
+const availableTimePoints = computed(() => {
+    if (!results.value || results.value.length === 0) return []
+    // Get from first model's metrics
+    const metrics = results.value[0].metrics
+    if (metrics && metrics.available_time_points) {
+        return metrics.available_time_points
+    }
+    return []
+})
+
+const timeUnit = computed(() => {
+    if (!results.value || results.value.length === 0) return 'months'
+    return results.value[0].metrics.time_unit || 'months'
+})
+
+// Auto-select first time point when available
+const updateSelectedTimePoint = () => {
+    if (availableTimePoints.value.length > 0) {
+        // Default to the middle or last point? Usually median or user pref.
+        // Let's select the first one for now, or maintain if exists
+        if (!selectedTimePoint.value || !availableTimePoints.value.includes(selectedTimePoint.value)) {
+            selectedTimePoint.value = availableTimePoints.value[0]
+        }
+    }
+}
+
+watch(results, () => {
+    updateSelectedTimePoint()
+    nextTick(() => {
+        renderPlot()
+    })
+})
+
+watch(selectedTimePoint, () => {
+    renderPlot()
+})
+
+const isValid = computed(() => {
+    if (!target.value) return false
+    if (modelType.value === 'cox' && !eventCol.value) return false
+    if (modelConfigs.value.length < 2) return false
+    // Check at least one feature
+    return modelConfigs.value.every(m => m.features.length > 0)
+})
 
 // Actions
 const addModel = () => {
-    if (modelConfigs.value.length >= 5) {
-        ElMessage.warning('最多支持 5 个模型对比')
-        return
-    }
-    modelConfigs.value.push({ name: `Model ${modelConfigs.value.length + 1}`, features: [] })
-}
-
-const removeModel = (idx) => {
-    modelConfigs.value.splice(idx, 1)
-}
-
-const isValid = computed(() => {
-    const basic = target.value && modelConfigs.value.every(m => m.name && m.features.length > 0)
-    if (modelType.value === 'cox') {
-        return basic && eventCol.value
-    }
-    return basic
-})
-
-// Methodology
-const methodology = ref('')
-
-const copyText = () => {
-    if(!methodology.value) return
-    navigator.clipboard.writeText(methodology.value).then(() => {
-        ElMessage.success('Copied methodology')
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const idx = modelConfigs.value.length
+    modelConfigs.value.push({
+        name: `Model ${letters[idx % 26]}`,
+        features: []
     })
+}
+
+const removeModel = (index) => {
+    modelConfigs.value.splice(index, 1)
 }
 
 const runComparison = async () => {
     loading.value = true
-    methodology.value = ''
     try {
         const payload = {
             dataset_id: props.datasetId,
+            model_type: modelType.value,
             target: target.value,
-            event_col: modelType.value === 'cox' ? eventCol.value : null,
-            models: modelConfigs.value,
-            model_type: modelType.value
+            event_col: modelType.value === 'cox' ? eventCol.value : undefined,
+            models: modelConfigs.value
         }
         
-        const { data } = await api.post('/advanced/compare-models', payload)
-        results.value = data.comparison_data
-        methodology.value = data.methodology
+        const res = await AdvancedModelingService.compareModels(payload)
+        if (res.error) throw new Error(res.error)
         
-        renderPlot(data.comparison_data)
+        results.value = res.comparison_data
+        ElMessage.success('Comparison Complete!')
+        
     } catch (e) {
-        ElMessage.error(e.response?.data?.message || '对比分析失败')
+        ElMessage.error(e.message || 'Comparison failed')
+        console.error(e)
     } finally {
         loading.value = false
     }
 }
 
-const tableData = computed(() => {
-    if (!results.value) return []
-    return results.value.map(r => ({
-        name: r.name,
-        auc: r.metrics?.auc ? r.metrics.auc.toFixed(3) : '-',
-        auc_ci: r.metrics?.auc_ci ? `(${r.metrics.auc_ci})` : '', 
-        n: r.n,
-        features: r.features,
-        // New Metrics
-        aic: r.metrics?.aic ? r.metrics.aic.toFixed(1) : '-',
-        bic: r.metrics?.bic ? r.metrics.bic.toFixed(1) : '-',
-        delta_aic: r.metrics?.delta_aic,
-        delta_bic: r.metrics?.delta_bic,
-        nri: r.metrics?.nri,
-        nri_display: (r.metrics?.nri !== undefined && r.metrics?.nri !== null) 
-            ? `${r.metrics.nri.toFixed(3)} (${r.metrics.nri_ci || '?'})` 
-            : null,
-        nri_p: r.metrics?.nri_p,
-        nri_error: r.metrics?.nri_error,
-        
-        idi: r.metrics?.idi,
-        idi_display: (r.metrics?.idi !== undefined && r.metrics?.idi !== null) 
-            ? `${r.metrics.idi.toFixed(3)} (${r.metrics.idi_ci || '?'})` 
-            : null,
-        idi_p: r.metrics?.idi_p,
-        
-        lrt_p: r.metrics?.lrt_p
-    }))
+const methodology = computed(() => {
+    if (!results.value) return ''
+    if (modelType.value === 'logistic') return "采用 Logistic 回归模型进行对比，通过 DeLong 检验评估 AUC 差异，并计算 NRI 和 IDI 指标评估增量价值。"
+    return "采用 Cox 生存模型进行对比，评估随访时间点上的时间依赖性 AUC、NRI 和 IDI，并通过似然比检验 (LRT) 评估模型整体提升。"
 })
 
-// Visualization
-const renderPlot = (resList) => {
+const timeUnitDisplayName = computed(() => {
+    const unit = timeUnit.value
+    if (unit === 'months') return '月'
+    if (unit === 'days') return '天'
+    if (unit === 'years') return '年'
+    return unit
+})
+
+const copyText = () => {
+    navigator.clipboard.writeText(methodology.value)
+    ElMessage.success('Methodology copied')
+}
+
+// Table Data (Computed for Display)
+const tableData = computed(() => {
+    if (!results.value || !Array.isArray(results.value)) return []
+    
+    return results.value.map(r => {
+        const m = r.metrics || {}
+        const base = {
+            name: r.name || 'Unknown Model',
+            aic: m.aic !== undefined ? m.aic.toFixed(1) : '-',
+            bic: m.bic !== undefined ? m.bic.toFixed(1) : '-',
+            p_lrt: m.p_lrt !== undefined ? m.p_lrt : '-',
+            delta_aic: m.delta_aic !== undefined ? m.delta_aic : undefined,
+            delta_bic: m.delta_bic !== undefined ? m.delta_bic : undefined,
+            n: m.n || '-',
+            features: r.features || []
+        }
+        
+        if (modelType.value === 'cox') {
+            const t = selectedTimePoint.value
+            if (t && m.time_dependent && m.time_dependent[t]) {
+                const tm = m.time_dependent[t]
+                return {
+                    ...base,
+                    auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
+                    auc_ci: tm.auc_ci || '-',
+                    nri: tm.nri !== undefined ? tm.nri.toFixed(3) : '-',
+                    nri_p: tm.nri_p !== undefined ? (tm.nri_p < 0.001 ? '<0.001' : tm.nri_p.toFixed(3)) : '-',
+                    idi: tm.idi !== undefined ? tm.idi.toFixed(3) : '-',
+                    idi_p: tm.idi_p !== undefined ? (tm.idi_p < 0.001 ? '<0.001' : tm.idi_p.toFixed(3)) : '-'
+                }
+            } else {
+                 return { ...base, auc: '-', auc_ci: '-', nri: '-', nri_p: '-', idi: '-', idi_p: '-' }
+            }
+        } else {
+            // Logistic
+            return {
+                ...base,
+                auc: m.auc !== undefined ? m.auc.toFixed(3) : '-',
+                auc_ci: m.auc_ci || '-',
+                nri: m.nri !== undefined ? m.nri.toFixed(3) : '-',
+                nri_p: m.nri_p !== undefined ? (m.nri_p < 0.001 ? '<0.001' : m.nri_p.toFixed(3)) : '-',
+                idi: m.idi !== undefined ? m.idi.toFixed(3) : '-',
+                idi_p: m.idi_p !== undefined ? (m.idi_p < 0.001 ? '<0.001' : m.idi_p.toFixed(3)) : '-'
+            }
+        }
+    })
+})
+
+// Plotting
+const renderPlot = () => {
+    const el = document.getElementById('comparison-plot')
+    if (!el || !results.value) return
+    
     const traces = []
     
-    // Sort by AUC desc for clean legend
-    const sortedRes = [...resList].sort((a, b) => (b.metrics?.auc || 0) - (a.metrics?.auc || 0))
-    
-    sortedRes.forEach((res, i) => {
-        if (!res.roc_data || res.roc_data.length === 0) return
+    results.value.forEach(r => {
+        let rocData = null
+        if (modelType.value === 'logistic') {
+            rocData = r.roc_data
+        } else {
+            // Cox Time Dependent ROC
+            const t = selectedTimePoint.value
+            if (t && r.metrics.time_dependent && r.metrics.time_dependent[t]) {
+                rocData = r.metrics.time_dependent[t].roc_data
+            }
+        }
         
-        const aucStr = res.metrics?.auc ? `(AUC=${res.metrics.auc.toFixed(3)})` : ''
-        
-        traces.push({
-            x: res.roc_data.map(d => d.x || d.fpr), // simple run might return x/y or fpr/tpr depending on previous impl
-            y: res.roc_data.map(d => d.y || d.tpr),
-            mode: 'lines',
-            name: `${res.name} ${aucStr}`,
-            line: { width: 3 }
-        })
+        if (rocData) {
+            traces.push({
+                x: rocData.map(d => d.fpr),
+                y: rocData.map(d => d.tpr),
+                mode: 'lines',
+                name: `${r.name} (AUC=${r.metrics.time_dependent && selectedTimePoint.value ? r.metrics.time_dependent[selectedTimePoint.value].auc.toFixed(3) : r.metrics.auc.toFixed(3)})`
+            })
+        }
     })
     
     // Diagonal
     traces.push({
-        x: [0, 1], y: [0, 1], 
-        mode: 'lines', 
-        line: { dash: 'dash', color: 'gray', width: 1 }, 
-        name: 'Reference', 
-        hoverinfo: 'skip'
+        x: [0, 1],
+        y: [0, 1],
+        mode: 'lines',
+        line: { dash: 'dash', color: 'gray' },
+        showlegend: false
     })
     
+    const title = modelType.value === 'cox' 
+        ? `Time-Dependent ROC Comparison (t=${selectedTimePoint.value} ${timeUnit.value})`
+        : 'ROC Curve Comparison'
+
     const layout = {
-        title: 'ROC Curve Comparison',
+        title: title,
         xaxis: { title: '1 - Specificity (FPR)', range: [0, 1] },
         yaxis: { title: 'Sensitivity (TPR)', range: [0, 1] },
         legend: { x: 0.6, y: 0.1 },
-        margin: { l: 50, r: 20, t: 50, b: 50 },
-        height: 500
+        margin: { l: 50, r: 20, t: 40, b: 40 }
     }
     
-    // Check key mapping (ModelingService.run_model returns metrics[auc] and plots[roc_curve: [{fpr, tpr}]])
-    // Need to verify backend response structure for roc_data.
-    // In comparison service: `roc_data = model_res['plots']['roc_curve']`
-    // roc_curve list of {fpr, tpr}.
-    
-    // Update trace mapping above to use fpr/tpr
-    Plotly.newPlot('comparison-plot', traces, layout)
+    Plotly.newPlot(el, traces, layout)
 }
 </script>
 
 <style scoped>
-.model-row {
+.model-comparison-container {
+    height: 100%;
+    padding: 20px;
     background: #f5f7fa;
+}
+.config-card {
+    height: 100%;
+    overflow-y: auto;
+}
+.model-row {
+    background: #f8f9fa;
     padding: 10px;
     border-radius: 4px;
     margin-bottom: 10px;
-    border: 1px solid #e4e7ed;
+    border: 1px solid #ebeef5;
 }
 .model-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     margin-bottom: 5px;
 }
 .model-index {
-    font-size: 12px;
     font-weight: bold;
+    font-size: 12px;
     color: #909399;
 }
 .viz-area {
-    position: relative;
-    border: 1px solid #e4e7ed;
+    background: white;
+    padding: 20px;
     border-radius: 4px;
+    border: 1px solid #e4e7ed;
+    position: relative;
+    min-height: 500px;
 }
 .placeholder-overlay {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: rgba(255,255,255,0.8);
-    color: #909399;
-}
-.ci-text {
-    font-size: 12px;
     color: #909399;
     margin-left: 4px;
 }

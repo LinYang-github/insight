@@ -114,9 +114,34 @@ class CoxStrategy(BaseModelStrategy):
         try:
             max_dur = data[time_col].max()
             points = []
-            if max_dur > 12: points.append(12)
-            if max_dur > 36: points.append(36)
-            if max_dur > 60: points.append(60)
+            
+            # Simple Heuristic: If max duration > 730 (2 years in days), assume 'Days'.
+            # Else assume 'Months'.
+            time_unit = 'months'
+            if max_dur > 730:
+                time_unit = 'days'
+                # 1y, 2y, 3y, 4y, 5y
+                candidates = [365, 730, 1095, 1460, 1825]
+                for c in candidates:
+                     if max_dur > c: points.append(c)
+            else:
+                time_unit = 'months'
+                candidates = [12, 36, 48, 60]
+                for c in candidates:
+                     if max_dur > c: points.append(c)
+            
+            # User Request: "All Endpoints" -> Include the time of the last event
+            try:
+                max_evt_time = int(data.loc[data[event_col]==1, time_col].max())
+                # Only add if it's reasonably distinct from existing points (e.g. > 10% diff)? 
+                # For simplicity, just add and deduplicate.
+                points.append(max_evt_time)
+            except: pass
+            
+            # Deduplicate and Sort
+            points = sorted(list(set(points)))
+            
+            clinical_eval['time_unit'] = time_unit
             if not points:
                 points = [int(data[time_col].median())]
                 

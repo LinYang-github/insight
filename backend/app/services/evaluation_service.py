@@ -175,12 +175,27 @@ class EvaluationService:
         return EvaluationService.calculate_dca(y_true, y_prob, thresholds)
 
     @staticmethod
+    def _calculate_proportion_ci(count, nobs, alpha=0.05):
+        if nobs == 0: return 0.0, 0.0
+        # Wilson approximation if statsmodels missing, or manual implementation
+        # p = count / nobs
+        # z = 1.96
+        # ...
+        # For simplicity and speed, use statsmodels if available, else Normal Approx
+        try:
+             import statsmodels.stats.proportion as proportion
+             l, h = proportion.proportion_confint(count, nobs, alpha=alpha, method='wilson')
+             return float(l), float(h)
+        except:
+             # Fallback: Normal Approx (Simpler but less robust for small N, better than crash)
+             p = count / nobs
+             se = np.sqrt(p * (1 - p) / nobs)
+             return max(0.0, p - 1.96 * se), min(1.0, p + 1.96 * se)
+
+    @staticmethod
     def calculate_binary_metrics_at_threshold(y_true, y_prob):
         """
-        Calculate Se, Sp, PPV, NPV, Youden at the Optimal Threshold (Max Youden).
-        
-        Returns:
-            dict: { 'metrics': {...}, 'optimal_threshold': float }
+        Calculate Se, Sp, PPV, NPV, Youden, AUC and their 95% CIs.
         """
         fpr, tpr, thresholds = roc_curve(y_true, y_prob)
         
@@ -194,21 +209,46 @@ class EvaluationService:
         # Binary predictions at best threshold
         y_pred = (y_prob >= best_threshold).astype(int)
         
-        from sklearn.metrics import confusion_matrix
+        from sklearn.metrics import confusion_matrix, roc_auc_score
         tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
         
+        # Point Estimates
         sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
         ppv = tp / (tp + fp) if (tp + fp) > 0 else 0
         npv = tn / (tn + fn) if (tn + fn) > 0 else 0
         
+        # AUC & CI (Hanley & McNeil 1982)
+        try:
+            auc = roc_auc_score(y_true, y_prob)
+            n1 = np.sum(y_true == 1)
+            n2 = np.sum(y_true == 0)
+            if n1 > 0 and n2 > 0:
+                q1 = auc / (2 - auc)
+                q2 = 2 * auc**2 / (1 + auc)
+                se_auc = np.sqrt(((auc * (1 - auc)) + (n1 - 1)*(q1 - auc**2) + (n2 - 1)*(q2 - auc**2)) / (n1 * n2))
+                auc_ci_lower = max(0.0, auc - 1.96 * se_auc)
+                auc_ci_upper = min(1.0, auc + 1.96 * se_auc)
+            else:
+                 auc_ci_lower, auc_ci_upper = 0.0, 0.0
+        except:
+            auc = 0.5
+            auc_ci_lower, auc_ci_upper = 0.0, 0.0
+
+        # Intervals
+        sen_l, sen_h = EvaluationService._calculate_proportion_ci(tp, tp+fn)
+        spe_l, spe_h = EvaluationService._calculate_proportion_ci(tn, tn+fp)
+        ppv_l, ppv_h = EvaluationService._calculate_proportion_ci(tp, tp+fp)
+        npv_l, npv_h = EvaluationService._calculate_proportion_ci(tn, tn+fn)
+
         return {
             'optimal_threshold': float(best_threshold),
-            'sensitivity': float(sensitivity),
-            'specificity': float(specificity),
-            'ppv': float(ppv),
-            'npv': float(npv),
-            'youden_index': float(max_youden)
+            'sensitivity': float(sensitivity), 'sensitivity_ci_lower': sen_l, 'sensitivity_ci_upper': sen_h,
+            'specificity': float(specificity), 'specificity_ci_lower': spe_l, 'specificity_ci_upper': spe_h,
+            'ppv': float(ppv), 'ppv_ci_lower': ppv_l, 'ppv_ci_upper': ppv_h,
+            'npv': float(npv), 'npv_ci_lower': npv_l, 'npv_ci_upper': npv_h,
+            'youden_index': float(max_youden),
+            'auc': float(auc), 'auc_ci_lower': auc_ci_lower, 'auc_ci_upper': auc_ci_upper
         }
 
     @staticmethod
@@ -246,6 +286,8 @@ class EvaluationService:
         
         # Merge
         binary_res['brier_score'] = float(brier)
+        binary_res['n_events'] = int(y_true.sum())
+        binary_res['n_eval'] = int(len(y_true))
         
         # GND Test (Simplified Chi-Square of Deciles)
         # Reuse logic from calibration

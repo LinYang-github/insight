@@ -289,34 +289,90 @@
                             <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 15px;">
                                 <span style="font-size: 13px; color: #606266; margin-right: 10px;">预测时间点 (Time Point):</span>
                                 <el-radio-group v-model="evaluationTimePoint" size="small">
-                                    <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">{{ t }} (Months)</el-radio-button>
+                                    <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">
+                                        {{ t }} ({{ results.clinical_eval?.time_unit === 'days' ? 'Days' : 'Months' }})
+                                    </el-radio-button>
                                 </el-radio-group>
                             </div>
                             
-                            <!-- Extended Metrics Table -->
-                            <el-descriptions v-if="currentExtendedMetrics" title="Discrimination & Calibration Metrics" :column="3" border size="small">
-                                <el-descriptions-item label="Sensitivity (Recall)">
-                                    {{ currentExtendedMetrics.sensitivity.toFixed(3) }}
-                                    <span style="font-size: 10px; color: gray;">(at optimal cutoff)</span>
-                                </el-descriptions-item>
-                                <el-descriptions-item label="Specificity">
-                                    {{ currentExtendedMetrics.specificity.toFixed(3) }}
+                            <el-descriptions v-if="currentExtendedMetrics" title="鉴别度与校准度指标 (Discrimination & Calibration)" :column="2" border size="small">
+                                <el-descriptions-item>
+                                    <template #label>
+                                        AUC / C-Index
+                                        <el-tooltip content="ROC 曲线下面积。反映模型的整体区分能力 (0.5=随机, 1.0=完美)。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
+                                    <template v-if="currentExtendedMetrics.auc !== undefined">
+                                        <b>{{ currentExtendedMetrics.auc.toFixed(3) }}</b>
+                                        <div style="font-size: 11px; color: gray;">
+                                            ({{ currentExtendedMetrics.auc_ci_lower.toFixed(3) }} - {{ currentExtendedMetrics.auc_ci_upper.toFixed(3) }})
+                                        </div>
+                                    </template>
+                                    <span v-else>-</span>
                                 </el-descriptions-item>
                                 <el-descriptions-item label="Youden Index">
                                     {{ currentExtendedMetrics.youden_index.toFixed(3) }}
                                 </el-descriptions-item>
-                                <el-descriptions-item label="PPV (+Pred Val)">
+                                <el-descriptions-item>
+                                    <template #label>
+                                        灵敏度 (Sensitivity)
+                                        <el-tooltip content="真阳性率。模型识别出真正患者的能力。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
+                                    {{ currentExtendedMetrics.sensitivity.toFixed(3) }}
+                                    <div style="font-size: 11px; color: gray;" v-if="currentExtendedMetrics.sensitivity_ci_lower !== undefined">
+                                        ({{ currentExtendedMetrics.sensitivity_ci_lower.toFixed(3) }} - {{ currentExtendedMetrics.sensitivity_ci_upper.toFixed(3) }})
+                                    </div>
+                                </el-descriptions-item>
+                                <el-descriptions-item>
+                                    <template #label>
+                                        特异度 (Specificity)
+                                        <el-tooltip content="真阴性率。模型排除非患者的能力。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
+                                    {{ currentExtendedMetrics.specificity.toFixed(3) }}
+                                    <div style="font-size: 11px; color: gray;" v-if="currentExtendedMetrics.specificity_ci_lower !== undefined">
+                                        ({{ currentExtendedMetrics.specificity_ci_lower.toFixed(3) }} - {{ currentExtendedMetrics.specificity_ci_upper.toFixed(3) }})
+                                    </div>
+                                </el-descriptions-item>
+                                <el-descriptions-item>
+                                    <template #label>
+                                        阳性预测值 (PPV)
+                                        <el-tooltip content="预测为阳性中真正为阳性的比例。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
                                     {{ currentExtendedMetrics.ppv.toFixed(3) }}
+                                    <div style="font-size: 11px; color: gray;" v-if="currentExtendedMetrics.ppv_ci_lower !== undefined">
+                                        ({{ currentExtendedMetrics.ppv_ci_lower.toFixed(3) }} - {{ currentExtendedMetrics.ppv_ci_upper.toFixed(3) }})
+                                    </div>
                                 </el-descriptions-item>
-                                <el-descriptions-item label="NPV (-Pred Val)">
+                                <el-descriptions-item>
+                                    <template #label>
+                                        阴性预测值 (NPV)
+                                        <el-tooltip content="预测为阴性中真正为阴性的比例。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
                                     {{ currentExtendedMetrics.npv.toFixed(3) }}
+                                    <div style="font-size: 11px; color: gray;" v-if="currentExtendedMetrics.npv_ci_lower !== undefined">
+                                        ({{ currentExtendedMetrics.npv_ci_lower.toFixed(3) }} - {{ currentExtendedMetrics.npv_ci_upper.toFixed(3) }})
+                                    </div>
                                 </el-descriptions-item>
-                                <el-descriptions-item label="Brier Score">
+                                <el-descriptions-item>
+                                    <template #label>
+                                        Brier 分数 (Brier Score)
+                                        <el-tooltip content="预测概率与实际结果的均方误差。越低越好 (< 0.25)。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
                                     {{ currentExtendedMetrics.brier_score.toFixed(3) }}
                                     <el-tag size="small" type="success" v-if="currentExtendedMetrics.brier_score < 0.25">Good</el-tag>
                                 </el-descriptions-item>
-                                <el-descriptions-item label="Optimal Cutoff">
+                                <el-descriptions-item label="最佳截断值 (Optimal Cutoff)">
                                     {{ currentExtendedMetrics.optimal_threshold.toFixed(3) }}
+                                </el-descriptions-item>
+                                <el-descriptions-item>
+                                    <template #label>
+                                        有效样本量 (Events)
+                                        <el-tooltip content="参与评估的有效样本数（已排除此处删失者）及其中发生的终点事件数。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                    </template>
+                                    <template v-if="currentExtendedMetrics.n_eval && currentExtendedMetrics.n_events !== undefined">
+                                        {{ currentExtendedMetrics.n_eval }} 
+                                        <span style="margin-left:5px; color: #E6A23C; font-weight: 500">(Events: {{ currentExtendedMetrics.n_events }})</span>
+                                    </template>
+                                    <span v-else>-</span>
                                 </el-descriptions-item>
                             </el-descriptions>
                         </div>
@@ -326,7 +382,7 @@
                             <el-col :span="12" v-if="activePlots.roc" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="roc-plot"
-                                    :title="config.model_type === 'cox' ? `Time-Dependent ROC (t=${evaluationTimePoint})` : 'ROC Curve'"
+                                    :title="config.model_type === 'cox' ? `ROC 曲线 (t=${evaluationTimePoint})` : 'ROC 曲线 (ROC Curve)'"
                                     :data="chartData.roc.data"
                                     :layout="chartData.roc.layout"
                                 />
@@ -336,7 +392,7 @@
                             <el-col :span="12" v-if="activePlots.calibration" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="calibration-plot"
-                                    :title="config.model_type === 'cox' ? `Calibration Plot (t=${evaluationTimePoint})` : 'Calibration Plot'"
+                                    :title="config.model_type === 'cox' ? `校准曲线 (Calibration) (t=${evaluationTimePoint})` : '校准曲线 (Calibration)'"
                                     :data="chartData.calibration.data"
                                     :layout="chartData.calibration.layout"
                                 />
@@ -346,7 +402,7 @@
                              <el-col :span="12" v-if="activePlots.dca" style="margin-bottom: 20px;">
                                 <InsightChart
                                     chartId="dca-plot"
-                                    :title="config.model_type === 'cox' ? `Decision Curve (DCA) (t=${evaluationTimePoint})` : 'Decision Curve (DCA)'"
+                                    :title="config.model_type === 'cox' ? `临床决策曲线 (DCA) (t=${evaluationTimePoint})` : '临床决策曲线 (DCA)'"
                                     :data="chartData.dca.data"
                                     :layout="chartData.dca.layout"
                                 />
