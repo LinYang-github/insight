@@ -182,3 +182,31 @@ def compare_models(current_user):
         df, target, model_configs, model_type, event_col
     )
     return jsonify(results), 200
+
+@advanced_bp.route('/competing-risks', methods=['POST'])
+@token_required
+def fit_competing_risks(current_user):
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    
+    dataset = db.session.get(Dataset, dataset_id)
+    if not dataset:
+        return jsonify({'message': 'Dataset not found'}), 404
+        
+    time_col = data.get('time_col')
+    event_col = data.get('event_col')
+    covariates = data.get('covariates', [])
+    
+    if not time_col or not event_col or not covariates:
+        return jsonify({'message': 'Time, Event columns and Covariates are required.'}), 400
+        
+    required = [time_col, event_col] + covariates
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
+    
+    # Check Integrity
+    # We implicitly allow integer distinct events > 0
+    
+    results = AdvancedModelingService.fit_competing_risks(
+        df, time_col, event_col, covariates
+    )
+    return jsonify(results), 200

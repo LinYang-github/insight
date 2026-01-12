@@ -829,9 +829,7 @@ class AdvancedModelingService:
             try:
                 metrics = {}
                 roc_data = []
-                
-                metrics = {}
-                roc_data = []
+
                 # Store raw outputs for comparison
                 raw_pred = None
                 raw_y = None
@@ -881,6 +879,8 @@ class AdvancedModelingService:
                         metrics['n'] = len(df_clean)
                         if 'plots' in model_res and 'roc' in model_res['plots']:
                              roc_data = model_res['plots']['roc']
+            
+
 
                 elif model_type == 'cox':
                     # Custom implementation for Cox ROC
@@ -1103,3 +1103,76 @@ class AdvancedModelingService:
     def _generate_comparison_methodology():
         return ("Model discrimination was evaluated using the Area Under the Receiver Operating Characteristic (ROC) Curve (AUC) or Harrell's C-index. "
                 "Models were compared based on their predictive performance on the same complete-case dataset.")
+
+    @staticmethod
+    def _generate_nomogram_methodology(model_type):
+        if model_type == 'logistic':
+             return ("A nomogram was formulated based on the multivariate logistic regression analysis results. "
+                     "Points were assigned to each variable value based on its regression coefficient.")
+        else:
+             return ("A nomogram was formulated based on the Cox proportional hazards model results. "
+                     "Points were assigned to each predictor to estimate survival probability at the median follow-up time.")
+
+    @staticmethod
+    def fit_competing_risks(df, time_col, event_col, covariates):
+        """
+        Fit Cause-Specific Cox Models for all competing events.
+        """
+        from lifelines import CoxPHFitter
+        
+        results = {
+            'models': [], 
+            'events_found': []
+        }
+        
+        # 1. Identify Events (exclude 0/Censored)
+        events = sorted([e for e in df[event_col].dropna().unique() if e != 0])
+        results['events_found'] = [int(e) for e in events]
+        
+        if not events:
+            raise ValueError("No event types found (only 0/Censor found?)")
+
+        df_clean = df[[time_col, event_col] + covariates].dropna()
+        df_clean = DataService.preprocess_for_formula(df_clean)
+        
+        # 2. Loop Events
+        for evt in events:
+            temp_df = df_clean.copy()
+            temp_df['__cs_event'] = (temp_df[event_col] == evt).astype(int)
+            
+            try:
+                cph = CoxPHFitter()
+                cov_str = " + ".join(covariates)
+                formula = f"{cov_str}" 
+                
+                cph.fit(temp_df, duration_col=time_col, event_col='__cs_event', formula=formula)
+                
+                model_res = {
+                    'event_type': int(evt),
+                    'summary': []
+                }
+                
+                for idx, row in cph.summary.iterrows():
+                    model_res['summary'].append({
+                        'variable': idx,
+                        'hr': row['exp(coef)'],
+                        'ci_lower': row['exp(coef) lower 95%'],
+                        'ci_upper': row['exp(coef) upper 95%'],
+                        'p_value': row['p'],
+                        'z': row['z']
+                    })
+                    
+                model_res['aic'] = cph.AIC_partial_
+                results['models'].append(model_res)
+                
+            except Exception as e:
+                print(f"CS-Cox failed for event {evt}: {e}")
+                results['models'].append({'event_type': int(evt), 'error': str(e)})
+
+        results['methodology'] = (
+            "Competing Risk Analysis was performed. "
+            "Cause-Specific Hazard Ratios (CS-HR) were estimated for each event type using Cox proportional hazards models, "
+            "treating other competing events as censored. "
+            "The Aalen-Johansen estimator should be used for Cumulative Incidence Function (CIF) visualization."
+        )
+        return results

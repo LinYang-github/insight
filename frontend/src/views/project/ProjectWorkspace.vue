@@ -61,6 +61,10 @@
                 <el-icon><ScaleToOriginal /></el-icon>
                 <span>逆概率加权 (IPTW)</span>
             </el-menu-item>
+             <el-menu-item index="competing" :disabled="!dataset">
+                <el-icon><PieChart /></el-icon>
+                <span>竞争风险 (Fine-Gray)</span>
+            </el-menu-item>
 
             <div class="menu-group-title">🤖 多因素建模 (Modeling)</div>
             <el-menu-item index="modeling" :disabled="!dataset">
@@ -117,6 +121,9 @@
          <div v-else-if="activeTabName === 'iptw'">
              <IPTWTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
+         <div v-else-if="activeTabName === 'competing'">
+             <CompetingRiskTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
+         </div>
          <div v-else-if="activeTabName === 'modeling'">
               <ModelingTab v-if="dataset?.dataset_id" :projectId="route.params.id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
@@ -158,9 +165,10 @@ import ClinicalVizTab from './components/ClinicalVizTab.vue'
 import LongitudinalTab from './components/LongitudinalTab.vue'
 import PsmTab from './components/PsmTab.vue'
 import IPTWTab from './components/IPTWTab.vue'
+import CompetingRiskTab from './components/CompetingRiskTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer, ScaleToOriginal } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer, ScaleToOriginal, PieChart } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)
