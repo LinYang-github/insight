@@ -30,7 +30,7 @@
              <div style="margin-bottom: 20px;">
                 <el-form :inline="true">
                     <el-form-item label="固定效应 (Fixed Effects)">
-                        <el-select v-model="config.fixed_effects" multiple collapse-tags placeholder="选择协变量">
+                        <el-select v-model="config.fixed_effects" multiple placeholder="选择协变量">
                              <el-option v-for="v in variables" :key="v.name" :label="v.name" :value="v.name" />
                         </el-select>
                     </el-form-item>

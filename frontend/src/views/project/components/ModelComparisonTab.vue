@@ -57,7 +57,7 @@
                                 
                                 <el-input v-model="model.name" placeholder="模型名称 (如: 基础模型)" style="margin-bottom: 5px" />
                                 
-                                <el-select v-model="model.features" multiple filterable placeholder="选择纳入变量 (Features)" collapse-tags>
+                                <el-select v-model="model.features" multiple filterable placeholder="选择纳入变量 (Features)">
                                     <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" :disabled="v.name === target" />
                                 </el-select>
                             </div>

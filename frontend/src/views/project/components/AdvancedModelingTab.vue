@@ -46,7 +46,7 @@
                              </el-form-item>
                              
                              <el-form-item label="协变量 (Covariates)">
-                                 <el-select v-model="rcsParams.covariates" multiple filterable collapse-tags>
+                                 <el-select v-model="rcsParams.covariates" multiple filterable>
                                      <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" :disabled="v.name === rcsParams.target || v.name === rcsParams.exposure" />
                                  </el-select>
                              </el-form-item>
@@ -123,13 +123,13 @@
                              </el-form-item>
                              
                              <el-form-item label="亚组变量 (Stratification)" required>
-                                 <el-select v-model="subgroupParams.subgroups" multiple filterable collapse-tags placeholder="选择分类变量">
+                                 <el-select v-model="subgroupParams.subgroups" multiple filterable placeholder="选择分类变量">
                                      <el-option v-for="v in catVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
                              
                              <el-form-item label="其他协变量 (Adjusted)">
-                                 <el-select v-model="subgroupParams.covariates" multiple filterable collapse-tags>
+                                 <el-select v-model="subgroupParams.covariates" multiple filterable>
                                      <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
@@ -246,7 +246,7 @@
                              </el-form-item>
                              
                              <el-form-item label="预测因子 (Predictors)" required>
-                                 <el-select v-model="nomoParams.predictors" multiple filterable collapse-tags>
+                                 <el-select v-model="nomoParams.predictors" multiple filterable>
                                      <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" :disabled="v.name === nomoParams.target" />
                                  </el-select>
                              </el-form-item>
