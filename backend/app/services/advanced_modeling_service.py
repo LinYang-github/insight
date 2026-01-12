@@ -877,7 +877,13 @@ class AdvancedModelingService:
                         roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
                         
                         raw_pred = y_prob.values
+                        raw_pred = y_prob.values
                         raw_y = y_true.values
+
+                        # Advanced Plots (Calibration & DCA)
+                        from app.services.evaluation_service import EvaluationService
+                        calib_data = EvaluationService.calculate_calibration(raw_y, raw_pred)
+                        dca_data = EvaluationService.calculate_dca(raw_y, raw_pred)
                         
                     except Exception as e:
                         print(e)
@@ -964,6 +970,15 @@ class AdvancedModelingService:
                             t_metrics['auc'] = 0.5
                             t_metrics['auc_ci'] = "-"
                             
+                            t_metrics['auc'] = 0.5
+                            t_metrics['auc_ci'] = "-"
+                        
+                        # Calibration & DCA for Cox at T (using binary approx)
+                        if len(y_binary.unique()) > 1:
+                             from app.services.evaluation_service import EvaluationService
+                             t_metrics['calibration'] = EvaluationService.calculate_calibration(y_binary, y_score_valid)
+                             t_metrics['dca'] = EvaluationService.calculate_dca(y_binary, y_score_valid)
+                            
                         metrics['time_dependent'][t] = t_metrics
                         
                         # Store raw preds for NRI calculation later
@@ -984,8 +999,14 @@ class AdvancedModelingService:
                     'features': feats,
                     'metrics': metrics
                 }
-                if model_type == 'logistic': # Only logistic has a single ROC curve
-                    model_res['roc_data'] = roc_data
+                
+                # Attach plots to model result
+                if model_type == 'logistic':
+                    model_res['plots'] = {
+                        'roc': roc_data,
+                        'calibration': calib_data,
+                        'dca': dca_data
+                    }
                 
                 results.append({
                     'model_res': model_res,

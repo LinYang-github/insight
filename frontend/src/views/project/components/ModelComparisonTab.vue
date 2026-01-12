@@ -77,9 +77,19 @@
             <!-- 右侧：可视化结果 -->
             <el-col :span="16">
                 <div class="viz-area">
-                    <div id="comparison-plot" style="width: 100%; height: 500px; background: #fff;"></div>
-                    <div v-if="!results" class="placeholder-overlay">
-                        配置完成并点击运行以查看 ROC 曲线对比
+                    <el-tabs v-model="activeVizTab" type="border-card" @tab-change="handleTabChange">
+                        <el-tab-pane label="ROC 曲线 (区分度)" name="roc">
+                            <div id="comparison-plot" style="width: 100%; height: 500px;"></div>
+                        </el-tab-pane>
+                        <el-tab-pane label="校准曲线 (校准度)" name="calibration">
+                            <div id="calibration-plot" style="width: 100%; height: 500px;"></div>
+                        </el-tab-pane>
+                        <el-tab-pane label="DCA 决策曲线 (获益)" name="dca">
+                            <div id="dca-plot" style="width: 100%; height: 500px;"></div>
+                        </el-tab-pane>
+                    </el-tabs>
+                    <div v-if="!results" class="placeholder-overlay" style="top: 60px">
+                        配置完成并点击运行以查看模型表现
                     </div>
                 </div>
 
@@ -232,6 +242,7 @@ const eventCol = ref('')
 const loading = ref(false)
 const results = ref(null)
 const selectedTimePoint = ref(null)
+const activeVizTab = ref('roc')
 
 // Computed
 const allVars = computed(() => {
@@ -443,11 +454,22 @@ const copyTableData = () => {
     navigator.clipboard.writeText(tsvContent).then(() => {
         ElMessage.success('表格数据已复制，可直接粘贴到 Excel')
     }).catch(err => {
-        ElMessage.error('复制失败: ' + err)
+    ElMessage.error('复制失败: ' + err)
     })
 }
 
 // Plotting
+// Plotting Dispatcher
+// Plotting Dispatcher
+const handleTabChange = () => {
+    nextTick(() => {
+        if (activeVizTab.value === 'roc') renderPlot()
+        else if (activeVizTab.value === 'calibration') renderCalibration()
+        else if (activeVizTab.value === 'dca') renderDCA()
+    })
+}
+
+// 1. ROC Curve
 const renderPlot = () => {
     const el = document.getElementById('comparison-plot')
     if (!el || !results.value) return
@@ -456,37 +478,46 @@ const renderPlot = () => {
     
     results.value.forEach(r => {
         let rocData = null
-        if (modelType.value === 'logistic') {
-            rocData = r.roc_data
-        } else {
-            // Cox Time Dependent ROC
-            const t = selectedTimePoint.value
-            if (t && r.metrics.time_dependent && r.metrics.time_dependent[t]) {
-                rocData = r.metrics.time_dependent[t].roc_data
-            }
-        }
+        let titleSuffix = ''
         
+        // 1. 获取数据源
+        if (modelType.value === 'logistic') {
+            rocData = r.plots ? r.plots.roc : r.roc_data
+            if (r.metrics && r.metrics.auc) {
+                 titleSuffix = `(AUC=${r.metrics.auc.toFixed(3)})`
+            }
+        } else if (modelType.value === 'cox' && selectedTimePoint.value) {
+           if (r.metrics && r.metrics.time_dependent) {
+               // Handle String/Number key mismatch
+               const t = selectedTimePoint.value
+               const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
+               if (tm) {
+                   rocData = tm.roc_data
+                   titleSuffix = tm.auc ? `(AUC=${tm.auc.toFixed(3)})` : '(AUC=-)'
+               }
+           }
+        }
+
         if (rocData) {
             traces.push({
                 x: rocData.map(d => d.fpr),
                 y: rocData.map(d => d.tpr),
                 mode: 'lines',
-                name: `${r.name} (AUC=${r.metrics.time_dependent && selectedTimePoint.value ? r.metrics.time_dependent[selectedTimePoint.value].auc.toFixed(3) : r.metrics.auc.toFixed(3)})`
+                name: `${r.name} ${titleSuffix}`
             })
         }
     })
     
     // Diagonal
     traces.push({
-        x: [0, 1],
-        y: [0, 1],
+        x: [0, 1], y: [0, 1],
         mode: 'lines',
         line: { dash: 'dash', color: 'gray' },
         showlegend: false
     })
     
     const title = modelType.value === 'cox' 
-        ? `Time-Dependent ROC Comparison (t=${selectedTimePoint.value} ${timeUnit.value})`
+        ? `Time-Dependent ROC (t=${selectedTimePoint.value})`
         : 'ROC Curve Comparison'
 
     const layout = {
@@ -499,6 +530,120 @@ const renderPlot = () => {
     
     Plotly.newPlot(el, traces, layout)
 }
+
+// 2. Calibration Plot
+const renderCalibration = () => {
+    const el = document.getElementById('calibration-plot')
+    if (!el || !results.value) return
+    
+    const traces = []
+    
+    results.value.forEach(r => {
+        let calibData = null
+        if (modelType.value === 'logistic') {
+             calibData = (r.plots) ? r.plots.calibration : null
+        } else if (modelType.value === 'cox' && selectedTimePoint.value) {
+             if (r.metrics && r.metrics.time_dependent) {
+                 const t = selectedTimePoint.value
+                 const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
+                 calibData = tm ? tm.calibration : null
+             }
+        }
+        
+        if (calibData) {
+            traces.push({
+                x: calibData.prob_pred,
+                y: calibData.prob_true,
+                mode: 'lines+markers',
+                name: r.name
+            })
+        }
+    })
+    
+    // Ideal Line (Perfect Calibration)
+    traces.push({
+        x: [0, 1], y: [0, 1],
+        mode: 'lines',
+        line: { dash: 'dash', color: 'gray' },
+        name: 'Ideal',
+        showlegend: false
+    })
+
+    const layout = {
+        title: 'Calibration Plot',
+        xaxis: { title: 'Predicted Probability', range: [0, 1] },
+        yaxis: { title: 'Observed Fraction', range: [0, 1] },
+        margin: { l: 50, r: 20, t: 40, b: 40 },
+        height: 450
+    }
+    Plotly.newPlot(el, traces, layout)
+}
+
+// 3. DCA Plot
+const renderDCA = () => {
+    const el = document.getElementById('dca-plot')
+    if (!el || !results.value) return
+    
+    const traces = []
+    let hasData = false
+    
+    results.value.forEach(r => {
+        let dcaData = null
+        if (modelType.value === 'logistic') {
+             dcaData = (r.plots) ? r.plots.dca : null
+        } else if (modelType.value === 'cox' && selectedTimePoint.value) {
+             if (r.metrics && r.metrics.time_dependent) {
+                 const t = selectedTimePoint.value
+                 const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
+                 dcaData = tm ? tm.dca : null
+             }
+        }
+        
+        if (dcaData) {
+            hasData = true
+            // Plot Model Net Benefit
+            traces.push({
+                x: dcaData.thresholds,
+                y: dcaData.net_benefit_model,
+                mode: 'lines',
+                name: r.name
+            })
+            
+            // Add 'All' / 'None' lines only once (from first valid model)
+            if (traces.length === 1) { 
+                 traces.unshift({
+                    x: dcaData.thresholds,
+                    y: dcaData.net_benefit_all,
+                    mode: 'lines',
+                    line: { dash: 'dot', color: 'gray', width: 1 },
+                    name: 'Treat All'
+                 })
+                 traces.unshift({
+                    x: dcaData.thresholds,
+                    y: dcaData.net_benefit_none,
+                    mode: 'lines',
+                    line: { width: 2, color: 'black' },
+                    name: 'Treat None'
+                 })
+            }
+        }
+    })
+    
+    const layout = {
+        title: 'Decision Curve Analysis (DCA)',
+        xaxis: { title: 'Threshold Probability', range: [0, 1] },
+        yaxis: { title: 'Net Benefit', range: [-0.05, 0.4] },
+        margin: { l: 50, r: 20, t: 40, b: 40 },
+        height: 450
+    }
+    
+    if (hasData) Plotly.newPlot(el, traces, layout)
+}
+
+// Watchers
+watch([results, selectedTimePoint], () => {
+    handleTabChange()
+})
 </script>
 
 <style scoped>
