@@ -491,8 +491,12 @@ class EvaluationService:
         
         var_diff = S[0,0] + S[1,1] - 2*S[0,1]
         
-        z_score = (aucs[1] - aucs[0]) / np.sqrt(var_diff)
-        p_val = 2 * (1 - stats.norm.cdf(abs(z_score)))
+        if var_diff <= 1e-9:
+             z_score = 0.0
+             p_val = 1.0
+        else:
+             z_score = (aucs[1] - aucs[0]) / np.sqrt(var_diff)
+             p_val = 2 * (1 - stats.norm.cdf(abs(z_score)))
         
         return {
             'auc_base': float(aucs[0]),
