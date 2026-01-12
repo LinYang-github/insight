@@ -84,6 +84,45 @@
                                  <strong>Methodology:</strong> {{ modelResults.methodology }}
                              </div>
                         </el-tab-pane>
+
+                        <!-- Tab 3: Fine-Gray Models -->
+                        <el-tab-pane label="Fine-Gray 模型 (Prediction)">
+                            <div v-if="!modelResults.fine_gray_models || modelResults.fine_gray_models.length === 0">
+                                <el-empty description="无法生成 Fine-Gray 模型 (可能因 lifelines 版本或数据问题)" />
+                            </div>
+                            <div v-else>
+                                <div v-for="model in modelResults.fine_gray_models" :key="model.event_type" style="margin-bottom: 30px;">
+                                    <div class="model-header">
+                                        <h4 style="margin:0;">Event Type: {{ model.event_type }} (Subdistribution Hazard Model)</h4>
+                                    </div>
+                                    <div v-if="model.error" style="color: red; padding: 10px;">
+                                        Error: {{ model.error }}
+                                    </div>
+                                    <el-table v-else :data="model.summary" stripe border size="small">
+                                        <el-table-column prop="variable" label="Variable" />
+                                        <el-table-column prop="hr" label="SHR (Subdistribution HR)">
+                                            <template #default="scope">{{ scope.row.hr.toFixed(3) }}</template>
+                                        </el-table-column>
+                                        <el-table-column label="95% CI">
+                                            <template #default="scope">
+                                                {{ scope.row.ci_lower.toFixed(3) }} - {{ scope.row.ci_upper.toFixed(3) }}
+                                            </template>
+                                        </el-table-column>
+                                        <el-table-column prop="p_value" label="P Value">
+                                            <template #default="scope">
+                                                <span :style="{fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit'}">
+                                                    {{ scope.row.p_value < 0.001 ? '<0.001' : scope.row.p_value.toFixed(3) }}
+                                                </span>
+                                            </template>
+                                        </el-table-column>
+                                    </el-table>
+                                </div>
+                                <div class="help-text" style="background: #fdf6ec; padding: 10px; margin-top:10px; color:#e6a23c">
+                                    <strong>Interpretation:</strong> SHR describes the effect of covariates on the Cumulative Incidence Function (Risk). Useful for prediction.
+                                    CS-HR (Previous Tab) describes the effect on the rate of event occurrence among those consistently at risk. Useful for etiology.
+                                </div>
+                            </div>
+                        </el-tab-pane>
                     </el-tabs>
                 </div>
             </el-col>

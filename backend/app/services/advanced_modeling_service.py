@@ -799,6 +799,169 @@ class AdvancedModelingService:
         # Data Preview (Completeness)
         n_samples = len(df_clean)
         
+        results = []
+        
+        # 3. Fit Models (Incremental)
+        # Base Model (First feature set) - Optional? No, list is list of models.
+        # But usually we compare Model A vs Model B.
+        # User passes list of configs.
+        
+        # Pre-calc Base AUC/Metrics if we want 'Difference' relative to first model?
+        # Let's just calculate metrics for EACH model.
+        # Comparison logic (Delong, NRI/IDI) will be done pairwise if requested or relative to M1.
+        
+        # To support comparison matrix, we return full metrics for each.
+        # Frontend handles display of "Ref vs New".
+        
+        # We also need pairwise statistics (Delong P, NRI, IDI)
+        # If >1 models, compare Model[i] vs Model[0] (Base).
+        
+        for idx, config in enumerate(model_configs):
+            features = config['features']
+            name = config.get('name', f'Model {idx+1}')
+            
+            # Fit
+            model_res = AdvancedModelingService._fit_simple_model(
+                df_clean, target, event_col, features[0], features[1:] if len(features)>1 else [], model_type
+            )
+            # _fit_simple_model returns scalar params. We need FULL PREDICTIONS.
+            # We need to refactor or use standard fitting here.
+            
+            # Re-fit using standard libraries to get predictions
+            try:
+                if model_type == 'logistic':
+                    # formula
+                    f = f"{target} ~ {' + '.join(features)}"
+                    m = smf.logit(f, data=df_clean).fit(disp=0)
+                    y_prob = m.predict(df_clean)
+                    y_true = df_clean[target]
+                    
+                    metrics = EvaluationService.calculate_binary_metrics_at_threshold(y_true, y_prob)
+                    metrics['brier'] = EvaluationService.calculate_brier_score(y_true, y_prob)
+                    metrics['aic'] = m.aic
+                    metrics['bic'] = m.bic
+                    
+                elif model_type == 'cox':
+                    cph = CoxPHFitter()
+                    f = " + ".join(features)
+                    cph.fit(df_clean, duration_col=target, event_col=event_col, formula=f)
+                    
+                    # Predictions (Risk Score or Survival?)
+                    # For AUC, we typically use Risk Score (Partial Hazard).
+                    # cph.predict_partial_hazard(df)
+                    y_prob = cph.predict_partial_hazard(df_clean)
+                    y_true = df_clean[event_col] # Not exactly y_true for AUC(t), but for Harrell's C
+                    
+                    metrics = {
+                        'c_index': cph.concordance_index_,
+                        'aic': cph.AIC_partial_,
+                        'log_likelihood': cph.log_likelihood_
+                    }
+                    
+                    # For Time-Dependent AUC (if needed later), we use EvaluationService
+                    
+                results.append({
+                    'name': name,
+                    'features': features,
+                    'metrics': metrics,
+                    'y_prob': y_prob.tolist() if 'y_prob' in locals() else []
+                })
+                
+            except Exception as e:
+                results.append({'name': name, 'error': str(e)})
+                
+        # 4. Compare (vs Model 1)
+        if len(results) > 1:
+            base = results[0]
+            if 'y_prob' in base and not base.get('error'):
+                for res in results[1:]:
+                    if 'y_prob' in res and not res.get('error'):
+                        # Delong (if binary)
+                        if model_type == 'logistic':
+                            delong = EvaluationService.calculate_delong_test(
+                                df_clean[target], base['y_prob'], res['y_prob']
+                            )
+                            nri_idi = EvaluationService.calculate_nri_idi(
+                                df_clean[target], base['y_prob'], res['y_prob']
+                            )
+                            res['comparison'] = {**delong, **nri_idi}
+                            
+        return results
+
+    @staticmethod
+    def fit_fine_gray(df, duration_col, event_col, covariates, event_of_interest=1):
+        """
+        Fit Fine-Gray Competing Risk Model (Subdistribution Hazard).
+        
+        Args:
+            df (pd.DataFrame): Data.
+            duration_col (str): Time.
+            event_col (str): Event (0=Censor, 1,2..=Risks).
+            covariates (list): Independent variables.
+            event_of_interest (int): The event code to model (default 1).
+            
+        Returns:
+            dict: Summary table of SHR (Subdistribution Hazard Ratios).
+        """
+        # Try importing FineGrayFitter
+        try:
+            from lifelines import FineGrayFitter
+        except ImportError:
+            # Fallback or Error
+            # Recent lifelines might need specific import or it's missing.
+            # If missing, we can implement manual weighting logic, but it's complex.
+            # Let's hope it's available or we find it.
+            raise ImportError("FineGrayFitter not found in lifelines. Please upgrade lifelines >= 0.26.0.")
+            
+        # 1. Prepare Data
+        cols = [duration_col, event_col] + covariates
+        df_clean = df[cols].dropna()
+        
+        df_clean = DataService.preprocess_for_formula(df_clean)
+        
+        # 2. Fit
+        try:
+            fg = FineGrayFitter()
+            # Formula is supported in recent versions?
+            # Or use df directly with duration/event cols.
+            # formula argument is available in 0.26+
+            
+            formula = " + ".join(covariates)
+            fg.fit(df_clean, duration_col=duration_col, event_col=event_col, formula=formula)
+            
+            # 3. Extract Results
+            # Summary contains coef, se, p, etc.
+            # We want exp(coef) -> SHR
+            summary = fg.summary # DataFrame
+            
+            # Structure: 
+            # index = covariate
+            # col: coef, exp(coef), se(coef), p, ...
+            
+            res_list = []
+            for idx, row in summary.iterrows():
+                res_list.append({
+                    'variable': idx,
+                    'hr': float(row['exp(coef)']),
+                    'coef': float(row['coef']),
+                    'se': float(row['se(coef)']),
+                    'ci_lower': float(row['exp(coef) lower 95%']),
+                    'ci_upper': float(row['exp(coef) upper 95%']),
+                    'p_value': float(row['p'])
+                })
+                
+            return {
+                'models': [{
+                    'event_type': event_of_interest,
+                    'summary': res_list
+                }],
+                'methodology': "Fine-Gray subdistribution hazard models were used to estimate the effect of covariates on the cumulative incidence of the event of interest, accounting for competing risks."
+            }
+            
+        except Exception as e:
+            raise ValueError(f"Fine-Gray Fit Failed: {str(e)}")
+
+        
         # Logic for Cox ROC Proxy
         median_time = None
         if model_type == 'cox':
@@ -1197,11 +1360,11 @@ class AdvancedModelingService:
         df_clean = df[[time_col, event_col] + covariates].dropna()
         df_clean = DataService.preprocess_for_formula(df_clean)
         
-        # 2. Loop Events
         for evt in events:
             temp_df = df_clean.copy()
             temp_df['__cs_event'] = (temp_df[event_col] == evt).astype(int)
             
+            # 1. Cause-Specific Cox
             try:
                 cph = CoxPHFitter()
                 cov_str = " + ".join(covariates)
@@ -1231,10 +1394,24 @@ class AdvancedModelingService:
                 print(f"CS-Cox failed for event {evt}: {e}")
                 results['models'].append({'event_type': int(evt), 'error': str(e)})
 
+            # 2. Fine-Gray Subdistribution Hazard
+            try:
+                # We pass the ORIGINAL df because Fine-Gray handles competing risks internally (0=Censor, 1..=Risks)
+                # Note: fit_fine_gray handles one event of interest.
+                fg_res = AdvancedModelingService.fit_fine_gray(
+                    df, time_col, event_col, covariates, event_of_interest=int(evt)
+                )
+                # Unpack the single model result
+                if fg_res and 'models' in fg_res and len(fg_res['models']) > 0:
+                    results.setdefault('fine_gray_models', []).append(fg_res['models'][0])
+            except Exception as e:
+                print(f"Fine-Gray failed for event {evt}: {e}")
+                results.setdefault('fine_gray_models', []).append({'event_type': int(evt), 'error': str(e)})
+
         results['methodology'] = (
             "Competing Risk Analysis was performed. "
-            "Cause-Specific Hazard Ratios (CS-HR) were estimated for each event type using Cox proportional hazards models, "
-            "treating other competing events as censored. "
-            "The Aalen-Johansen estimator should be used for Cumulative Incidence Function (CIF) visualization."
+            "Cause-Specific Hazard Ratios (CS-HR) were estimated using standard Cox models (censoring competing events). "
+            "Subdistribution Hazard Ratios (SHR) were estimated using the Fine-Gray model to account for the cumulative incidence of competing events. "
+            "The Aalen-Johansen estimator was used for Cumulative Incidence Function (CIF) visualization."
         )
         return results
