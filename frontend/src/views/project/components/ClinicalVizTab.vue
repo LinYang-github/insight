@@ -102,14 +102,28 @@
                           <h3>患者特征输入</h3>
                           <el-form label-position="right" label-width="150px">
                             <el-form-item v-for="v in vizData.variables" :key="v.name" :label="v.name">
-                                <el-input-number 
-                                    v-model="inputs[v.name]" 
-                                    :min="v.min" 
-                                    :max="v.max" 
-                                    :step="(v.max - v.min) / 100"
-                                    style="width: 100%"
-                                />
-                                <div class="help-text">{{ v.min }} - {{ v.max }}</div>
+                                <!-- Numeric Input -->
+                                <div v-if="v.type === 'numeric'">
+                                    <el-input-number 
+                                        v-model="inputs[v.name]" 
+                                        :min="v.min" 
+                                        :max="v.max" 
+                                        :step="(v.max - v.min) / 100"
+                                        style="width: 100%"
+                                    />
+                                    <div class="help-text">{{ v.min }} - {{ v.max }}</div>
+                                </div>
+                                <!-- Categorical Input -->
+                                <div v-else>
+                                    <el-select v-model="inputs[v.name]" placeholder="Select Level" style="width: 100%">
+                                        <el-option 
+                                            v-for="m in v.points_mapping" 
+                                            :key="m.val" 
+                                            :label="m.val" 
+                                            :value="m.val" 
+                                        />
+                                    </el-select>
+                                </div>
                             </el-form-item>
                           </el-form>
                       </el-col>
@@ -200,9 +214,16 @@ const generateViz = async () => {
     });
     vizData.value = data;
     
-    // Initialize inputs to min value
+    // Initialize inputs
     data.variables.forEach(v => {
-        inputs[v.name] = v.min;
+        if (v.type === 'numeric') {
+            inputs[v.name] = v.min;
+        } else {
+            // Categorical: pick first level
+            if (v.points_mapping && v.points_mapping.length > 0) {
+                inputs[v.name] = v.points_mapping[0].val;
+            }
+        }
     });
 
     nextTick(() => {
@@ -224,21 +245,33 @@ const currentRisk = computed(() => {
     let lp = f.intercept;
     
     // Sum Betas * X
-    for (const [varName, coef] of Object.entries(f.coeffs)) {
-        const val = inputs[varName] || 0;
-        lp += val * coef;
+    for (const [varName, coef_or_map] of Object.entries(f.coeffs)) {
+        const val = inputs[varName];
+        
+        // Check if numeric or categorical (based on coef structure)
+        if (typeof coef_or_map === 'number') {
+            // Numeric: val * coef
+            lp += (Number(val) || 0) * coef_or_map;
+        } else if (typeof coef_or_map === 'object') {
+            // Categorical: look up level coef
+            // val is the level string
+            // coef_or_map is {LevelA: 1.2, LevelB: 0.5, ...}
+            const levelCoef = coef_or_map[val] || 0;
+            lp += levelCoef;
+        }
     }
     
     if (f.model_type === 'logistic') {
         return 1 / (1 + Math.exp(-lp));
     } else if (f.model_type === 'cox') {
-        // Cox: 1 - S0^exp(lp)
-        // Note: intercept in params usually is 0 for Cox in python libs unless specifically handled.
-        // We rely on baseline_survival.
         if (f.baseline_survival) {
-            // lp here should be centered if fit was centered? 
-            // Simplified: Assume straightforward application. 
-            // In lifelines, predict_survival_function(X) uses X*beta.
+            // Note: backend sends ORIGINAL intercept.
+            // Cox LP needs to be compatible.
+            // If backend logic for Cox LP in Nomogram generation was consistent,
+            // we apply the same formula: Risk = 1 - S0^exp(LP).
+            // Usually Cox LP excludes intercept, but we included it if fit returned it?
+            // Actually CoxPHFitter usually has no intercept in params_.
+            // So f.intercept is likely 0 unless we forced it.
             return 1 - Math.pow(f.baseline_survival, Math.exp(lp));
         }
         return 0;
@@ -287,7 +320,7 @@ const renderNomogram = (data) => {
             x: pts,
             y: Array(pts.length).fill(yPos),
             mode: 'markers+text',
-            text: vals.map(val => Number(val).toFixed(1)), // Value labels
+            text: vals.map(val => v.type === 'numeric' ? Number(val).toFixed(1) : val), // Value labels
             textposition: 'top center',
             marker: { symbol: 'line-ns-open', color: 'black', size: 10, line: {width: 2} },
             showlegend: false,

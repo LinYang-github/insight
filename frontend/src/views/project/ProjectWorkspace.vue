@@ -57,6 +57,10 @@
                 <el-icon><Connection /></el-icon>
                 <span>倾向匹配 (PSM)</span>
             </el-menu-item>
+             <el-menu-item index="iptw" :disabled="!dataset">
+                <el-icon><ScaleToOriginal /></el-icon>
+                <span>逆概率加权 (IPTW)</span>
+            </el-menu-item>
 
             <div class="menu-group-title">🤖 多因素建模 (Modeling)</div>
             <el-menu-item index="modeling" :disabled="!dataset">
@@ -67,7 +71,7 @@
                 <el-icon><Histogram /></el-icon>
                 <span>高级建模 (Advanced)</span>
             </el-menu-item>
-             <el-menu-item index="longitudinal" :disabled="!dataset">
+            <el-menu-item index="longitudinal" :disabled="!dataset">
                 <el-icon><Odometer /></el-icon>
                 <span>纵向分析 (Longitudinal)</span>
             </el-menu-item>
@@ -110,6 +114,9 @@
          <div v-else-if="activeTabName === 'psm'">
              <PsmTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" @dataset-created="handleDatasetCreated" />
          </div>
+         <div v-else-if="activeTabName === 'iptw'">
+             <IPTWTab v-if="dataset?.dataset_id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
+         </div>
          <div v-else-if="activeTabName === 'modeling'">
               <ModelingTab v-if="dataset?.dataset_id" :projectId="route.params.id" :datasetId="dataset.dataset_id" :metadata="dataset.metadata" />
          </div>
@@ -150,9 +157,10 @@ import AdvancedModelingTab from './components/AdvancedModelingTab.vue'
 import ClinicalVizTab from './components/ClinicalVizTab.vue'
 import LongitudinalTab from './components/LongitudinalTab.vue'
 import PsmTab from './components/PsmTab.vue'
+import IPTWTab from './components/IPTWTab.vue'
 import api from '../../api/client'
 
-import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer } from '@element-plus/icons-vue'
+import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer, ScaleToOriginal } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const dataset = ref(null)

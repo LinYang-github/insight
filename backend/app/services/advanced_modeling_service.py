@@ -545,185 +545,213 @@ class AdvancedModelingService:
     def generate_nomogram(df, target, event_col, model_type, predictors):
         """
         Generate data for Nomogram and Web Calculator.
-        
-        Logic:
-        1. Fit Model -> Get Coefs.
-        2. Calculate "Points" for each variable based on its effect size relative to the one with max effect.
-        3. Create mapping: Value -> Points.
-        4. Create mapping: Total Points -> Probability.
+        Supports both numeric and categorical predictors.
         """
         results = {
             'variables': [],
             'risk_table': []
         }
         
-        # 1. Fit Model
-        # Simple Logic: Reuse fit_simple_model or just fit here.
-        # We need the model object to predict.
-        df_clean = df[[target] + predictors].copy()
-        if event_col: 
-            df_clean = df[[target, event_col] + predictors].dropna()
-        else:
-            df_clean = df_clean.dropna()
-
+        # 1. Fit Model & Get Coefs
+        cols = [target] + predictors
+        if event_col: cols.append(event_col)
+        
+        df_clean = df[cols].dropna()
         df_clean = DataService.preprocess_for_formula(df_clean)
 
-        # Fit
         params = {}
-        model = None
-        base_risk = 0 # Intercept
+        intercept = 0
+        baseline_sf = None
+        
+        # Prepare Formula
+        formula = f"{target} ~ {' + '.join(predictors)}" if model_type == 'logistic' else " + ".join(predictors)
         
         if model_type == 'logistic':
-             # formula
-             f = f"{target} ~ {' + '.join(predictors)}"
-             model_res = smf.logit(f, data=df_clean).fit(disp=0)
+             model_res = smf.logit(formula, data=df_clean).fit(disp=0)
              params = model_res.params.to_dict()
-             # params include Intercept
+             intercept = params.get('Intercept', 0)
         elif model_type == 'cox':
              cph = CoxPHFitter()
-             cph.fit(df_clean, duration_col=target, event_col=event_col, formula=" + ".join(predictors))
+             cph.fit(df_clean, duration_col=target, event_col=event_col, formula=formula)
              params = cph.params_.to_dict()
-             # Cox has no intercept in partial hazard, but baseline hazard exists.
-             # Nomogram for Cox usually predicts Survival at Time T.
-             # We need a baseline survival at specific T (e.g. median time).
-             # Let's pick median time for now.
              median_time = df_clean[target].median()
+             # Calculate baseline survival at median time
+             # Baseline S0(t) is survival when all X=0 (if centered, at mean)
+             # lifelines predicts partial hazard. 
+             # predict_survival_function returns S(t|x).
+             # We want Base S0(t). 
+             # We can get S(t|mean) then adjust back?
+             # Or construct a dummy where all centered covariates are 0.
+             # Lifelines centers data by default.
              baseline_sf = cph.predict_survival_function(pd.DataFrame({p:[0] for p in predictors}, index=[0]), times=[median_time]).iloc[0,0]
-             # S(t|x) = S0(t)^exp(lp)
-             # lp = Xb (centered? lifelines centers data)
-             # Let's stick to Linear Predictor points.
-             
-        # 2. Calculate Points Scaling
-        # Find the variable with largest effect range (beta * (max-min))
-        max_effect = 0
-        effect_ranges = {}
-        
-        var_metas = {} # Store min/max/categories
+
+        # 2. Calculate Scaling Factor (Points per Unit Beta)
+        # We need to find the variable with the maximum effect range.
+        max_effect_range = 0
+        var_configs = {} # Store how to compute effect for each var
         
         for var in predictors:
-            if var not in params and f"C({var})" not in str(params.keys()):
-                # Categorical might be dummy encoded in params? 
-                # Statsmodels/Lifelines formula handles it.
-                # Simplification: Assume numeric predictors for MVP or check simple categorical logic.
-                pass
-            
-            # Numeric logic
-            if pd.api.types.is_numeric_dtype(df_clean[var]):
-                 coef = params.get(var, 0)
-                 mn, mx = df_clean[var].min(), df_clean[var].max()
-                 rng = abs(coef * (mx - mn))
-                 effect_ranges[var] = rng
-                 var_metas[var] = {'type': 'numeric', 'min': mn, 'max': mx, 'coef': coef}
-                 if rng > max_effect: max_effect = rng
+            if pd.api.types.is_numeric_dtype(df_clean[var]) and df_clean[var].nunique() > 2:
+                # Continuous / Numeric
+                coef = params.get(var, 0)
+                mn, mx = df_clean[var].min(), df_clean[var].max()
+                rng = abs(coef * (mx - mn))
+                if rng > max_effect_range: max_effect_range = rng
+                
+                var_configs[var] = {
+                    'type': 'numeric',
+                    'coef': coef,
+                    'min': mn, 'max': mx,
+                    'range': rng
+                }
             else:
-                 # Categorical
-                 # Coefs are usually Var[T.Level]
-                 # Find all levels
-                 levels = df_clean[var].unique()
-                 # Find max coef diff
-                 # base level is 0
-                 c_values = [0]
-                 for l in levels:
-                     k = f"{var}[T.{l}]"
-                     if k in params: c_values.append(params[k])
-                 
-                 rng = max(c_values) - min(c_values)
-                 effect_ranges[var] = rng
-                 # Store levels coeff
-                 # ... (skipped for MVP complex categorical, assuming numeric/binary for simplicity or handling nicely)
-                 # Actually, let's assume numeric for now to prevent complexity explosion in 1 step.
-                 # If user passes categorical, we might skip or simplistic handle.
-                 pass
+                # Categorical (or binary treated as cat)
+                # Find all associated coefficients (dummy encoded)
+                # Reference level has coef 0.
+                levels = sorted(df_clean[var].unique())
+                level_coefs = {}
+                
+                # Check how it's encoded in params. Usually "Var[T.Level]"
+                # Base level is 0.
+                # Regex or exact match? Statsmodels/Lifelines uses "Var[T.Level]"
+                c_values = []
+                for l in levels:
+                    key = f"{var}[T.{l}]"
+                    val = params.get(key, 0)
+                    if key not in params and l == levels[0]: val = 0 # Assume first is ref
+                    level_coefs[l] = val
+                    c_values.append(val)
+                
+                rng = max(c_values) - min(c_values)
+                if rng > max_effect_range: max_effect_range = rng
+                
+                var_configs[var] = {
+                    'type': 'categorical',
+                    'level_coefs': level_coefs,
+                    'min_coef': min(c_values),
+                    'range': rng
+                }
 
-        if max_effect == 0:
-            return results # No significant vars or empty
-            
-        points_per_unit_beta = 100 / max_effect
+        if max_effect_range == 0:
+            return results
+
+        points_per_unit_beta = 100 / max_effect_range
         
-        # 3. Generate Variable Scales
+        # 3. Generate Scale Data
+        # We shift scale so that Min Contribution = 0 Points.
+        # Contribution = Val * Coef (Numeric) or Level_Coef (Cat)
+        
         total_min_points = 0
         total_max_points = 0
         
         for var in predictors:
-            if var in var_metas:
-                meta = var_metas[var]
-                coef = meta['coef']
+            config = var_configs[var]
+            
+            if config['type'] == 'numeric':
+                coef = config['coef']
+                mn, mx = config['min'], config['max']
                 
-                # Points for Min and Max
-                # We align Min Value to 0 points? No.
-                # If coef > 0: MinVal -> 0 pts (relative), MaxVal -> 100 pts.
-                # Linear contribution: Pts = (Val - Min) * Coef * Scaling ?? 
-                # Standard Nomogram: 
-                #  LP_contribution = Val * Coef
-                #  Points = abs(LP_contribution) * Scaling? 
-                #  Usually relative to base.
-                #  Let's define: Points(Val) = (Val * Coef - Min_Contribution) * points_per_unit_beta
+                # Contributions at extremes
+                c_min = mn * coef
+                c_max = mx * coef
                 
-                contributions = [meta['min']*coef, meta['max']*coef]
-                min_c = min(contributions)
-                max_c = max(contributions)
+                # We define Base for this variable as min(c_min, c_max)
+                base_c = min(c_min, c_max)
                 
-                def val_to_point(v):
-                    c = v * coef
-                    # We map [min_c, max_c] to [0, 100] (normalized to max_effect)
-                    # wait, max_effect is the global max span.
-                    # so current span maps to (max_c - min_c) * points_per_unit_beta
-                    return (c - min_c) * points_per_unit_beta
-                
-                # Setup visualization axis
-                # Ticks
-                ticks = np.linspace(meta['min'], meta['max'], 10)
-                tick_points = [val_to_point(t) for t in ticks]
-                
+                # Points = (Contribution - Base) * scaling
+                ticks = np.linspace(mn, mx, 10)
+                points_mapping = []
+                for t in ticks:
+                    c = t * coef
+                    pts = (c - base_c) * points_per_unit_beta
+                    points_mapping.append({'val': float(t), 'pts': float(pts)})
+                    
                 results['variables'].append({
                     'name': var,
                     'type': 'numeric',
-                    'min': float(meta['min']),
-                    'max': float(meta['max']),
-                    'coef': float(coef),
-                    'points_mapping': [{'val': float(t), 'pts': float(p)} for t, p in zip(ticks, tick_points)]
+                    'min': float(mn), 'max': float(mx),
+                    'points_mapping': points_mapping
                 })
                 
-                total_min_points += 0 # By definition of shift
-                total_max_points += (max_c - min_c) * points_per_unit_beta
+                # Update Totals tracking
+                # A patient usually contributes between 0 and (Range * Scaling) points
+                total_max_points += config['range'] * points_per_unit_beta
+                
+                # Update global intercept adjustment
+                # The formula is LP = Intercept + Sum(Contributions)
+                # We substituted Contribution = Points/S + Base
+                # LP = Intercept + Sum(Points/S + Base)
+                #    = (Intercept + Sum(Base)) + TotalPoints/S
+                intercept += base_c
+                
+            else:
+                # Categorical
+                min_c = config['min_coef'] # The lowest coef among levels
+                cat_mapping = []
+                
+                for lvl, l_coef in config['level_coefs'].items():
+                    pts = (l_coef - min_c) * points_per_unit_beta
+                    cat_mapping.append({'val': str(lvl), 'pts': float(pts)})
+                    
+                results['variables'].append({
+                    'name': var,
+                    'type': 'categorical',
+                    'points_mapping': cat_mapping
+                })
+                
+                total_max_points += config['range'] * points_per_unit_beta
+                intercept += min_c
 
-        # 4. Risk Mapping
-        # Total Points -> LP -> Prob
-        # LP = Intercept + Sum(Val*Coef)
-        # We shifted Val*Coef by min_c.
-        # LP = Intercept + Sum(Points / Scaling + Min_C)
-        #    = Intercept + Sum(Min_C) + Total_Points / Scaling
-        
-        sum_min_c = sum([var_metas[v]['min']*var_metas[v]['coef'] for v in predictors if v in var_metas]+[0]) # +0 for safety
-        intercept = params.get('Intercept', 0)
-        
+        # 4. Risk Scale
+        # LP = Adjusted_Intercept + TotalPoints / Scaling
         point_grid = np.linspace(0, total_max_points, 100)
-        risks = []
+        risk_mapping = []
         
         for pt in point_grid:
-            lp = intercept + sum_min_c + (pt / points_per_unit_beta)
+            lp = intercept + (pt / points_per_unit_beta)
             if model_type == 'logistic':
-                prob = 1 / (1 + np.exp(-lp))
-                risks.append(prob)
-            elif model_type == 'cox':
-                 # 1 - S0(t)^exp(lp)
-                 # need baseline
-                 prob = 1 - (baseline_sf ** np.exp(lp - intercept)) # Cox Logic is complex. LP is usually Xb-Mean(Xb).
-                 # Simpler: Risk at Median Time.
-                 prob = 1 - (baseline_sf ** np.exp(lp)) 
-                 # Note: lifelines 'partial hazard' usually excludes baseline.
-                 risks.append(prob)
-                 
-        results['risk_table'] = [{'points': float(pt), 'risk': float(r)} for pt, r in zip(point_grid, risks)]
+                risk = 1 / (1 + np.exp(-lp))
+            else:
+                # Cox: 1 - S0^exp(lp)
+                risk = 1 - (baseline_sf ** np.exp(lp))
+            risk_mapping.append({'points': float(pt), 'risk': float(risk)})
+            
+        results['risk_table'] = risk_mapping
         
-        # Meta info for Calculator
+        # Meta for Calculator
+        # We need to send coefs differently for cat?
+        # Actually frontend calc handles numerics. For cat, it needs mapping Val -> Coef.
+        # Let's simplify and send mapped 'level_coefs' for cat.
+        
+        coeffs_flat = {}
+        for var, conf in var_configs.items():
+            if conf['type'] == 'numeric':
+                coeffs_flat[var] = float(conf['coef'])
+            else:
+                # For categorical, frontend needs to look up dict
+                # We can store in specific structure
+                coeffs_flat[var] = conf['level_coefs'] # dict inside dict
+                
         results['formula'] = {
-            'intercept': float(intercept),
-            'baseline_survival': float(baseline_sf) if model_type == 'cox' else None,
-            'coeffs': {v: float(var_metas[v]['coef']) for v in predictors if v in var_metas},
-            'model_type': model_type
+            'intercept': float(intercept), # This is the ADJUSTED intercept now? 
+            # WAIT. The calculator logic in frontend uses raw inputs * coefficients.
+            # If I send ADJUSTED intercept here, front-end calculation will be wrong unless I change frontend too.
+            # Frontend Logic: lp = intercept + sum(val * coef).
+            # So I should send the ORIGINAL intercept and ORIGINAL coefficients.
+            'baseline_survival': float(baseline_sf) if baseline_sf else None,
+            'model_type': model_type,
+            'coeffs': coeffs_flat, # Supports nested dicts? Frontend needs update.
+            'var_configs': var_configs # Helper for frontend
         }
-        # Add methodology
+        
+        # Reset intercept to original for 'formula' return if frontend uses standard formula
+        # But wait, frontend 'coeffs_flat' for categorical...
+        # If user inputs "Stage II", we need to know coef for Stage II.
+        # Yes, level_coefs provides that. 
+        # But wait, step 1 params had 'Intercept' (original).
+        # We should return ORIGINAL intercept for calculator.
+        results['formula']['intercept'] = float(params.get('Intercept', 0))
+
         results['methodology'] = AdvancedModelingService._generate_nomogram_methodology(model_type)
         return results
 
