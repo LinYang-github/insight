@@ -110,36 +110,50 @@
                     <el-table :data="tableData" stripe border size="small">
                         <el-table-column prop="name" label="模型名称" width="130" fixed="left" />
                         
-                        <el-table-column label="C-index / AUC (95% CI)" width="180">
+                        <el-table-column label="C-index / AUC (95% CI)" width="190">
+                            <template #header>
+                                C-index / AUC
+                                <el-tooltip content="括号内为 95% 置信区间。下方 P 值检验 H0: AUC=0.5 (即模型是否优于随机猜测)。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                            </template>
                             <template #default="scope">
                                 <span style="font-weight: bold">{{ scope.row.auc }}</span> 
                                 <span style="color: gray; font-size: 11px; margin-left: 4px">{{ scope.row.auc_ci }}</span>
+                                <div v-if="scope.row.auc_p && scope.row.auc_p !== '-'" style="font-size: 11px; color: #909399">
+                                    P(vs 0.5) {{ scope.row.auc_p.toString().startsWith('<') ? scope.row.auc_p : '= ' + scope.row.auc_p }}
+                                </div>
                             </template>
                         </el-table-column>
                         
-                        <el-table-column label="P 值 (模型提升)" width="120">
+                        <el-table-column label="P 值 (模型提升)" width="130">
                             <template #header>
-                                模型提升 P 值
-                                <el-tooltip content="基于似然比检验 (LRT)。评估相比基础模型，新模型是否带来了统计学显著的性能提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                P (vs Base)
+                                <el-tooltip content="包含两种检验：LRT (似然比检验) 和 Delong Test (ROC 差异检验)。用于评估相比基础模型，新模型是否带来了显著提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
-                                <span v-if="scope.row.p_lrt !== undefined && scope.row.p_lrt !== '-'">
+                                <div v-if="scope.row.p_lrt !== undefined && scope.row.p_lrt !== '-'">
+                                     <div style="font-size: 11px; color: #606266">LRT:</div>
                                      <span :style="{fontWeight: scope.row.p_lrt < 0.05 ? 'bold' : 'normal', color: scope.row.p_lrt < 0.05 ? 'red' : 'black'}">
                                         {{ scope.row.p_lrt < 0.001 ? '< 0.001' : scope.row.p_lrt.toFixed(3) }}
                                      </span>
-                                </span>
-                                <span v-else style="color: #ccc">-</span>
+                                </div>
+                                <div v-if="scope.row.p_delong !== undefined && scope.row.p_delong !== '-'" style="margin-top: 4px; border-top: 1px dashed #eee; padding-top: 2px">
+                                     <div style="font-size: 11px; color: #606266">Delong:</div>
+                                     <span :style="{fontWeight: scope.row.p_delong < 0.05 ? 'bold' : 'normal', color: scope.row.p_delong < 0.05 ? '#E6A23C' : 'black'}">
+                                        {{ scope.row.p_delong < 0.001 ? '< 0.001' : scope.row.p_delong.toFixed(3) }}
+                                     </span>
+                                </div>
+                                <span v-if="(scope.row.p_lrt === undefined || scope.row.p_lrt === '-') && (scope.row.p_delong === undefined || scope.row.p_delong === '-')" style="color: #ccc">-</span>
                             </template>
                         </el-table-column>
                         
                         <el-table-column label="AIC (变化量)" width="110">
                             <template #header>
-                                AIC (变化)
-                                <el-tooltip content="赤池信息准则。数值越低模型越优。负值代表相比前一模型拟合度提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
+                                AIC (Change)
+                                <el-tooltip content="赤池信息准则。数值越低模型越优。绿色负值代表相比前一模型拟合度提升。" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip>
                             </template>
                             <template #default="scope">
                                 {{ scope.row.aic }}
-                                <div v-if="scope.row.delta_aic !== undefined" :style="{color: scope.row.delta_aic < -2 ? 'green' : (scope.row.delta_aic > 2 ? 'red' : 'gray'), fontSize: '11px'}">
+                                <div v-if="scope.row.delta_aic !== undefined" :style="{color: scope.row.delta_aic < -2 ? 'green' : (scope.row.delta_aic > 2 ? 'red' : 'gray'), fontSize: '11px', fontWeight: 'bold'}">
                                      ({{ scope.row.delta_aic > 0 ? '+' : '' }}{{ scope.row.delta_aic.toFixed(1) }})
                                 </div>
                             </template>
@@ -344,6 +358,7 @@ const tableData = computed(() => {
             aic: m.aic !== undefined ? m.aic.toFixed(1) : '-',
             bic: m.bic !== undefined ? m.bic.toFixed(1) : '-',
             p_lrt: m.p_lrt !== undefined ? m.p_lrt : '-',
+            p_delong: m.p_delong !== undefined ? m.p_delong : undefined,
             delta_aic: m.delta_aic !== undefined ? m.delta_aic : undefined,
             delta_bic: m.delta_bic !== undefined ? m.delta_bic : undefined,
             n: m.n || '-',
@@ -356,8 +371,10 @@ const tableData = computed(() => {
                 const tm = m.time_dependent[t]
                 return {
                     ...base,
-                auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
+                    p_delong: tm.p_delong !== undefined ? tm.p_delong : undefined,
+                    auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
                     auc_ci: tm.auc_ci || '-',
+                    auc_p: tm.auc_p !== undefined ? (tm.auc_p < 0.001 ? '<0.001' : tm.auc_p.toFixed(3)) : '-',
                     nri: tm.nri !== undefined ? tm.nri.toFixed(3) : '-',
                     nri_p: tm.nri_p !== undefined ? (tm.nri_p < 0.001 ? '<0.001' : tm.nri_p.toFixed(3)) : '-',
                     nri_ci: tm.nri_ci || '-',
@@ -374,6 +391,7 @@ const tableData = computed(() => {
                 ...base,
                 auc: m.auc !== undefined ? m.auc.toFixed(3) : '-',
                 auc_ci: m.auc_ci || '-',
+                auc_p: m.auc_p !== undefined ? (m.auc_p < 0.001 ? '<0.001' : m.auc_p.toFixed(3)) : '-',
                 nri: m.nri !== undefined ? m.nri.toFixed(3) : '-',
                 nri_p: m.nri_p !== undefined ? (m.nri_p < 0.001 ? '<0.001' : m.nri_p.toFixed(3)) : '-',
                 nri_ci: m.nri_ci || '-',
@@ -395,7 +413,7 @@ const copyTableData = () => {
     // Headers
     const headers = [
         '模型名称', 
-        'AUC/C-index', 'AUC 95% CI', 
+        'AUC/C-index', 'AUC 95% CI', 'AUC P-Value',
         'P Value (LRT)', 
         'AIC', 'Delta AIC', 
         'NRI', 'NRI P-Value', 'NRI 95% CI',
@@ -406,7 +424,7 @@ const copyTableData = () => {
     // Rows
     const rows = tableData.value.map(row => [
         row.name,
-        row.auc, row.auc_ci,
+        row.auc, row.auc_ci, row.auc_p,
         row.p_lrt,
         row.aic, row.delta_aic !== undefined ? row.delta_aic : '-',
         row.nri, row.nri_p, row.nri_ci || '-',

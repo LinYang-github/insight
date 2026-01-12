@@ -814,14 +814,21 @@ class AdvancedModelingService:
         
         # 3. Loop Models
         for config in model_configs:
-            def calc_ci_str(auc, n1, n2):
-                if n1 <= 0 or n2 <= 0: return "-"
+            def calc_auc_stats(auc, n1, n2):
+                from scipy.stats import norm
+                if n1 <= 0 or n2 <= 0: return ("-", 1.0)
                 q1 = auc / (2 - auc)
                 q2 = 2 * auc**2 / (1 + auc)
                 se = np.sqrt((auc*(1-auc) + (n1-1)*(q1-auc**2) + (n2-1)*(q2-auc**2)) / (n1*n2))
                 lower = max(0, auc - 1.96*se)
                 upper = min(1, auc + 1.96*se)
-                return f"{lower:.3f}-{upper:.3f}"
+                
+                # P-value (H0: AUC=0.5)
+                # Z = (AUC - 0.5) / SE
+                z = (auc - 0.5) / se if se > 0 else 0
+                p = 2 * (1 - norm.cdf(abs(z)))
+                
+                return (f"{lower:.3f}-{upper:.3f}", float(p))
 
             name = config['name']
             feats = config['features']
@@ -863,7 +870,9 @@ class AdvancedModelingService:
                         # ROC
                         fpr, tpr, _ = roc_curve(y_true, y_prob)
                         metrics['auc'] = calc_auc(fpr, tpr)
-                        metrics['auc_ci'] = calc_ci_str(metrics['auc'], sum(y_true), len(y_true)-sum(y_true))
+                        ci_str, p_val = calc_auc_stats(metrics['auc'], sum(y_true), len(y_true)-sum(y_true))
+                        metrics['auc_ci'] = ci_str
+                        metrics['auc_p'] = p_val
                         
                         roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
                         
@@ -947,7 +956,9 @@ class AdvancedModelingService:
                             fpr, tpr, _ = roc_curve(y_binary, y_score_valid)
                             t_auc = calc_auc(fpr, tpr)
                             t_metrics['auc'] = t_auc
-                            t_metrics['auc_ci'] = calc_ci_str(t_auc, sum(y_binary), len(y_binary)-sum(y_binary))
+                            ci_str, p_val = calc_auc_stats(t_auc, sum(y_binary), len(y_binary)-sum(y_binary))
+                            t_metrics['auc_ci'] = ci_str
+                            t_metrics['auc_p'] = p_val
                             t_metrics['roc_data'] = [{'fpr': f, 'tpr': v} for f, v in zip(fpr, tpr)]
                         else:
                             t_metrics['auc'] = 0.5
@@ -1059,7 +1070,37 @@ class AdvancedModelingService:
                         except Exception as e:
                             print(f"NRI at t={t} failed for Cox model {curr['model_res']['name']}: {e}")
 
-            # Likelihood Ratio Test (LRT) and AIC/BIC comparison (Global)
+                        # Calculate Delong Test at t (Time-Dependent AUC Comparison)
+                        try:
+                             delong_res = EvaluationService.calculate_delong_test(
+                                 y_true,
+                                 y_prob_base,
+                                 y_prob_curr
+                             )
+                             if t in curr['model_res']['metrics']['time_dependent']:
+                                 curr['model_res']['metrics']['time_dependent'][t]['p_delong'] = delong_res.get('p_delong')
+                        except Exception as e:
+                             print(f"Delong at t={t} failed: {e}")
+
+        # 2b. Global Delong Test for Logistic
+        if len(results) >= 2 and results[0]['raw_pred'] is not None and not isinstance(results[0]['raw_pred'], dict):
+             base = results[0]
+             for i in range(1, len(results)):
+                 curr = results[i]
+                 if curr['raw_pred'] is not None:
+                      try:
+                          delong_res = EvaluationService.calculate_delong_test(
+                              base['raw_y'],
+                              base['raw_pred'],
+                              curr['raw_pred']
+                          )
+                          curr['model_res']['metrics']['p_delong'] = delong_res.get('p_delong')
+                      except Exception as e:
+                          print(f"Delong failed for logistic: {e}")
+
+        # 3. Likelihood Ratio Test (LRT) and AIC/BIC comparison (Global)
+        if len(results) > 0:
+            base = results[0]
             base_model_metrics = base['model_res']['metrics']
             for i in range(1, len(results)):
                 curr = results[i]

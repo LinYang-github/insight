@@ -376,3 +376,128 @@ class EvaluationService:
             'idi_p': float(p_idi),
             'idi_ci': f"{idi_lower:.3f}-{idi_upper:.3f}"
         }
+
+    @staticmethod
+    def calculate_delong_test(y_true, p_base, p_new):
+        """
+        Perform DeLong Test to compare two correlated ROC curves (AUC).
+        H0: AUC_base == AUC_new
+        
+        Ref: DeLong et al. (1988). Comparing the Areas under Two or More Correlated Receiver Operating Characteristic Curves.
+        """
+        import scipy.stats as stats
+        
+        y_true = np.array(y_true)
+        p_base = np.array(p_base)
+        p_new = np.array(p_new)
+        
+        # Indices of positive and negative examples
+        pos_idx = np.where(y_true == 1)[0]
+        neg_idx = np.where(y_true == 0)[0]
+        
+        m = len(pos_idx)
+        n = len(neg_idx)
+        
+        if m == 0 or n == 0:
+            return {'p_delong': '-', 'z_delong': '-'}
+
+        # Calculate AUCs & V-matrix via Covariance
+        # Fast DeLong Implementation adapted for 2 models
+        
+        def compute_mid_rank(x):
+            J = np.argsort(x)
+            Z = x[J]
+            N = len(x)
+            T = np.zeros(N, dtype=float)
+            i = 0
+            while i < N:
+                j = i
+                while j < N and Z[j] == Z[i]:
+                    j += 1
+                T[i:j] = 0.5 * (i + j - 1)
+                i = j
+            T2 = np.empty(N, dtype=float)
+            T2[J] = T + 1
+            return T2
+
+        # V10: for each positive case, average rank among negatives (divided by n)
+        # V01: for each negative case, average rank among positives (divided by m)
+        
+        def calculate_variance_components(preds):
+            V10 = []
+            V01 = []
+            aucs = []
+            
+            for p in preds:
+                X = p[pos_idx] # Predictions for cases
+                Y = p[neg_idx] # Predictions for controls
+                
+                # Fast Mann-Whitney / V-stat
+                # Rank of X in merged(X, Y)
+                # But DeLong formulation uses structural components
+                # Structural Component V10[i] = (1/n) * sum_j I(X_i > Y_j) + 0.5 I(X_i = Y_j)
+                # This is equivalent to (Rank(X_i) in Combined - Rank(X_i) in X) / n ???
+                # No, simpler: 
+                # Let's use the mid-rank formula.
+                # W = Mann-Whitney Stat. AUC = W / (m*n)
+                
+                # Vectorized V10 calculation
+                # Concatenate [X_i, Ys] ... slow for O(N^2)
+                # Use global rank approach:
+                # R_combined = rank of X in (X U Y)
+                # sum I(X_i > Y_j) = R_combined(X_i) - R_self(X_i)  ? No.
+                
+                # Correct approach using mid-ranks on pooled data
+                pooled = np.concatenate([X, Y])
+                ranks = compute_mid_rank(pooled)
+                rank_X = ranks[:m]
+                rank_Y = ranks[m:]
+                
+                # AUC
+                auc = (np.sum(rank_X) - 0.5 * m * (m + 1)) / (m * n)
+                aucs.append(auc)
+                
+                # V10_i = ( 1/n ) * ( R(X_i) - R_X(X_i) ) ? 
+                # Actually: V10_i = (Rank of X_i among Y + X_i) - (Rank of X_i among X) ...
+                # Formula: V10_i = (sum_{j=1}^n psi(X_i, Y_j)) / n
+                # where psi(u, v) = 1 if u > v, 0.5 if u = v.
+                # psi(X_i, Y_j) is exactly Mann-Whitney kernel.
+                # sum_j psi(X_i, Y_j) = (Rank of X_i in pooled) - (Rank of X_i in X)
+                
+                ranks_in_X = compute_mid_rank(X)
+                v10 = (rank_X - ranks_in_X) / n
+                V10.append(v10)
+                
+                # V01_j = (sum_{i=1}^m psi(X_i, Y_j)) / m
+                # sum_i psi(X_i, Y_j) = m - sum_i psi(Y_j, X_i)
+                # sum_i psi(Y_j, X_i) = (Rank of Y_j in pooled) - (Rank of Y_j in Y)
+                ranks_in_Y = compute_mid_rank(Y)
+                v01 = (1.0 - (rank_Y - ranks_in_Y) / m)
+                V01.append(v01)
+                
+            return np.array(V10).T, np.array(V01).T, np.array(aucs)
+
+        V10, V01, aucs = calculate_variance_components([p_base, p_new])
+        
+        # Covariance Matrix S
+        # S = (1/m) * Cov(V10) + (1/n) * Cov(V01)
+        S_10 = np.cov(V10, rowvar=False)
+        S_01 = np.cov(V01, rowvar=False)
+        
+        S = (S_10 / m) + (S_01 / n)
+        
+        # Variance of difference (A - B)
+        # Var(d) = S[0,0] + S[1,1] - 2*S[0,1]
+        
+        var_diff = S[0,0] + S[1,1] - 2*S[0,1]
+        
+        z_score = (aucs[1] - aucs[0]) / np.sqrt(var_diff)
+        p_val = 2 * (1 - stats.norm.cdf(abs(z_score)))
+        
+        return {
+            'auc_base': float(aucs[0]),
+            'auc_new': float(aucs[1]),
+            'p_delong': float(p_val),
+            'z_delong': float(z_score),
+            'var_diff': float(var_diff)
+        }
