@@ -211,8 +211,38 @@
                             </template>
                         </el-table-column>
 
-                        <el-table-column prop="n" label="样本量" width="80" />
-                        <el-table-column label="納入变量" min-width="150">
+                        <!-- Detailed Metrics -->
+                        <el-table-column label="Sens (灵敏度)" width="150" align="center">
+                            <template #header>Sens (灵敏度)<el-tooltip content="Sensitivity (Recall)" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+                            <template #default="{row}">{{ row.sensitivity_ci || '-' }}</template>
+                        </el-table-column>
+                        <el-table-column label="Spec (特异度)" width="150" align="center">
+                            <template #header>Spec (特异度)<el-tooltip content="Specificity" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+                            <template #default="{row}">{{ row.specificity_ci || '-' }}</template>
+                        </el-table-column>
+                        <el-table-column label="PPV (阳性预测)" width="150" align="center">
+                             <template #header>PPV (阳性预测)<el-tooltip content="Positive Predictive Value" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+                            <template #default="{row}">{{ row.ppv_ci || '-' }}</template>
+                        </el-table-column>
+                         <el-table-column label="NPV (阴性预测)" width="150" align="center">
+                             <template #header>NPV (阴性预测)<el-tooltip content="Negative Predictive Value" placement="top"><el-icon><QuestionFilled /></el-icon></el-tooltip></template>
+                            <template #default="{row}">{{ row.npv_ci || '-' }}</template>
+                        </el-table-column>
+                        <el-table-column prop="youden" label="Youden" width="90" align="center" />
+                        <el-table-column prop="cutoff" label="Cutoff" width="90" align="center" />
+                        <el-table-column label="Brier" width="90" align="center">
+                            <template #default="{row}">
+                                <div v-if="row.brier && row.brier !== '-'">
+                                    {{ row.brier }}
+                                    <el-tag v-if="parseFloat(row.brier) < 0.25" type="success" size="small" effect="plain" style="margin-left:2px">Gd</el-tag>
+                                </div>
+                                <span v-else>-</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="n_events" label="Events" width="80" align="center" />
+                        
+                        <el-table-column prop="n" label="N" width="70" align="center" />
+                        <el-table-column label="Features" min-width="150">
                              <template #default="scope">
                                  <el-tag v-for="f in scope.row.features" :key="f" size="small" style="margin-right: 4px; margin-bottom: 2px">{{ f }}</el-tag>
                              </template>
@@ -406,6 +436,9 @@ const tableData = computed(() => {
             features: r.features || []
         }
         
+        const fmtCI = (val, l, h) => (val !== undefined && val !== null) ? `${Number(val).toFixed(3)} (${Number(l).toFixed(3)} - ${Number(h).toFixed(3)})` : '-'
+        const fmtVal = (val, d=3) => (val !== undefined && val !== null) ? Number(val).toFixed(d) : '-'
+
         if (modelType.value === 'cox') {
             const t = selectedTimePoint.value
             const tm = getTimeMetrics(m, t)
@@ -415,8 +448,18 @@ const tableData = computed(() => {
                     ...base,
                     p_delong: tm.p_delong !== undefined ? tm.p_delong : undefined,
                     auc: tm.auc !== undefined ? tm.auc.toFixed(3) : '-',
-                    auc_ci: tm.auc_ci || '-',
+                    auc_ci: tm.auc_ci || '-', // Backend pre-formatted string or use local logic if data avail (backend gives string)
                     auc_p: tm.auc_p !== undefined ? (tm.auc_p < 0.001 ? '<0.001' : tm.auc_p.toFixed(3)) : '-',
+                    
+                    sensitivity_ci: fmtCI(tm.sensitivity, tm.sensitivity_ci_lower, tm.sensitivity_ci_upper),
+                    specificity_ci: fmtCI(tm.specificity, tm.specificity_ci_lower, tm.specificity_ci_upper),
+                    ppv_ci: fmtCI(tm.ppv, tm.ppv_ci_lower, tm.ppv_ci_upper),
+                    npv_ci: fmtCI(tm.npv, tm.npv_ci_lower, tm.npv_ci_upper),
+                    youden: fmtVal(tm.youden_index),
+                    cutoff: fmtVal(tm.optimal_threshold),
+                    brier: fmtVal(tm.brier_score),
+                    n_events: tm.n_events || '-',
+                    
                     nri: tm.nri !== undefined ? tm.nri.toFixed(3) : '-',
                     nri_p: tm.nri_p !== undefined ? (tm.nri_p < 0.001 ? '<0.001' : tm.nri_p.toFixed(3)) : '-',
                     nri_ci: tm.nri_ci || '-',
@@ -425,10 +468,12 @@ const tableData = computed(() => {
                     idi_ci: tm.idi_ci || '-'
                 }
             } else {
-                 return { ...base, auc: '-', auc_ci: '-', nri: '-', nri_p: '-', nri_ci: '-', idi: '-', idi_p: '-', idi_ci: '-' }
+                 return { ...base, auc: '-', auc_ci: '-', nri: '-', idi: '-' }
             }
         } else {
-            // Logistic
+            // Logistic - Assuming backend sends similar structure or update backend later
+            // Currently backend for logistic does NOT send detailed binary metrics in 'compare_models' (it's simplified).
+            // So these will be '-'
             return {
                 ...base,
                 auc: m.auc !== undefined ? m.auc.toFixed(3) : '-',
@@ -460,6 +505,9 @@ const copyTableData = () => {
         'AIC', 'Delta AIC', 
         'NRI', 'NRI P-Value', 'NRI 95% CI',
         'IDI', 'IDI P-Value', 'IDI 95% CI',
+        'Sensitivity (95% CI)', 'Specificity (95% CI)',
+        'PPV (95% CI)', 'NPV (95% CI)',
+        'Youden Index', 'Optimal Cutoff', 'Brier Score', 'Events (E)',
         '样本量', '纳入变量'
     ]
     
@@ -471,6 +519,9 @@ const copyTableData = () => {
         row.aic, row.delta_aic !== undefined ? row.delta_aic : '-',
         row.nri, row.nri_p, row.nri_ci || '-',
         row.idi, row.idi_p, row.idi_ci || '-',
+        row.sensitivity_ci || '-', row.specificity_ci || '-',
+        row.ppv_ci || '-', row.npv_ci || '-',
+        row.youden || '-', row.cutoff || '-', row.brier || '-', row.n_events || '-',
         row.n,
         row.features.join(' + ')
     ])
