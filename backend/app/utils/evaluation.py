@@ -29,7 +29,7 @@ class ModelEvaluator:
         metrics = {}
         plots = {}
         
-        # 1. Basic Metrics
+        # 1. 基础指标 (Accuracy, Precision, Recall, F1)
         metrics['accuracy'] = ResultFormatter.format_float(accuracy_score(y_true, y_pred), 4)
         metrics['precision'] = ResultFormatter.format_float(precision_score(y_true, y_pred, zero_division=0), 4)
         metrics['recall'] = ResultFormatter.format_float(recall_score(y_true, y_pred, zero_division=0), 4)
@@ -38,7 +38,7 @@ class ModelEvaluator:
         cm = confusion_matrix(y_true, y_pred)
         metrics['confusion_matrix'] = cm.tolist()
         
-        # 2. ROC Curve & AUC
+        # 2. ROC 曲线与 AUC
         if len(np.unique(y_true)) == 2:
             fpr, tpr, _ = roc_curve(y_true, y_prob)
             roc_auc = auc(fpr, tpr)
@@ -50,14 +50,14 @@ class ModelEvaluator:
                 'auc': roc_auc
             }
             
-            # 3. Calibration Curve
+            # 3. 校准曲线 (Calibration Curve)
             prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=10)
             plots['calibration'] = {
                 'prob_true': prob_true.tolist(),
                 'prob_pred': prob_pred.tolist()
             }
             
-            # 4. Decision Curve Analysis (DCA)
+            # 4. 决策曲线分析 (DCA)
             dca_res = ModelEvaluator.calculate_dca(y_true, y_prob)
             plots['dca'] = dca_res
             
@@ -83,11 +83,11 @@ class ModelEvaluator:
         net_benefit_all = []
         
         n = len(y_true)
-        n_p = np.sum(y_true) # Total positives
-        n_n = n - n_p        # Total negatives
+        n_p = np.sum(y_true) # 阳性样本总量
+        n_n = n - n_p        # 阴性样本总量
         
         for p_t in thresholds:
-            # Model Benefit
+            # 模型干预的净获益 (Model Benefit)
             y_pred_t = (y_prob >= p_t).astype(int)
             tp = np.sum((y_pred_t == 1) & (y_true == 1))
             fp = np.sum((y_pred_t == 1) & (y_true == 0))
@@ -95,7 +95,7 @@ class ModelEvaluator:
             nb_model = (tp / n) - (fp / n) * (p_t / (1 - p_t))
             net_benefit_model.append(nb_model)
             
-            # Treat All Benefit
+            # 全体干预的净获益 (Treat All Benefit)
             # TP = n_p, FP = n_n
             nb_all = (n_p / n) - (n_n / n) * (p_t / (1 - p_t))
             net_benefit_all.append(nb_all)
@@ -104,7 +104,7 @@ class ModelEvaluator:
             'thresholds': thresholds.tolist(),
             'net_benefit_model': net_benefit_model,
             'net_benefit_all': net_benefit_all,
-            'net_benefit_none': [0] * len(thresholds) # Treat None is always 0
+            'net_benefit_none': [0] * len(thresholds) # 全不干预的净获益恒为 0
         }
 
     @staticmethod

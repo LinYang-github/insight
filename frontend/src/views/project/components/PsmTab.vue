@@ -86,7 +86,7 @@
                             <div class="health-header">
                                 <span class="var-name">{{ item.variable }}</span>
                                 <el-tag :type="item.status === 'healthy' ? 'success' : 'warning'" size="small">
-                                    {{ item.status === 'healthy' ? 'Healthy' : 'Warning' }}
+                                    {{ item.status === 'healthy' ? '健康' : '风险' }}
                                 </el-tag>
                             </div>
                             <div class="health-details">
@@ -132,7 +132,7 @@
                          <el-table-column label="评估">
                             <template #default="scope">
                                 <el-tag :type="scope.row.smd_post < 0.1 ? 'success' : 'warning'">
-                                    {{ scope.row.smd_post < 0.1 ? 'Balanced' : 'Unbalanced' }}
+                                    {{ scope.row.smd_post < 0.1 ? '均衡' : '不均衡' }}
                                 </el-tag>
                             </template>
                         </el-table-column>
@@ -153,7 +153,13 @@
 <script setup>
 /**
  * PsmTab.vue
- * 倾向性评分匹配 (PSM) 组件 - 向导版。
+ * 倾向性评分匹配 (PSM) 分析标签页。
+ * 
+ * 职责：
+ * 1. 引导用户通过三步走流程：设定处理组 -> 选择协变量 -> 匹配诊断。
+ * 2. 提供智能化的协变量推荐逻辑（基于组间平衡性预检）。
+ * 3. 实时提供数据健康预检报告。
+ * 4. 生成 Love Plot 等均衡性诊断图表，并允许保存匹配后的数据集副本。
  */
 import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -170,12 +176,12 @@ const props = defineProps({
 
 const emit = defineEmits(['dataset-created'])
 
-const loading = ref(false)
-const results = ref(null)
-const activeStep = ref(0)
-const recommendedVars = ref([])
-const isRecommending = ref(false)
-const healthReport = ref([])
+const loading = ref(false) // 全局加载状态
+const results = ref(null) // PSM 分析结果数据
+const activeStep = ref(0) // 当前所在的向导步骤
+const recommendedVars = ref([]) // 后端推荐的协变量列表
+const isRecommending = ref(false) // 推荐计算状态
+const healthReport = ref([]) // 数据健康检查结果报告
 
 const config = reactive({
     treatment: null,
@@ -202,6 +208,9 @@ watch(() => config.covariates, (newVal) => {
     }
 }, { deep: true })
 
+/**
+ * 对协变量进行数据质量检查（缺失率等）。
+ */
 const checkHealth = async (variables) => {
     try {
         const { data } = await api.post('/statistics/check-health', {
@@ -214,6 +223,9 @@ const checkHealth = async (variables) => {
     }
 }
 
+/**
+ * 根据处理组变量，自动推荐存在显著组间差异的协变量。
+ */
 const fetchRecommendations = async (treatment) => {
     isRecommending.value = true
     try {
@@ -262,13 +274,16 @@ const disableNext = computed(() => {
     return false
 })
 
-// Watch step change to trigger calculation
+// 监听步骤变化，当进入最后一步时触发 PSM 计算
 watch(activeStep, (newStep, oldStep) => {
     if (newStep === 2 && oldStep === 1) {
         runPSM()
     }
 })
 
+/**
+ * 调用后端 PSM 匹配接口。
+ */
 const runPSM = async () => {
     loading.value = true
     results.value = null
@@ -303,6 +318,10 @@ const runPSM = async () => {
     }
 }
 
+/**
+ * 绘制协变量平衡图 (Love Plot)。
+ * 展示匹配前后各变量 SM (Standardized Mean Difference) 的变化。
+ */
 const renderLovePlot = (balanceData) => {
     // balanceData: [{variable, smd_pre, smd_post}, ...]
     const sorted = [...balanceData].sort((a,b) => Math.abs(a.smd_pre) - Math.abs(b.smd_pre));
@@ -315,7 +334,7 @@ const renderLovePlot = (balanceData) => {
         x: pre,
         y: vars,
         mode: 'markers',
-        name: 'Unmatched',
+        name: '未匹配 (Unmatched)',
         marker: { color: '#F56C6C', size: 10, symbol: 'circle-open' }, // Red open circle
         type: 'scatter'
     };
@@ -324,15 +343,15 @@ const renderLovePlot = (balanceData) => {
         x: post,
         y: vars,
         mode: 'markers',
-        name: 'Matched',
+        name: '已匹配 (Matched)',
         marker: { color: '#67C23A', size: 10, symbol: 'circle' }, // Green filled circle
         type: 'scatter'
     };
     
     const layout = {
-        title: 'Covariate Balance (Love Plot)',
+        title: '协变量平衡性诊断 (Love Plot)',
         xaxis: { 
-            title: 'Absolute Standardized Mean Difference (SMD)', 
+            title: '绝对标准化均值差 (Absolute SMD)', 
             range: [0, Math.max(0.2, ...pre) + 0.1],
             zeroline: true
         },

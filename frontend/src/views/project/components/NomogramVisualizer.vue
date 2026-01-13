@@ -19,7 +19,7 @@
                      
                      <!-- 1. Header: Points Scale -->
                      <g transform="translate(0, 40)">
-                         <text x="10" y="0" font-weight="bold" font-size="12">Points</text>
+                         <text x="10" y="0" font-weight="bold" font-size="12">分值 (Points)</text>
                          <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
                          <!-- Ticks 0-100 -->
                          <g v-for="t in pointsTicks" :key="t">
@@ -63,7 +63,7 @@
                      
                      <!-- 3. Total Points -->
                      <g :transform="`translate(0, ${80 + spec.axes.length * 50 + 40})`">
-                         <text x="10" y="0" font-weight="bold" font-size="12">Total Points</text>
+                         <text x="10" y="0" font-weight="bold" font-size="12">总分 (Total Points)</text>
                          <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
                           <!-- Ticks for Total Points -->
                          <g v-for="t in totalPointsTicks" :key="t">
@@ -79,7 +79,7 @@
                      
                      <!-- 4. Survival Probabilities -->
                      <g v-for="(scale, idx) in spec.survival_scales" :key="scale.time" :transform="`translate(0, ${80 + spec.axes.length * 50 + 80 + idx * 40})`">
-                         <text x="10" y="0" font-weight="bold" font-size="12">{{ scale.time }}-Month Surv. Prob.</text>
+                         <text x="10" y="0" font-weight="bold" font-size="12">{{ scale.time }}个月生存率</text>
                          <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
                          
                          <g v-for="(tick, i) in scale.ticks" :key="i">
@@ -144,6 +144,15 @@
 </template>
 
 <script setup>
+/**
+ * NomogramVisualizer.vue
+ * 列线图可视化核心组件（SVG 渲染版）。
+ * 
+ * 职责：
+ * 1. 接收后端生成的列线图规格 (Spec)，采用 SVG 渲染学术标准的列线图。
+ * 2. 支持交互式预测：用户拖动或输入变量值，图中红色指示线同步更新，实时反馈预测概率。
+ * 3. 实现了 Cox 回归公式在前端的重构，确保图形映射与数学计算的一致性。
+ */
 import { ref, computed, onMounted, reactive, watch } from 'vue'
 
 const props = defineProps({
@@ -153,25 +162,20 @@ const props = defineProps({
     }
 })
 
-// Dimensions
+// 坐标映射比例与边距配置
 const width = 800
 const leftMargin = 150
 const rightMargin = 750
 const usefulWidth = rightMargin - leftMargin
 
-const height = computed(() => {
-    // Dynamic height based on number of axes
-    return 80 + (props.spec.axes.length * 50) + 250 // Extra space for survival scales
-})
-
-// Scaling Utils
+// 定义坐标变换工具函数
 const scaleX = (points) => {
-    // Map 0-100 Points to [leftMargin, rightMargin]
+    // 将 0-100 的分值映射到 SVG 的 X 坐标轴 (leftMargin -> rightMargin)
     return leftMargin + (points / 100) * usefulWidth
 }
 
 const scaleTotal = (totalPoints) => {
-    // Map 0-maxTotal to [leftMargin, rightMargin]
+    // 将 0 -> maxTotal 的总分映射到 SVG 坐标轴
     const max = props.spec.total_points.max
     const ratio = totalPoints / max
     return leftMargin + ratio * usefulWidth
@@ -190,7 +194,7 @@ const getVarY = (name) => {
     return 80 + idx * 50
 }
 
-// User Inputs
+// 响应式状态：用户选择的变量输入值
 const userInputs = reactive({})
 
 // Initialize inputs
@@ -209,7 +213,10 @@ function initInputs() {
     })
 }
 
-// Calculations
+// 核心预测计算逻辑
+/**
+ * 计算当前选中的输入值对应的各变量得分
+ */
 const userPoints = computed(() => {
     const pts = {}
     props.spec.axes.forEach(axis => {
@@ -217,15 +224,7 @@ const userPoints = computed(() => {
         if (val === undefined) return
         
         if (axis.type === 'continuous') {
-            // Points = (PointsRange) * (Val - Min)/(Max - Min) ???
-            // No, we need to map based on generated points
-            // Backend gave us points mapped for min and max.
-            // But assume linearity for continuous.
-            // If coef > 0: Min=LowPts, Max=HighPts
-            // If coef < 0: Min=HighPts, Max=LowPts
-            
-            // Re-derive linear params from backend points dict
-            // values: { 'min': p1, 'max': p2 }
+            // 连续变量：基于线性内插计算得分
             const pMin = axis.points[String(axis.min)]
             const pMax = axis.points[String(axis.max)]
             
@@ -233,7 +232,7 @@ const userPoints = computed(() => {
             pts[axis.name] = pMin + ratio * (pMax - pMin)
             
         } else {
-            // Categorical
+            // 分类变量：直接查表获取对应得分
             const level = axis.levels.find(l => l.label === val)
             if (level) pts[axis.name] = level.points
             else pts[axis.name] = 0
@@ -242,20 +241,26 @@ const userPoints = computed(() => {
     return pts
 })
 
+/**
+ * 计算所有变量得分之和 (Total Points)
+ */
 const currentUserTotal = computed(() => {
     return Object.values(userPoints.value).reduce((a, b) => a + b, 0)
 })
 
+/**
+ * 基于 Cox 模型公式反推生存概率预测值
+ */
 const currentPredictions = computed(() => {
     const total = currentUserTotal.value
     const ppu = props.spec.formula_params.points_per_unit
     const offset = props.spec.formula_params.constant_offset
     
-    // LP = (Total / Scale) + Offset
+    // 1. 将总分还原为线性预测值 (Linear Predictor): LP = (Total / Scale) + Offset
     const lp = (total / ppu) + offset
     
     const preds = {}
-    // S(t) = S0(t) ^ exp(LP)
+    // 2. 应用 Cox 生存函数公式: S(t) = S0(t) ^ exp(LP)
     if (props.spec.base_survivals) {
         for (const [t, s0] of Object.entries(props.spec.base_survivals)) {
             const prob = Math.pow(s0, Math.exp(lp))

@@ -32,7 +32,7 @@
                     <el-table-column prop="q25" label="25%" width="80">
                          <template #default="scope">{{ formatNum(scope.row.q25) }}</template>
                     </el-table-column>
-                    <el-table-column prop="q50" label="Median" width="80">
+                    <el-table-column prop="q50" label="中位数 (Median)" width="80">
                          <template #default="scope">{{ formatNum(scope.row.q50) }}</template>
                     </el-table-column>
                     <el-table-column prop="q75" label="75%" width="80">
@@ -113,10 +113,10 @@ const props = defineProps({
   }
 })
 
-const loading = ref(false)
-const stats = ref([])
-const activeTab = ref('stats')
-const selectedDistVar = ref('')
+const loading = ref(false) // 加载状态
+const stats = ref([]) // 描述性统计结果
+const activeTab = ref('stats') // 当前活跃标签页
+const selectedDistVar = ref('') // 当前选中的分布查看变量
 
 const formatNum = (val) => {
     if (val === null || val === undefined) return '-'
@@ -124,6 +124,9 @@ const formatNum = (val) => {
     return val
 }
 
+/**
+ * 获取数据集的全局描述性统计汇总数据。
+ */
 const fetchStats = async () => {
     if (!props.datasetId) return
     loading.value = true
@@ -141,6 +144,9 @@ const fetchStats = async () => {
     }
 }
 
+/**
+ * 获取并绘制变量间的 Pearson 相关性热力图。
+ */
 const fetchCorrelation = async () => {
     if (!props.datasetId) return
     try {
@@ -166,6 +172,9 @@ const fetchCorrelation = async () => {
     }
 }
 
+/**
+ * 获取选定变量的分布数据点，并渲染为直方图/条形图。
+ */
 const fetchDistribution = async () => {
     if (!props.datasetId || !selectedDistVar.value) return
     try {
@@ -175,7 +184,7 @@ const fetchDistribution = async () => {
             margin: { t: 20, r: 20, l: 50, b: 50 },
             height: 400,
             xaxis: { title: selectedDistVar.value },
-            yaxis: { title: 'Count' }
+            yaxis: { title: '频数 (Count)' }
         }
         
         const plotData = [{

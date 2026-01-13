@@ -31,28 +31,25 @@ class ModelDiagnostics:
             
         try:
             X = df[features].copy()
-            # Handle categoricals if not already encoded? 
-            # ModelingService normally receives original DF, strategies handle encoding.
-            # But specific strategies (Linear/Logistic) in this project use statsmodels formulae or 
-            # assume numeric/dummy encoding if using sklearn style? 
-            # Let's check LinearRegressionStrategy.fit logic.
-            # It selects X = df[features]. 
-            # If features are categorical strings, statsmodels `OLS(y, X)` might fail or auto-encode if formula used.
-            # But the current implementation `X = df[features]; X = sm.add_constant(X); model = sm.OLS(y, X)` 
-            # implies input features MUST be numeric.
-            # The `TreeModelStrategy` handles encoding explicitly.
-            # `LinearRegressionStrategy` in `linear.py` assumes numeric inputs for now (Stage 1 assumption).
-            # If not, VIF will fail.
-            # We will assume numeric for VIF calculation now, consistent with current LinearStrategy.
+            # 是否需要处理未编码的分类变量？
+            # ModelingService 通常接收原始 DataFrame，而策略类 (Strategies) 处理编码。
+            # 本项目中的特定策略（线性/逻辑回归）通常假设输入已完成数值化或独热编码。
+            # 参考 LinearRegressionStrategy.fit 逻辑，它直接选取 df[features]。
+            # 如果 features 是分类字符串，statsmodels 的 `OLS(y, X)` 会失败。
+            # 目前的实现 `X = df[features]; X = sm.add_constant(X); model = sm.OLS(y, X)` 
+            # 意味着输入特征必须是数值型的。
+            # TreeModelStrategy 明确处理了编码。
+            # linear.py 中的 LinearRegressionStrategy 暂时假设输入为数值型。
+            # 如果不是，VIF 计算将失败。因此在此处我们同样假设输入为数值型，以保持一致。
             
-            # Drop rows with NaNs for VIF calc
+            # 为计算 VIF 删除包含缺失值的行
             X = X.dropna()
             X = add_constant(X)
             
             vif_data = []
             for i, col in enumerate(X.columns):
                 if col == 'const': continue
-                # Handle singular matrix or errors in VIF
+                # 处理 VIF 计算中的奇异矩阵或错误
                 try:
                     val = variance_inflation_factor(X.values, i)
                     vif_data.append({
@@ -64,5 +61,5 @@ class ModelDiagnostics:
             
             return vif_data
         except Exception as e:
-            print(f"VIF Calculation failed: {e}")
+            print(f"VIF 计算失败: {e}")
             return []

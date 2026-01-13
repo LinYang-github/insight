@@ -12,6 +12,15 @@
 </template>
 
 <script setup>
+/**
+ * InterpretationPanel.vue
+ * 智能解读面板组件。
+ * 
+ * 职责：
+ * 1. 接收后端生成的分析结论模板 (text_template) 与动态参数 (params)。
+ * 2. 在前端执行插值逻辑，生成可读性强的自然语言结论。
+ * 3. 根据结论的严重程度（level: danger/success/info）展示不同的视觉样式。
+ */
 import { computed } from 'vue'
 
 const props = defineProps({
@@ -22,25 +31,20 @@ const props = defineProps({
   }
 })
 
+/**
+ * 计算插值后的解读文本。
+ */
 const renderedText = computed(() => {
     if (!props.interpretation) return ''
     const tmpl = props.interpretation.text_template
     const params = props.interpretation.params || {}
     
-    // Simple interpolation
+    // 简单插值逻辑：将模板中的 {key} 替换为对应的参数值
     return tmpl.replace(/{(\w+)}/g, (match, key) => {
         const val = params[key]
         if (val === undefined) return match
         
-        // Apply specific styling based on keys?
-        // e.g. HR/OR/P -> Bold or Color
-        // Or simpler: Backend can provide markdown or HTML? 
-        // User requirement said "Frontend only renders".
-        // Let's wrap value in span for potential styling.
-        // But 'direction' changes color based on logic? 
-        // The logic was moved to backend (level: danger/success), 
-        // so we can style the whole block or specific keywords.
-        // Let's keep it simple: Bold the parameters.
+        // 此处可以将所有动态参数加粗显示
         return `<strong>${val}</strong>`
     })
 })

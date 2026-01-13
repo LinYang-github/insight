@@ -14,7 +14,7 @@
 
     <!-- Actions -->
     <div class="step-actions">
-      <el-button v-if="activeStep > 0" @click="prev">上一步 (Back)</el-button>
+      <el-button v-if="activeStep > 0" @click="prev">上一步</el-button>
       
       <el-button 
         v-if="activeStep < steps.length - 1" 
@@ -23,7 +23,7 @@
         :disabled="disableNext"
         :loading="loading"
       >
-        下一步 (Next)
+        下一步
       </el-button>
       
       <el-button 
@@ -32,13 +32,22 @@
         @click="finish" 
         :loading="loading"
       >
-        完成 (Finish)
+        完成
       </el-button>
     </div>
   </div>
 </template>
 
 <script setup>
+/**
+ * StepWizard.vue
+ * 通用分布向导组件。
+ * 
+ * 职责：
+ * 1. 封装分步流程的指示器 (el-steps) 和导航按钮。
+ * 2. 通过插槽 (Slots) 动态切换各步骤的内容。
+ * 3. 管理步骤状态、加载状态以及“下一步”的启用逻辑。
+ */
 import { computed } from 'vue'
 
 const props = defineProps({

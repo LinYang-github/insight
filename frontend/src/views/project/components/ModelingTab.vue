@@ -32,7 +32,7 @@
                        <template v-if="config.model_type !== 'cox'">
                            <el-select v-model="config.target" placeholder="选择目标变量" filterable style="width: 100%">
                                <el-option v-for="opt in targetOptions" :key="opt.value" :label="opt.label" :value="opt.value" :disabled="opt.disabled">
-                                    <span v-if="opt.disabled" style="color: #ccc">{{ opt.label }} (Non-numeric)</span>
+                                    <span v-if="opt.disabled" style="color: #ccc">{{ opt.label }} (非数值型)</span>
                                     <span v-else>{{ opt.label }}</span>
                                </el-option>
                            </el-select>
@@ -97,8 +97,8 @@
                             </template>
                             <div style="padding: 10px;">
                                 <div v-for="v in selectedCategoricalVars" :key="v.name" style="margin-bottom: 10px;">
-                                    <span style="font-size: 12px; color: #606266; display: block; margin-bottom: 4px;">{{ v.name }} Reference:</span>
-                                    <el-select v-model="config.ref_levels[v.name]" placeholder="Default (First)" size="small" style="width: 100%">
+                                    <span style="font-size: 12px; color: #606266; display: block; margin-bottom: 4px;">{{ v.name }} 基准组:</span>
+                                    <el-select v-model="config.ref_levels[v.name]" placeholder="默认 (第一组)" size="small" style="width: 100%">
                                         <el-option v-for="cat in v.categories" :key="cat" :label="cat" :value="cat" />
                                     </el-select>
                                 </div>
@@ -120,7 +120,7 @@
                             </el-col>
                             <el-col :span="12">
                                 <el-form-item label="最大深度 (Depth)">
-                                     <el-input-number v-model="config.model_params.max_depth" :min="1" :max="50" size="small" placeholder="Unlimited" style="width: 100%"/>
+                                     <el-input-number v-model="config.model_params.max_depth" :min="1" :max="50" size="small" placeholder="无限制" style="width: 100%"/>
                                 </el-form-item>
                             </el-col>
                              <el-col :span="12" v-if="config.model_type === 'xgboost'">
@@ -256,7 +256,7 @@
                                 </template>
                             </el-table-column>
                             
-                             <!-- Diagnostics -->
+                             <!-- 诊断指标 -->
                             <el-table-column v-if="['linear', 'logistic'].includes(config.model_type)" prop="vif" label="VIF" width="80">
                                 <template #header>
                                      <span>VIF</span>
@@ -269,7 +269,7 @@
                              <el-table-column v-if="config.model_type === 'cox'" prop="ph_test_p" label="PH Test P" width="100">
                                 <template #header>
                                      <span>PH Test P</span>
-                                     <el-tooltip content="PH 假设检验 P 值。P < 0.05 提示违反比例风险假设" placement="top">
+                                     <el-tooltip content="PH 假定校验 P 值。P < 0.05 提示违反比例风险假定" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -290,7 +290,7 @@
                                 <span style="font-size: 13px; color: #606266; margin-right: 10px;">预测时间点 (Time Point):</span>
                                 <el-radio-group v-model="evaluationTimePoint" size="small">
                                     <el-radio-button v-for="t in availableTimePoints" :key="t" :value="t">
-                                        {{ t }} ({{ results.clinical_eval?.time_unit === 'days' ? 'Days' : 'Months' }})
+                                        {{ t }} ({{ results.clinical_eval?.time_unit === 'days' ? '天' : '月' }})
                                     </el-radio-button>
                                 </el-radio-group>
                             </div>
@@ -370,7 +370,7 @@
                                     </template>
                                     <template v-if="currentExtendedMetrics.n_eval && currentExtendedMetrics.n_events !== undefined">
                                         {{ currentExtendedMetrics.n_eval }} 
-                                        <span style="margin-left:5px; color: #E6A23C; font-weight: 500">(Events: {{ currentExtendedMetrics.n_events }})</span>
+                                        <span style="margin-left:5px; color: #E6A23C; font-weight: 500">(事件数: {{ currentExtendedMetrics.n_events }})</span>
                                     </template>
                                     <span v-else>-</span>
                                 </el-descriptions-item>
@@ -504,16 +504,16 @@
             <el-table :data="[comparisonMetrics.basic.c_index, comparisonMetrics.basic.aic, comparisonMetrics.basic.bic, comparisonMetrics.basic.ll]" border size="small" stripe>
                 <el-table-column label="指标 (Metric)">
                     <template #default="scope">
-                        <span v-if="scope.$index === 0"><b>C-index</b> (Higher is better)</span>
-                        <span v-if="scope.$index === 1"><b>AIC</b> (Lower is better)</span>
-                        <span v-if="scope.$index === 2"><b>BIC</b> (Lower is better)</span>
-                        <span v-if="scope.$index === 3"><b>Log-Likelihood</b> (Higher is better)</span>
+                        <span v-if="scope.$index === 0"><b>C-index</b> (越高越好)</span>
+                        <span v-if="scope.$index === 1"><b>AIC</b> (越低越好)</span>
+                        <span v-if="scope.$index === 2"><b>BIC</b> (越低越好)</span>
+                        <span v-if="scope.$index === 3"><b>Log-Likelihood</b> (越高越好)</span>
                     </template>
                 </el-table-column>
-                <el-table-column :label="'Baseline (Model 1)'" prop="m1">
+                <el-table-column :label="'基线模型 (Model 1)'" prop="m1">
                     <template #default="scope">{{ scope.row.m1.toFixed(3) }}</template>
                 </el-table-column>
-                <el-table-column :label="'Current (Model 2)'" prop="m2">
+                <el-table-column :label="'当前模型 (Model 2)'" prop="m2">
                     <template #default="scope">{{ scope.row.m2.toFixed(3) }}</template>
                 </el-table-column>
                 <el-table-column label="差异 (Difference)" prop="diff">
@@ -522,9 +522,9 @@
                             {{ scope.row.diff > 0 ? '+' : '' }}{{ scope.row.diff.toFixed(3) }}
                         </span>
                         
-                        <!-- Auto Interpretation Tags -->
-                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="scope.$index === 0 && scope.row.diff > 0.01">Improved</el-tag>
-                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="(scope.$index === 1 || scope.$index === 2) && scope.row.diff < -2">Improved</el-tag>
+                        <!-- 自动解读标签 -->
+                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="scope.$index === 0 && scope.row.diff > 0.01">性能提升</el-tag>
+                        <el-tag size="small" type="success" style="margin-left: 10px" v-if="(scope.$index === 1 || scope.$index === 2) && scope.row.diff < -2">性能提升</el-tag>
                     </template>
                 </el-table-column>
             </el-table>
@@ -532,20 +532,20 @@
             <h3 style="margin-top: 20px">2. 改善与增量价值 (Reclassification & Incremental Value)</h3>
             <div v-if="comparisonMetrics.reclassification">
                 <el-alert type="info" :closable="false" style="margin-bottom: 10px">
-                    基于预测时间点 T = {{ comparisonMetrics.reclassification.time_point }} (Months) 计算。
+                    基于预测时间点 T = {{ comparisonMetrics.reclassification.time_point }} (月) 计算。
                     反映了加入新变量后，模型对个体风险分类的改善程度。
                 </el-alert>
                 <el-descriptions :column="2" border>
                     <el-descriptions-item label="NRI (连续净重分类改善指数)">
                         <span style="font-size: 16px; font-weight: bold">{{ comparisonMetrics.reclassification.nri.toFixed(4) }}</span>
                         <div style="font-size: 12px; color: gray; margin-top: 4px">
-                            Interpretation: NRI > 0 意味着模型正确地将发生事件者归为更高风险，或将未发生者归为更低风险。
+                            解读：NRI > 0 意味着模型正确地将发生事件者归为更高风险，或将未发生者归为更低风险。
                         </div>
                     </el-descriptions-item>
                     <el-descriptions-item label="IDI (综合判别改善指数)">
                         <span style="font-size: 16px; font-weight: bold">{{ comparisonMetrics.reclassification.idi.toFixed(4) }}</span>
                         <div style="font-size: 12px; color: gray; margin-top: 4px">
-                            Interpretation: IDI > 0 意味着新模型提高了平均预测概率的区分度。
+                            解读：IDI > 0 意味着新模型提高了平均预测概率的区分度。
                         </div>
                     </el-descriptions-item>
                 </el-descriptions>
@@ -609,10 +609,10 @@ const metricTooltips = {
     'cv_auc_mean': '5折交叉验证平均AUC：模型在未见数据上的平均表现，评估泛化能力。',
     'cv_auc_std': '5折交叉验证AUC标准差：评估模型表现的稳定性，值越小越稳定。',
     'aic': '赤池信息量：衡量模型拟合优度与参数复杂度的平衡，越小代表模型越精简有效。',
-    'bic': '贝叶斯信息量：类似AIC，但对参数数量惩罚更重，常用于模型筛选，越小越好。',
-    'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近1越好。',
-    'log_likelihood': 'Log-Likelihood (对数似然): 越高越好，表示模型对数据的解释程度。',
-    'n_events': 'Event Count (事件数): 分析中观察到的终点事件总数。'
+    'bic': '贝叶斯信息量：类似 AIC，但对参数数量惩罚更重，常用于模型筛选，越小越好。',
+    'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近 1 越好。',
+    'log_likelihood': '对数似然 (Log-Likelihood)：越高越好，表示模型对数据的解释程度。',
+    'n_events': '事件数 (Events)：分析中观察到的终点事件总数。'
 }
 
 const modelOptions = [
@@ -624,10 +624,10 @@ const modelOptions = [
 ]
 
 const config = reactive({
-    model_type: 'logistic',
-    target: null, 
-    features: [],
-    ref_levels: {}, // { 'Sex': 'Female' }
+    model_type: 'logistic', // 当前选中的模型类型
+    target: null,          // 结局变量 (Y/结局指标)
+    features: [],          // 纳入模型的特征变量列表
+    ref_levels: {},        // 分类变量的对照组设置，例如 { 'Sex': 'Female' }
     model_params: {
         n_estimators: 100,
         max_depth: null,
@@ -847,8 +847,8 @@ const runModel = async () => {
     }
 }
 
-// --- Clinical Evaluation Logic ---
-const evaluationTimePoint = ref(null)
+// --- 临床效能评估逻辑 (Clinical Evaluation) ---
+const evaluationTimePoint = ref(null) // 当前选中的预测评估时间点 (Cox 模型专用)
 
 const availableTimePoints = computed(() => {
     if (!results.value || !results.value.clinical_eval || !results.value.clinical_eval.dca) return []
@@ -942,7 +942,7 @@ const chartData = reactive({
 })
 
 const renderEvaluationPlots = (plots) => {
-    // ROC Curve
+    // ROC 曲线 (ROC Curve)
     if (plots.roc) {
         chartData.roc.data = [
             {
@@ -960,8 +960,8 @@ const renderEvaluationPlots = (plots) => {
             }
         ]
         chartData.roc.layout = {
-            xaxis: { title: 'False Positive Rate' },
-            yaxis: { title: 'True Positive Rate' }
+            xaxis: { title: '假阳性率 (False Positive Rate)' },
+            yaxis: { title: '真阳性率 (True Positive Rate)' }
         }
     }
 
@@ -978,13 +978,13 @@ const renderEvaluationPlots = (plots) => {
             {
                 x: [0, 1], y: [0, 1],
                 mode: 'lines',
-                name: 'Perfectly Calibrated',
+                name: '完美校准 (Perfectly Calibrated)',
                 line: { dash: 'dash', color: 'gray' }
             }
         ]
         chartData.calibration.layout = {
-            xaxis: { title: 'Mean Predicted Probability', range: [0, 1] },
-            yaxis: { title: 'Fraction of Positives', range: [0, 1] }
+            xaxis: { title: '预测概率均值 (Mean Predicted Probability)', range: [0, 1] },
+            yaxis: { title: '实际阳性比例 (Fraction of Positives)', range: [0, 1] }
         }
     }
 
@@ -996,27 +996,27 @@ const renderEvaluationPlots = (plots) => {
                 x: plots.dca.thresholds,
                 y: plots.dca.net_benefit_model,
                 mode: 'lines',
-                name: 'Model',
+                name: '模型 (Model)',
                 line: { color: 'red', width: 2 }
             },
             {
                 x: plots.dca.thresholds,
                 y: plots.dca.net_benefit_all,
                 mode: 'lines',
-                name: 'Treat All',
+                name: '全干预 (Treat All)',
                 line: { color: 'gray', dash: 'dash' }
             },
             {
                 x: plots.dca.thresholds,
                 y: plots.dca.net_benefit_none,
                 mode: 'lines',
-                name: 'Treat None',
+                name: '全不干预 (Treat None)',
                 line: { color: 'black' }
             }
         ]
         chartData.dca.layout = {
-            xaxis: { title: 'Threshold Probability', range: [0, 1] },
-            yaxis: { title: 'Net Benefit', range: [-0.05, maxY + 0.05] }
+            xaxis: { title: '阈值概率 (Threshold Probability)', range: [0, 1] },
+            yaxis: { title: '净获益 (Net Benefit)', range: [-0.05, maxY + 0.05] }
         }
     }
 
@@ -1031,7 +1031,7 @@ const renderEvaluationPlots = (plots) => {
             }
         }]
         chartData.vif.layout = {
-             title: 'VIF Values',
+             title: 'VIF 指标 (VIF Values)',
              shapes: [{
                 type: 'line',
                 x0: -0.5, x1: plots.vif.variables.length - 0.5,
@@ -1059,10 +1059,10 @@ const exportResults = async () => {
 // Removed downloadPlot function as it is now handled by InsightChart component
 // const downloadPlot = async (divId, filename, format = 'png') => { ... }
 
-// --- Model Comparison Logic ---
-const baselineResult = ref(null)
-const showComparisonDialog = ref(false)
-const comparisonMetrics = ref(null)
+// --- 模型对比逻辑 (Model Comparison) ---
+const baselineResult = ref(null) // 基线模型对象 (Model 1)
+const showComparisonDialog = ref(false) // 是否显示对比对话框
+const comparisonMetrics = ref(null) // 对比指标计算结果
 
 const setAsBaseline = () => {
     if (!results.value) return
@@ -1070,6 +1070,10 @@ const setAsBaseline = () => {
     ElMessage.success('当前模型已设为基线 (Model 1)')
 }
 
+/**
+ * 手动计算轻量级的 NRI 和 IDI（前端预览用）。
+ * 严谨的 NRI/IDI 计算通常建议在后端通过 bootrstrap 获取置信区间。
+ */
 const calculateNRI_IDI = (y_true, p_old, p_new) => {
     let up_event = 0, down_event = 0, n_event = 0;
     let up_nonevent = 0, down_nonevent = 0, n_nonevent = 0;
@@ -1101,6 +1105,9 @@ const calculateNRI_IDI = (y_true, p_old, p_new) => {
     return { nri, idi };
 }
 
+/**
+ * 对比当前模型 (Model 2) 与已保存的基线模型 (Model 1)。
+ */
 const compareWithBaseline = () => {
     if (!baselineResult.value || !results.value) return;
 
@@ -1112,8 +1119,8 @@ const compareWithBaseline = () => {
 
     const cmp = {
         models: {
-            m1_name: 'Baseline (Model 1)',
-            m2_name: 'Current (Model 2)'
+            m1_name: '基线模型 (Model 1)',
+            m2_name: '当前模型 (Model 2)'
         },
         basic: {
             c_index: { m1: getVal(m1, 'c_index'), m2: getVal(m2, 'c_index'), diff: getVal(m2, 'c_index') - getVal(m1, 'c_index') },

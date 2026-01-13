@@ -22,25 +22,25 @@
                          <el-form label-position="top">
                              <el-form-item label="模型类型 (Model Type)">
                                  <el-select v-model="rcsParams.model_type">
-                                     <el-option label="Cox Proportional Hazards" value="cox" />
-                                     <el-option label="Logistic Regression" value="logistic" />
+                                     <el-option label="Cox 比例风险模型 (Cox PH)" value="cox" />
+                                     <el-option label="逻辑回归 (Logistic)" value="logistic" />
                                  </el-select>
                              </el-form-item>
                              
                              <el-form-item label="结局变量 (Outcome, Y)" required>
-                                 <el-select v-model="rcsParams.target" filterable placeholder="Select Outcome">
+                                 <el-select v-model="rcsParams.target" filterable placeholder="选择结局变量">
                                      <el-option v-for="v in allVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
                              
                              <el-form-item label="事件状态 (Event, 1/0)" v-if="rcsParams.model_type === 'cox'" required>
-                                 <el-select v-model="rcsParams.event_col" filterable placeholder="Select Event">
+                                 <el-select v-model="rcsParams.event_col" filterable placeholder="选择事件变量">
                                      <el-option v-for="v in binaryVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
                              
                              <el-form-item label="暴露变量 (Exposure, X)" required>
-                                 <el-select v-model="rcsParams.exposure" filterable placeholder="Continuous Var">
+                                 <el-select v-model="rcsParams.exposure" filterable placeholder="选择连续型变量">
                                      <el-option v-for="v in numVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
@@ -115,8 +115,8 @@
                          <el-form label-position="top">
                              <el-form-item label="模型类型">
                                  <el-select v-model="subgroupParams.model_type">
-                                     <el-option label="Cox Proportional Hazards" value="cox" />
-                                     <el-option label="Logistic Regression" value="logistic" />
+                                     <el-option label="Cox 比例风险模型 (Cox PH)" value="cox" />
+                                     <el-option label="逻辑回归 (Logistic)" value="logistic" />
                                  </el-select>
                              </el-form-item>
                              
@@ -202,7 +202,7 @@
                              </el-form-item>
                              
                              <el-form-item label="分组变量 (Group)">
-                                 <el-select v-model="cifParams.group_col" filterable clearable placeholder="可选">
+                                 <el-select v-model="cifParams.group_col" filterable clearable placeholder="可选 (分组)">
                                      <el-option v-for="v in catVars" :key="v.name" :label="v.name" :value="v.name" />
                                  </el-select>
                              </el-form-item>
@@ -244,8 +244,8 @@
                          <el-form label-position="top">
                              <el-form-item label="模型类型">
                                  <el-select v-model="nomoParams.model_type">
-                                     <el-option label="Cox Proportional Hazards" value="cox" />
-                                     <el-option label="Logistic Regression" value="logistic" />
+                                     <el-option label="Cox 比例风险模型 (Cox PH)" value="cox" />
+                                     <el-option label="逻辑回归 (Logistic)" value="logistic" />
                                  </el-select>
                              </el-form-item>
                              
@@ -276,7 +276,7 @@
                      <el-card shadow="hover" v-if="nomoData" style="margin-bottom: 20px;">
                         <template #header>
                              <div class="card-header">
-                                 <span>🌐 Web Risk Calculator</span>
+                                 <span>🌐 风险计算器 (Web Risk Calculator)</span>
                              </div>
                         </template>
                         <el-form :inline="true">
@@ -286,7 +286,7 @@
                         </el-form>
                         <div style="background: #f0f9eb; padding: 10px; border-radius: 4px; text-align: center;">
                             <span style="font-size: 16px; color: #67c23a; font-weight: bold;">
-                                预测风险 (Predicted Probability): {{ (calculatedRisk * 100).toFixed(2) }}%
+                                预测概率 (Predicted Probability): {{ (calculatedRisk * 100).toFixed(2) }}%
                             </span>
                         </div>
                      </el-card>
@@ -366,17 +366,17 @@ const renderRCS = (res) => {
             x: x, y: lower, type: 'scatter', mode: 'lines', line: { width: 0 }, fill: 'tonexty', fillcolor: 'rgba(52, 115, 231, 0.2)', showlegend: false, hoverinfo: 'skip'
         },
         {
-            x: x, y: y, type: 'scatter', mode: 'lines', line: { color: '#3b71ca', width: 3 }, name: rcsParams.value.model_type === 'cox' ? 'Hazard Ratio' : 'Odds Ratio'
+            x: x, y: y, type: 'scatter', mode: 'lines', line: { color: '#3b71ca', width: 3 }, name: rcsParams.value.model_type === 'cox' ? '风险比 (Hazard Ratio)' : '优势比 (Odds Ratio)'
         },
         {
-            x: [Math.min(...x), Math.max(...x)], y: [1, 1], type: 'scatter', mode: 'lines', line: { color: 'gray', dash: 'dash', width: 1 }, name: 'Reference (1.0)', hoverinfo: 'skip'
+            x: [Math.min(...x), Math.max(...x)], y: [1, 1], type: 'scatter', mode: 'lines', line: { color: 'gray', dash: 'dash', width: 1 }, name: '参考线 (Reference=1.0)', hoverinfo: 'skip'
         }
     ]
     
     const layout = {
-        title: `Restricted Cubic Spline (Knots=${rcsParams.value.knots}) with 95% CI`,
+        title: `限制性立方样条曲线 (RCS, Knots=${rcsParams.value.knots}) 及其 95% CI`,
         xaxis: { title: rcsParams.value.exposure },
-        yaxis: { title: rcsParams.value.model_type === 'cox' ? 'Hazard Ratio (95% CI)' : 'Odds Ratio (95% CI)' },
+        yaxis: { title: rcsParams.value.model_type === 'cox' ? '风险比 (HR, 95% CI)' : '优势比 (OR, 95% CI)' },
         showlegend: true
     }
     Plotly.newPlot('rcs-plot', traces, layout)
@@ -456,8 +456,8 @@ const renderForest = (groups) => {
         error_x: traceData.error_x, marker: { size: 8, color: '#3b71ca' }, hoverinfo: 'x'
     }
     const layout = {
-        title: 'Subgroup Analysis Forest Plot',
-        xaxis: { title: 'Hazard Ratio / Odds Ratio (log scale)', type: 'log', zeroline: false },
+        title: '亚组分析森林图 (Subgroup Analysis Forest Plot)',
+        xaxis: { title: '风险比 / 优势比 (log 尺度)', type: 'log', zeroline: false },
         yaxis: { showticklabels: false, range: [current_y + 1, 0] },
         shapes: [{ type: 'line', x0: 1, x1: 1, y0: 0, y1: current_y + 1, line: {dash: 'dot', color: 'gray'} }],
         annotations: annotations,
@@ -504,9 +504,9 @@ const renderCIF = (results) => {
         })
     })
     const layout = {
-        title: 'Cumulative Incidence Function (CIF)',
+        title: '累积发生率函数 (CIF) 曲线',
         xaxis: { title: cifParams.value.time_col },
-        yaxis: { title: 'Probability', range: [0, 1] },
+        yaxis: { title: '发生概率 (Probability)', range: [0, 1] },
         showlegend: true
     }
     Plotly.newPlot('cif-plot', traces, layout)
@@ -531,7 +531,7 @@ const nomoMethodology = ref('')
 
 const copyText = (text) => {
     navigator.clipboard.writeText(text).then(() => {
-        ElMessage.success('Copied methodology')
+        ElMessage.success('方法学段落已复制')
     })
 }
 
@@ -743,7 +743,7 @@ const renderNomogram = (res) => {
     })
     
     const layout = {
-        title: 'Nomogram',
+        title: '列线图 (Nomogram)',
         xaxis: { visible: false, range: [-20, max_total_pts * 1.1] }, // Add padding
         yaxis: { visible: false, range: [current_y - 0.2, 1.2] },
         shapes: shapes,

@@ -8,8 +8,8 @@
         </el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-            <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+            <el-dropdown-item command="png">高清图片 (PNG, 300dpi)</el-dropdown-item>
+            <el-dropdown-item command="svg">矢量图 (SVG)</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -44,11 +44,11 @@ const props = defineProps({
     default: ''
   },
   data: {
-    type: Array, // Plotly data array
+    type: Array, // Plotly 数据数组
     required: true
   },
   layout: {
-    type: Object, // Plotly layout object
+    type: Object, // Plotly 布局对象
     default: () => ({})
   },
   config: {
@@ -67,11 +67,11 @@ const renderChart = () => {
   const el = document.getElementById(props.chartId)
   if (!el) return
 
-  // Merge default layout with props layout
-  const defaultLayout = {
-    font: { family: 'Helvetica Neue, Arial, sans-serif' },
-    margin: { t: 40, r: 20, b: 40, l: 60 },
-    colorway: ['#3B71CA', '#E6A23C', '#2E7D32', '#D32F2F', '#909399'], // IDS Palette
+    // 合并默认布局与传入布局
+    const defaultLayout = {
+      font: { family: 'Helvetica Neue, Arial, sans-serif' },
+      margin: { t: 40, r: 20, b: 40, l: 60 },
+      colorway: ['#3B71CA', '#E6A23C', '#2E7D32', '#D32F2F', '#909399'], // IDS 标准配色方案
     ...props.layout
   }
 
@@ -91,7 +91,7 @@ const handleExport = async (format) => {
         width: 1200,
         height: 800,
         filename: props.title || 'insight_chart',
-        scale: format === 'png' ? 3 : 1 // High Res for PNG
+        scale: format === 'png' ? 3 : 1 // PNG 模式下使用 3 倍缩放以保证清晰度
     })
     ElMessage.success('图片导出成功')
   } catch (error) {
@@ -100,9 +100,9 @@ const handleExport = async (format) => {
   }
 }
 
-// React to data changes
+// 响应数据变化
 watch(() => [props.data, props.layout], () => {
-    // Use Plotly.react for efficient updates
+    // 使用 Plotly.react 进行高效局部更新
     const el = document.getElementById(props.chartId)
     if (el) {
          const defaultLayout = {

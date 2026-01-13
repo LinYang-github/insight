@@ -11,29 +11,29 @@ class AdvancedModelingService:
     @staticmethod
     def fit_rcs(df, target, event_col, exposure, covariates, model_type='cox', knots=3):
         """
-        Fit a model with Restricted Cubic Splines for the exposure variable.
-        
-        Args:
-            df (pd.DataFrame): Data.
-            target (str): Outcome variable (Y). For Cox, this is 'duration'.
-            event_col (str): Event indicator for Cox. None for Logistic/Linear.
-            exposure (str): Continuous variable to spline (X).
-            covariates (list): Adjusting variables.
-            model_type (str): 'cox' or 'logistic' or 'linear'.
-            knots (int): Number of knots (default 3, usually 3, 4, or 5).
-            
-        Returns:
+        拟合包含限制性立方样条 (RCS) 的模型。
+
+        参数:
+            df (pd.DataFrame): 数据集。
+            target (str): 结局变量 (Y)。对于 Cox 模型，这是时间列。
+            event_col (str): Cox 模型的事件指示符。对于 Logistic/Linear 模型为 None。
+            exposure (str): 需要进行样条处理的连续变量 (X)。
+            covariates (list): 调整变量列表。
+            model_type (str): 'cox'、'logistic' 或 'linear'。
+            knots (int): 节点数量 (默认为 3，通常使用 3, 4 或 5)。
+
+        返回:
             dict: {
-                'p_non_linear': float, 
-                'plot_data': [{'x': val, 'y': hr/or, 'lower': val, 'upper': val}]
+                'p_non_linear': float (非线性 P 值), 
+                'plot_data': [{'x': 暴露值, 'y': HR/OR, 'lower': 置信区间下限, 'upper': 上限}]
             }
         """
-        # 1. Prepare Formula
-        # Using patsy 'cr' (natural cubic spline) or 'bs' (B-spline). 
-        # R's rcs() is effectively natural cubic spline. patsy has cr().
-        # formula: "target ~ cr(exposure, df=knots) + cov1 + ..."
+        # 1. 准备公式
+        # 使用 patsy 'cr' (自然立方样条) 或 'bs' (B 样条)。
+        # R 语言的 rcs() 实际上是自然立方样条。patsy 有 cr()。
+        # 公式: "target ~ cr(exposure, df=knots) + cov1 + ..."
         
-        # Clean data first
+        # 首先清洗数据
         cols = [exposure] + covariates
         if model_type == 'cox':
             cols += [target, event_col]
@@ -43,25 +43,25 @@ class AdvancedModelingService:
         df_clean = df[cols].dropna()
         df_clean = DataService.preprocess_for_formula(df_clean)
         
-        # We need to calculate predictions across range of exposure
-        # Reference: usually median or mean of exposure => HR=1
+        # 计算暴露变量在整个范围内的预测值
+        # 参考值：通常取中位数或平均数，令其 HR=1
         ref_value = df_clean[exposure].median()
         
-        # Range for plotting: 5th to 95th percentile to avoid outliers stretching plot
+        # 绘图范围：取第 5 到第 95 百分位，避免异常值拉伸图表
         x_min = df_clean[exposure].quantile(0.05)
         x_max = df_clean[exposure].quantile(0.95)
         x_grid = np.linspace(x_min, x_max, 100)
         
-        # Create a prediction dataframe
-        # We need to hold covariates constant (e.g., at mean/mode)
-        # But wait, predicted HR is relative. 
-        # In Cox: h(t|x) / h(t|ref). The covariates cancel out if proportional hazards hold and we compare x to ref for the SAME individual.
-        # So we effectively strictly vary exposure.
+        # 创建预测数据框
+        # 需要保持协变量恒定（如取均值或众数）
+        # 注意：预测的 HR 是相对值。
+        # 在 Cox 模型中：h(t|x) / h(t|ref)。如果符合比例风险假设，协变量会抵消。
+        # 实际上我们只改变暴露变量。
         
         results = {}
         
         if model_type == 'cox':
-            # Lifelines formula usage
+            # Lifelines 公式用法
             # formula = "cr(exposure, df=knots) + covar1 + ..."
             cov_str = " + ".join(covariates) if covariates else ""
             formula_rhs = f"cr({exposure}, df={knots})"
@@ -71,26 +71,26 @@ class AdvancedModelingService:
             if cov_str:
                 formula_rhs += f" + {cov_str}"
                 
-            cph = CoxPHFitter(penalizer=0.01) # Add small penalizer for stability
-            # Lifelines fit(formula=...) is supported in recent versions
-            # But let's verify if we can do prediction easily.
-            # Alternatively, generate spline matrix manually using patsy to have full control.
+            cph = CoxPHFitter(penalizer=0.01) # 添加微小的惩罚项以保证稳定性
+            # 最近版本的 Lifelines 支持 fit(formula=...) 
+            # 但我们需要确认是否可以轻松进行预测。
+            # 或者，手动使用 patsy 生成样条矩阵以获得完全控制。
             
-            # Using patsy directly on DF
-            # dmatrix returns a matrix, we need a DF with readable names
-            # But lifelines handles formulas well.
+            # 直接在 DF 上使用 patsy
+            # dmatrix 返回矩阵，我们需要带有可读名称的 DF
+            # 但 lifelines 处理公式效果很好。
             
-            # 1. Fit the model
+            # 1. 拟合模型
             try:
                 cph.fit(df_clean, duration_col=target, event_col=event_col, formula=formula_rhs)
             except Exception as e:
-                raise ValueError(f"Model fitting failed: {str(e)}")
+                raise ValueError(f"模型拟合失败: {str(e)}")
             
-            # 2. Prepare Prediction Data (Grid) and Reference Data (Ref)
+            # 2. 准备预测数据 (网格) 和参考数据 (Ref)
             pred_df = pd.DataFrame({exposure: x_grid})
             ref_df = pd.DataFrame({exposure: [ref_value]})
             
-            # Fill covariates with mean/mode
+            # 填充协变量为均值/众数
             for cov in covariates:
                 if pd.api.types.is_numeric_dtype(df_clean[cov]):
                     mean_val = df_clean[cov].mean()
@@ -101,36 +101,36 @@ class AdvancedModelingService:
                     pred_df[cov] = mode_val
                     ref_df[cov] = mode_val
             
-            # 3. Compute Log Hazard Ratio and Standard Errors (Delta Method)
-            # We need the Design Matrix for the *spline terms* and covariates.
-            # Lifelines uses patsy internally. accessing cph._predicted_partial_hazard is tricky for diffs.
-            # Best way: Build design matrix manually using the SAME design info from the fitted model.
+            # 3. 计算对数风险比 (Log Hazard Ratio) 和标准误 (Delta 方法)
+            # 我们需要样条项和协变量的设计矩阵 (Design Matrix)。
+            # Lifelines 内部使用 patsy。直接访问 cph._predicted_partial_hazard 获取差异比较麻烦。
+            # 最佳方法：使用拟合模型中相同的设计信息手动构建设计矩阵。
             
-            # Get Design Info from the fitted model
-            # cph._model contains the patsy design info usually, but lifelines API changed.
-            # In recent lifelines, cph._predicted_partial_hazard uses:
+            # 从拟合的模型中获取设计信息 (Design Info)
+            # cph._model 通常包含 patsy 设计信息，但 lifelines API 已更改。
+            # 在最新版本的 lifelines 中，cph._predicted_partial_hazard 使用：
             #   matrix = patsy.dmatrix(self.formula, data, return_type='dataframe')
-            # But we need to ensure the knots/basis are identical to training.
-            # Only way is to use `patsy.build_design_matrices`.
-            # But where is the `design_info` stored?
-            # It seems `cph._regression_data` might have it, or `cph._model`?
-            # Actually, `cph.fit` creates the matrix but doesn't expose the design info object easily publicly?
-            # Re-creating dmatrix with the same formula on training data extracts the design_info.
+            # 但我们需要确保 knots/basis 与训练时一致。
+            # 唯一的方法是使用 `patsy.build_design_matrices`。
+            # 但 `design_info` 存储在哪里？
+            # 似乎 `cph._regression_data` 或 `cph._model` 中可能有？
+            # 实际上，`cph.fit` 创建了矩阵，但没有公开暴露设计信息对象？
+            # 在训练数据上使用相同公式重新创建 dmatrix 可以提取设计信息。
             
             design_matrix_train = patsy.dmatrix(formula_rhs, df_clean, return_type='matrix')
             design_info = design_matrix_train.design_info
             
-            # Now build matrices for Pred and Ref
-            # return_type='dataframe' is safer for column alignment
+            # 构建预测和参考矩阵
+            # return_type='dataframe' 对列对齐更安全
             dmatrix_pred = patsy.build_design_matrices([design_info], pred_df, return_type='dataframe')[0]
             dmatrix_ref = patsy.build_design_matrices([design_info], ref_df, return_type='dataframe')[0]
             
-            # Params (Coefficients)
+            # 参数 (系数)
             params = cph.params_ # Series
             
-            # Calculate Linear Predictor (X * beta)
-            # Alignment check: dmatrix columns must match params index
-            # patsy usually keeps order, but let's be safe
+            # 计算线性预测值 (X * beta)
+            # 对齐检查：dmatrix 的列必须与参数索引匹配
+            # patsy 通常保持顺序，但为了安全起见
             common_cols = [c for c in params.index if c in dmatrix_pred.columns]
             
             lp_pred = dmatrix_pred[common_cols].dot(params[common_cols])
@@ -139,24 +139,24 @@ class AdvancedModelingService:
             log_hr = lp_pred - lp_ref
             hr = np.exp(log_hr)
             
-            # 4. Variance Calculation
+            # 4. 方差计算
             # Var(logHR) = Var(LP_pred - LP_ref) = Var( (Xp - Xr) * beta )
             #            = (Xp - Xr) * Cov * (Xp - Xr)^T
-            # We only need diagonal of the resulting N x N matrix (variance of each point)
+            # 我们只需要得到的 N x N 矩阵的对角线（每个点的方差）
             
             cov_matrix = cph.variance_matrix_
-            # Reindex cov_matrix to match common_cols
+            # 重新索引 cov_matrix 以匹配 common_cols
             cov_matrix = cov_matrix.loc[common_cols, common_cols]
             
-            # Diff Matrix (N x p)
+            # 差异矩阵 (N x p)
             diff_matrix = dmatrix_pred[common_cols].sub(dmatrix_ref[common_cols].iloc[0], axis=1)
             
             # Var = diag( Diff @ Cov @ Diff.T )
-            # optimization: sum( (Diff @ Cov) * Diff, axis=1 )
+            # 优化：sum( (Diff @ Cov) * Diff, axis=1 )
             var_log_hr = (diff_matrix.dot(cov_matrix) * diff_matrix).sum(axis=1)
             se_log_hr = np.sqrt(var_log_hr)
             
-            # 5. Confidence Intervals
+            # 5. 置信区间
             z_score = 1.96
             lower_ci = np.exp(log_hr - z_score * se_log_hr)
             upper_ci = np.exp(log_hr + z_score * se_log_hr)
@@ -172,14 +172,14 @@ class AdvancedModelingService:
                 
             results['plot_data'] = plot_data
             results['ref_value'] = ref_value
-            results['p_non_linear'] = None # To do: LRT if needed
+            results['p_non_linear'] = None # TODO: 如有需要计算 LRT
             
-            # PH Assumption Check
+            # PH 假设检验
             results['ph_test'] = AdvancedModelingService.check_ph_assumption(cph, df_clean)
             
         elif model_type == 'logistic':
             # Statsmodels Logit
-            cov_str = " + ".join(covariates) if covariates else "1" # 1 for intercept only if no covariates
+            cov_str = " + ".join(covariates) if covariates else "1" # 如果没有协变量，仅包含截距项
             if not covariates: cov_str = "1"
             
             formula = f"{target} ~ cr({exposure}, df={knots}) + {cov_str}"
@@ -190,11 +190,11 @@ class AdvancedModelingService:
                  
             model = smf.logit(formula=formula, data=df_clean).fit(disp=0)
             
-            # Prediction
+            # 预测
             # OR = exp(logit(x) - logit(ref)) ? 
             # Logit = Xb. 
             # OR(x vs ref) = exp(X(x)b - X(ref)b)
-            # Similar logic to Cox.
+            # 逻辑与 Cox 模型类似。
             
             pred_df = pd.DataFrame({exposure: x_grid})
             for cov in covariates:
@@ -203,25 +203,25 @@ class AdvancedModelingService:
                  else:
                     pred_df[cov] = df_clean[cov].mode()[0]
                     
-            ref_df = pd.DataFrame([pred_df.iloc[0].copy()]) # Dummy
+            ref_df = pd.DataFrame([pred_df.iloc[0].copy()]) # 虚拟数据
             ref_df[exposure] = ref_value
-            for cov in covariates: # Reset ref cols
+            for cov in covariates: # 重置参考列
                  if pd.api.types.is_numeric_dtype(df_clean[cov]):
                     ref_df[cov] = df_clean[cov].mean()
                  else:
                     ref_df[cov] = df_clean[cov].mode()[0]
 
-            # Get predictions (Linear predictor = Xb)
-            # getting design matrix
+            # 获取预测值 (线性预测值 = Xb)
+            # 获取设计矩阵
             # patsy.dmatrix(formula_rhs, pred_df) ?
-            # Easier: model.predict(exog=..., transform=True) ?
-            # Statsmodels predict returns p, not linear predictor usually unless specified.
-            # actually results.predict(exog, transform=False) returns linear predictor? 
-            # Logit: predict() returns probability. 
-            # We want linear predictor.
+            # 更简单的方法：model.predict(exog=..., transform=True) ?
+            # Statsmodels predict 除非特别指定，否则通常返回预测概率 p 而非线性预测值。
+            # 实际上 results.predict(exog, transform=False) 会返回线性预测值？
+            # Logit：predict() 返回概率。
+            # 我们需要线性预测值。
             
-            # We can use the design matrix and dot product with params.
-            # But getting design matrix from formula on new data:
+            # 我们可以使用设计矩阵与参数的点积。
+            # 但是从新数据的公式中获取设计矩阵：
             # dmatrix = patsy.build_design_matrices([model.data.design_info], pred_df, return_type='dataframe')[0]
             
             dmatrix_pred = patsy.build_design_matrices([model.model.data.design_info], pred_df, return_type='dataframe')[0]
@@ -233,13 +233,13 @@ class AdvancedModelingService:
             log_or = lp_pred - lp_ref
             ors = np.exp(log_or)
             
-            # CIs
+            # 置信区间
             cov_matrix = model.cov_params()
-            # Variance of difference: (X1 - X2) Cov (X1 - X2)^T
+            # 差异的方差：(X1 - X2) Cov (X1 - X2)^T
             diff_matrix = dmatrix_pred.sub(dmatrix_ref.iloc[0], axis=1) # (N, p)
             
             # se^2 = sum( (diff_matrix @ cov_matrix) * diff_matrix, axis=1 )
-            # Efficient calc:
+            # 高效计算：
             # se = sqrt( diag( D @ Cov @ D.T ) )
             
             var_log_or = (diff_matrix.dot(cov_matrix) * diff_matrix).sum(axis=1)
@@ -260,7 +260,7 @@ class AdvancedModelingService:
             results['plot_data'] = plot_data
             results['ref_value'] = ref_value
             
-            # Methodology & Interpretation
+            # 方法学与解读
             results['methodology'] = AdvancedModelingService._generate_rcs_methodology(knots, model_type)
             results['interpretation'] = "检测到潜在非线性关系。" if results.get('p_non_linear') and results['p_non_linear'] < 0.05 else "未检测到显著非线性关系。"
             
@@ -268,30 +268,28 @@ class AdvancedModelingService:
 
     @staticmethod
     def _generate_rcs_methodology(knots, model_type):
-        model_name = "Cox proportional hazards" if model_type == 'cox' else "Logistic regression"
-        return (f"Restricted cubic splines (RCS) with {knots} knots were used to model the non-linear "
-                f"relationship between the continuous exposure and outcome using {model_name} models. "
-                "Tests for non-linearity was performed.")
+        model_name = "Cox 比例风险模型" if model_type == 'cox' else "Logistic 回归模型"
+        return (f"使用包含 {knots} 个节点的限制性立方样条 (RCS) 来模拟连续暴露因素与结局之间的非线性关系，"
+                f"并应用了 {model_name} 进行分析。"
+                "同时进行了非线性检验。")
 
     @staticmethod
     def check_ph_assumption(cph, df_train, p_threshold=0.05):
         """
-        Check Proportional Hazards Assumption using Schoenfeld Residuals.
+        使用 Schoenfeld 残差检验比例风险 (PH) 假设。
         """
         from lifelines.statistics import proportional_hazard_test
         try:
-            # Drop columns not in cph to avoid issues? 
-            # proportional_hazard_test needs the dataset used for fitting.
-            # cph object usually has it but we pass it explicitly to be safe.
-            # Note: df_train must contain duration and event cols.
+            # 显式传递用于拟合的数据集以确保安全。
+            # 注意：df_train 必须包含时间 (duration) 和事件 (event) 列。
             results = proportional_hazard_test(cph, df_train, time_transform='km')
             summary = results.summary # DataFrame
             
-            # Check if any variable violates PH
+            # 检查是否有变量违反 PH 假设
             min_p = summary['p'].min()
             is_violated = min_p < p_threshold
             
-            # Format details
+            # 格式化详细信息
             details = {}
             for idx, row in summary.iterrows():
                 details[str(idx)] = {
@@ -302,7 +300,7 @@ class AdvancedModelingService:
 
             return {
                 'is_violated': bool(is_violated),
-                'p_value': float(min_p), # The most significant P violation
+                'p_value': float(min_p), # 最显著的 P 值
                 'details': details,
                 'message': "违反比例风险假定 (PH Assumption Violation)" if is_violated else "满足比例风险假定"
             }
@@ -313,21 +311,21 @@ class AdvancedModelingService:
     @staticmethod
     def perform_subgroup(df, target, event_col, exposure, subgroups, covariates, model_type='cox'):
         """
-        Perform subgroup analysis.
+        进行亚组分析。
         """
         results = []
         
-        # 1. Overall Model
-        # Fit model on all data to get Overall estimate
-        # reuse modeling service or simple fit here
+        # 1. 整体模型
+        # 在全量数据上拟合模型以获取整体估计值
+        # 复用建模服务或在此简单拟合
         # ...
         
-        # 2. Loop Subgroups
+        # 2. 遍历亚组变量
         for grp_col in subgroups:
-            # Expect grp_col to be categorical
-            # We need unique values
+            # 预期 grp_col 为定性变量 (Categorical)
+            # 我们需要获取唯一值
             groups = df[grp_col].dropna().unique()
-            # Sort if possible
+            # 如果可能，进行排序
             try:
                 groups = sorted(groups)
             except:
@@ -338,42 +336,42 @@ class AdvancedModelingService:
                 'subgroups': []
             }
             
-            # Check interaction P-value
-            # Model: Y ~ Exposure + Covariates + Grp + Exposure:Grp
-            # We want the P-value for the interaction term Exposure:Grp
-            # This indicates if heterogeneity is significant.
+            # 检查交互作用 P 值
+            # 模型: Y ~ Exposure + Covariates + Grp + Exposure:Grp
+            # 我们需要交互项 Exposure:Grp 的 P 值
+            # 这表明异质性是否显著。
             
             p_interaction = None
             try:
-                # Interaction Modeling
-                # Clean df
+                # 交互建模
+                # 清洗数据
                 temp_cols = [target, exposure, grp_col] + covariates
                 if event_col: temp_cols.append(event_col)
                 temp_df = df[temp_cols].dropna()
                 temp_df = DataService.preprocess_for_formula(temp_df)
                 
-                # Formula Construction
+                # 构建公式
                 cov_part = " + ".join(covariates)
                 if cov_part: cov_part = " + " + cov_part
                 
-                # Careful with categorical encoding in formula
+                # 在公式中注意定性变量的编码
                 formula = f"{target} ~ {exposure} * C({grp_col}){cov_part}"
                 
                 if model_type == 'cox':
                      cph = CoxPHFitter()
                      cph.fit(temp_df, duration_col=target, event_col=event_col, formula=formula)
-                     # Find interaction terms
-                     # They usually look like 'Exposure:C(Grp)[T.Level]'
-                     # We might need an ANOVA test or just check min P.
-                     # Simplest: Likelihood Ratio Test between (Exp + Grp) and (Exp * Grp)
-                     # But lifelines doesn't have easy ANOVA.
-                     # Take the p-value of the interaction term(s). If multiple, it's complex.
-                     # For binary subgroup, there is 1 interaction term.
+                     # 寻找交互项
+                     # 它们通常形如 'Exposure:C(Grp)[T.Level]'
+                     # 我们可能需要进行 ANOVA 测试或仅检查最小 P 值。
+                     # 最简单的方法：在 (Exp + Grp) 和 (Exp * Grp) 之间进行似然比检验 (LRT)
+                     # 但 lifelines 很难进行 ANOVA。
+                     # 取交互项的 P 值。如果有多个交互项，情况会比较复杂。
+                     # 对于二元亚组，只有一个交互项。
                      summary = cph.summary
                      interaction_rows = [idx for idx in summary.index if ':' in idx]
                      if interaction_rows:
-                         p_interaction = summary.loc[interaction_rows, 'p'].min() # Crude approximation
-                     
+                         p_interaction = summary.loc[interaction_rows, 'p'].min() # 粗略近似
+                      
                 elif model_type == 'logistic':
                     model = smf.logit(formula, data=temp_df).fit(disp=0)
                     interaction_rows = [idx for idx in model.pvalues.index if ':' in idx]
@@ -386,14 +384,14 @@ class AdvancedModelingService:
             group_res['p_interaction'] = p_interaction
 
             for val in groups:
-                # Subset
+                # 取子集
                 sub_df = df[df[grp_col] == val]
                 sub_df = DataService.preprocess_for_formula(sub_df)
-                # Check sample size
+                # 检查样本量
                 if len(sub_df) < 10:
                     continue
                     
-                # Fit Model
+                # 拟合模型
                 est, lower, upper, p_val = AdvancedModelingService._fit_simple_model(
                     sub_df, target, event_col, exposure, covariates, model_type
                 )
@@ -409,7 +407,7 @@ class AdvancedModelingService:
             
             results.append(group_res)
             
-        # Wrap in dict with methodology
+        # 封装到带有方法学说明的字典中
         return {
             'forest_data': results,
             'methodology': AdvancedModelingService._generate_subgroup_methodology(model_type)
@@ -417,9 +415,9 @@ class AdvancedModelingService:
 
     @staticmethod
     def _generate_subgroup_methodology(model_type):
-        test_type = "Likelihood Ratio Test" # Simplified
-        return ("Subgroup analyses were performed to evaluate the consistency of the effect sizes across prespecified subgroups. "
-                "Interaction terms were included in the models to test for heterogeneity of effects (interaction P-value).")
+        test_type = "似然比检验" # 简化处理
+        return ("进行了亚组分析，以评估预设亚组之间的效应量一致性。"
+                "模型中包含了交互项，以检验效应的异质性 (交互作用 P 值)。")
 
     @staticmethod
     def _fit_simple_model(df, target, event_col, exposure, covariates, model_type):
@@ -462,26 +460,26 @@ class AdvancedModelingService:
     @staticmethod
     def calculate_cif(df, time_col, event_col, group_col=None):
         """
-        Calculate Cumulative Incidence Function (CIF) using Aalen-Johansen.
+        使用 Aalen-Johansen 估量法计算累积发生率函数 (CIF)。
         """
         from lifelines import AalenJohansenFitter
         
-        # event_col should have 0 (censor), 1 (primary), 2 (competing)...
-        # We calculate CIF for *each* event type found (except 0).
+        # event_col 应该包含 0 (删失), 1 (主要事件), 2 (竞争风险)...
+        # 我们为发现的 *每个* 事件类型（除 0 外）计算 CIF。
         
-        # Check integrity
+        # 完整性检查
         if df[event_col].nunique() < 2:
-             # Just censorship?
-             # Or only 1 event type? If only 1, AJ == KM (1-KM)
+             # 仅包含删失？
+             # 或者只有 1 种事件类型？如果只有 1 种，AJ 等于 KM (1-KM)
              pass
         
         results = []
         
-        # Events (exclude 0)
+        # 事件 (排除 0)
         events = sorted([e for e in df[event_col].unique() if e != 0])
         
         if not events:
-            raise ValueError("No event types found (only 0/Censor found?)")
+            raise ValueError("未发现事件类型 (仅发现 0/删失？)")
             
         groups = ['All']
         if group_col:
@@ -504,19 +502,19 @@ class AdvancedModelingService:
                     
                     ajf.fit(sub_clean[time_col], sub_clean[event_col], event_of_interest=evt)
                     
-                    # Store line
-                    # ajf.cumulative_density_ is the CIF
+                    # 存储数据线
+                    # ajf.cumulative_density_ 即为 CIF
                     cif = ajf.cumulative_density_
                     
-                    # Convert to list of {x, y}
+                    # 获取 {x, y} 列表
                     line_data = []
-                    # cif index is time, column is CIF_evt
+                    # cif 索引为时间，列为 CIF_evt
                     times = cif.index.tolist()
                     values = cif.values.flatten().tolist()
                     
-                    # Downsample if too huge?
+                    # 如果数据量太大则降采样？
                     if len(times) > 500:
-                        # simple skip
+                        # 简单跳过
                         indices = np.linspace(0, len(times)-1, 500, dtype=int)
                         times = [times[i] for i in indices]
                         values = [values[i] for i in indices]
@@ -538,32 +536,32 @@ class AdvancedModelingService:
 
     @staticmethod
     def _generate_cif_methodology():
-        return ("Cumulative Incidence Functions (CIF) were estimated using the Aalen-Johansen estimator to account for competing risks. "
-                "Gray's test was used to compare equality of CIFs between groups (if applicable).")
+        return ("使用 Aalen-Johansen 估量法估算累积发生率函数 (CIF) 以处理竞争风险。"
+                "Gray's 检验用于比较不同组别间 CIF 的等同性（如适用）。")
 
     @staticmethod
     def generate_nomogram(df, target, event_col, model_type, predictors):
         """
-        Generate data for Nomogram and Web Calculator.
-        Supports both numeric and categorical predictors.
+        生成诺谟图 (Nomogram) 和网络计算器的数据。
+        支持数值型和定性预测变量。
         """
         results = {
             'variables': [],
             'risk_table': []
         }
         
-        # 1. Fit Model & Get Coefs
+        # 1. 拟合模型并获取系数
         cols = [target] + predictors
         if event_col: cols.append(event_col)
         
         df_clean = df[cols].dropna()
         df_clean = DataService.preprocess_for_formula(df_clean)
-
+ 
         params = {}
         intercept = 0
         baseline_sf = None
         
-        # Prepare Formula
+        # 准备公式
         formula = f"{target} ~ {' + '.join(predictors)}" if model_type == 'logistic' else " + ".join(predictors)
         
         if model_type == 'logistic':
@@ -575,24 +573,24 @@ class AdvancedModelingService:
              cph.fit(df_clean, duration_col=target, event_col=event_col, formula=formula)
              params = cph.params_.to_dict()
              median_time = df_clean[target].median()
-             # Calculate baseline survival at median time
-             # Baseline S0(t) is survival when all X=0 (if centered, at mean)
-             # lifelines predicts partial hazard. 
-             # predict_survival_function returns S(t|x).
-             # We want Base S0(t). 
-             # We can get S(t|mean) then adjust back?
-             # Or construct a dummy where all centered covariates are 0.
-             # Lifelines centers data by default.
+             # 计算中位随访时间的基准生存率
+             # 基准 S0(t) 是当所有 X=0 时的生存率（如果已中心化，则在均值处）
+             # lifelines 预测部分风险比 (Partial Hazard)。
+             # predict_survival_function 返回 S(t|x)。
+             # 我们想要基准 S0(t)。
+             # 我们可以获取 S(t|mean) 然后调整回来？
+             # 或者构造一个所有中心化协变量均为 0 的虚拟数据。
+             # Lifelines 默认对数据进行中心化。
              baseline_sf = cph.predict_survival_function(pd.DataFrame({p:[0] for p in predictors}, index=[0]), times=[median_time]).iloc[0,0]
 
-        # 2. Calculate Scaling Factor (Points per Unit Beta)
-        # We need to find the variable with the maximum effect range.
+        # 2. 计算缩放因子 (每单位 Beta 的分值)
+        # 我们需要找到效应范围最大的变量。
         max_effect_range = 0
-        var_configs = {} # Store how to compute effect for each var
+        var_configs = {} # 存储每个变量的效应计算方式
         
         for var in predictors:
             if pd.api.types.is_numeric_dtype(df_clean[var]) and df_clean[var].nunique() > 2:
-                # Continuous / Numeric
+                # 连续型 / 数值型
                 coef = params.get(var, 0)
                 mn, mx = df_clean[var].min(), df_clean[var].max()
                 rng = abs(coef * (mx - mn))
@@ -605,20 +603,20 @@ class AdvancedModelingService:
                     'range': rng
                 }
             else:
-                # Categorical (or binary treated as cat)
-                # Find all associated coefficients (dummy encoded)
-                # Reference level has coef 0.
+                # 定性变量 (或按定性处理的二元变量)
+                # 查找所有关联系数 (哑变量编码)
+                # 参考层系数为 0。
                 levels = sorted(df_clean[var].unique())
                 level_coefs = {}
                 
-                # Check how it's encoded in params. Usually "Var[T.Level]"
-                # Base level is 0.
-                # Regex or exact match? Statsmodels/Lifelines uses "Var[T.Level]"
+                # 检查在参数中是如何编码的。通常为 "Var[T.Level]"
+                # 基准层为 0。
+                # 正则匹配或精确匹配？Statsmodels/Lifelines 使用 "Var[T.Level]"
                 c_values = []
                 for l in levels:
                     key = f"{var}[T.{l}]"
                     val = params.get(key, 0)
-                    if key not in params and l == levels[0]: val = 0 # Assume first is ref
+                    if key not in params and l == levels[0]: val = 0 # 假设第一个是参考层
                     level_coefs[l] = val
                     c_values.append(val)
                 
@@ -637,9 +635,9 @@ class AdvancedModelingService:
 
         points_per_unit_beta = 100 / max_effect_range
         
-        # 3. Generate Scale Data
-        # We shift scale so that Min Contribution = 0 Points.
-        # Contribution = Val * Coef (Numeric) or Level_Coef (Cat)
+        # 3. 生成标尺数据
+        # 我们平移标尺，使得“最小贡献 = 0 分”。
+        # 贡献 = 值 * 系数 (数值型) 或 Level_Coef (定性型)
         
         total_min_points = 0
         total_max_points = 0
@@ -651,14 +649,14 @@ class AdvancedModelingService:
                 coef = config['coef']
                 mn, mx = config['min'], config['max']
                 
-                # Contributions at extremes
+                # 两端的贡献
                 c_min = mn * coef
                 c_max = mx * coef
                 
-                # We define Base for this variable as min(c_min, c_max)
+                # 我们将该变量的基准（Base）定义为 min(c_min, c_max)
                 base_c = min(c_min, c_max)
                 
-                # Points = (Contribution - Base) * scaling
+                # 分值 = (贡献 - 基准) * 缩放比例
                 ticks = np.linspace(mn, mx, 10)
                 points_mapping = []
                 for t in ticks:
@@ -673,13 +671,13 @@ class AdvancedModelingService:
                     'points_mapping': points_mapping
                 })
                 
-                # Update Totals tracking
-                # A patient usually contributes between 0 and (Range * Scaling) points
+                # 更新总量追踪
+                # 一个患者通常贡献 0 到 (Range * Scaling) 分
                 total_max_points += config['range'] * points_per_unit_beta
                 
-                # Update global intercept adjustment
-                # The formula is LP = Intercept + Sum(Contributions)
-                # We substituted Contribution = Points/S + Base
+                # 更新全局截距调整
+                # 公式为 LP = Intercept + Sum(Contributions)
+                # 我们代入 Contribution = Points/S + Base
                 # LP = Intercept + Sum(Points/S + Base)
                 #    = (Intercept + Sum(Base)) + TotalPoints/S
                 intercept += base_c
@@ -702,8 +700,8 @@ class AdvancedModelingService:
                 total_max_points += config['range'] * points_per_unit_beta
                 intercept += min_c
 
-        # 4. Risk Scale
-        # LP = Adjusted_Intercept + TotalPoints / Scaling
+        # 4. 风险标尺
+        # LP = 调整后的截距 + 总分 / 缩放比例
         point_grid = np.linspace(0, total_max_points, 100)
         risk_mapping = []
         
@@ -718,38 +716,38 @@ class AdvancedModelingService:
             
         results['risk_table'] = risk_mapping
         
-        # Meta for Calculator
-        # We need to send coefs differently for cat?
-        # Actually frontend calc handles numerics. For cat, it needs mapping Val -> Coef.
-        # Let's simplify and send mapped 'level_coefs' for cat.
+        # 计算器的元数据 (Meta)
+        # 我们是否需要为定性变量发送不同的系数？
+        # 实际上前端计算处理数值型。对于定性型，它需要“值 -> 系数”的映射。
+        # 让我们简化一下，为定性变量发送映射好的 'level_coefs'。
         
         coeffs_flat = {}
         for var, conf in var_configs.items():
             if conf['type'] == 'numeric':
                 coeffs_flat[var] = float(conf['coef'])
             else:
-                # For categorical, frontend needs to look up dict
-                # We can store in specific structure
-                coeffs_flat[var] = conf['level_coefs'] # dict inside dict
+                # 对于定性变量，前端需要查字典
+                # 我们可以存储在特定结构中
+                coeffs_flat[var] = conf['level_coefs'] # 嵌套字典
                 
         results['formula'] = {
-            'intercept': float(intercept), # This is the ADJUSTED intercept now? 
-            # WAIT. The calculator logic in frontend uses raw inputs * coefficients.
-            # If I send ADJUSTED intercept here, front-end calculation will be wrong unless I change frontend too.
-            # Frontend Logic: lp = intercept + sum(val * coef).
-            # So I should send the ORIGINAL intercept and ORIGINAL coefficients.
+            'intercept': float(intercept), # 这是调整后的截距吗？
+            # 等等。前端计算逻辑使用“原始输入 * 系数”。
+            # 如果我在这里发送调整后的截距，除非我也更改前端，否则前端计算会出错。
+            # 前端逻辑：lp = intercept + sum(val * coef)。
+            # 所以我应该发送原始截距和原始系数。
             'baseline_survival': float(baseline_sf) if baseline_sf else None,
             'model_type': model_type,
-            'coeffs': coeffs_flat, # Supports nested dicts? Frontend needs update.
-            'var_configs': var_configs # Helper for frontend
+            'coeffs': coeffs_flat, # 支持嵌套字典？前端需要更新。
+            'var_configs': var_configs # 前端助手
         }
         
-        # Reset intercept to original for 'formula' return if frontend uses standard formula
-        # But wait, frontend 'coeffs_flat' for categorical...
-        # If user inputs "Stage II", we need to know coef for Stage II.
-        # Yes, level_coefs provides that. 
-        # But wait, step 1 params had 'Intercept' (original).
-        # We should return ORIGINAL intercept for calculator.
+        # 如果前端使用标准公式，则为 'formula' 返回项重置截距为原始值
+        # 但等等，前端对定性变量的 'coeffs_flat'...
+        # 如果用户输入 "Stage II"，我们需要知道 Stage II 的系数。
+        # 是的，level_coefs 提供了这一点。
+        # 但等等，第 1 步中的 params 包含 'Intercept' (原始)。
+        # 我们应该为计算器返回原始截距。
         results['formula']['intercept'] = float(params.get('Intercept', 0))
 
         results['methodology'] = AdvancedModelingService._generate_nomogram_methodology(model_type)
@@ -757,30 +755,30 @@ class AdvancedModelingService:
 
     @staticmethod
     def _generate_nomogram_methodology(model_type):
-        return ("A nomogram was formulated to visualize the prediction model. "
-                "Points were assigned to each variable (or level) based on its regression coefficient. "
-                "The total points were mapped to the predicted probability of the outcome.")
+        return ("构建诺谟图以可视化预测模型。"
+                "根据回归系数为每个变量（或层级）分配分值。"
+                "总分对应于预测的结局发生概率。")
 
     @staticmethod
     def compare_models(df, target, model_configs, model_type='logistic', event_col=None):
         """
-        Compare multiple models on the SAME complete-case dataset (Incremental Value).
+        在相同的全病例数据集上比较多个模型（增量价值）。
         
-        Args:
-            df (pd.DataFrame): Data.
-            target (str): Target variable (Y) or Time variable.
-            model_configs (list): List of dicts [{'name': 'M1', 'features': ['A']}, ...].
-            model_type (str): 'logistic' or 'cox'.
-            event_col (str): Event indicator (required for Cox).
+        参数:
+            df (pd.DataFrame): 数据。
+            target (str): 结局变量 (Y) 或时间变量。
+            model_configs (list): 模型配置列表 [{'name': 'M1', 'features': ['A']}, ...]。
+            model_type (str): 'logistic' 或 'cox'。
+            event_col (str): 事件指示符 (Cox 模型必需)。
         
-        Returns:
-            list: List of model results with metrics.
+        返回:
+            list: 包含评估指标的模型结果列表。
         """
         from app.services.modeling_service import ModelingService
         from lifelines import CoxPHFitter
         from sklearn.metrics import roc_curve, auc as calc_auc
         
-        # 1. Identify valid columns (Intersection)
+        # 1. 识别有效列 (交集)
         all_features = set()
         for config in model_configs:
             all_features.update(config['features'])
@@ -789,32 +787,32 @@ class AdvancedModelingService:
         if event_col:
             required_cols.append(event_col)
         
-        # 2. Complete Case Analysis
-        # Ensure fairness by dropping missing values on union of cols
+        # 2. 全病例分析 (Complete Case Analysis)
+        # 通过在特征交集列上删除缺失值来确保公平性
         df_clean = df[required_cols].dropna()
         
         if len(df_clean) < 10:
-             raise ValueError("Sample size too small (<10) after handling missing values for all combined features.")
-
-        # Data Preview (Completeness)
+             raise ValueError("处理完所有组合特征的缺失值后，样本量太小 (<10)。")
+ 
+        # 数据预览 (完整性)
         n_samples = len(df_clean)
         
         results = []
         
-        # 3. Fit Models (Incremental)
-        # Base Model (First feature set) - Optional? No, list is list of models.
-        # But usually we compare Model A vs Model B.
-        # User passes list of configs.
+        # 3. 拟合模型 (增量式)
+        # 基准模型 (第一个特征集) - 可选？不，列表即为模型列表。
+        # 但通常我们比较模型 A 与模型 B。
+        # 用户传递配置列表。
         
-        # Pre-calc Base AUC/Metrics if we want 'Difference' relative to first model?
-        # Let's just calculate metrics for EACH model.
-        # Comparison logic (Delong, NRI/IDI) will be done pairwise if requested or relative to M1.
+        # 如果我们想要相对于第一个模型的“差异”，是否预先计算基准 AUC/指标？
+        # 让我们为每个模型计算指标。
+        # 比较逻辑 (Delong, NRI/IDI) 将根据请求或相对于 M1 成对进行。
         
-        # To support comparison matrix, we return full metrics for each.
-        # Frontend handles display of "Ref vs New".
+        # 为了支持比较矩阵，我们返回每个模型的完整指标。
+        # 前端处理“参考 vs 新建”的显示。
         
-        # We also need pairwise statistics (Delong P, NRI, IDI)
-        # If >1 models, compare Model[i] vs Model[0] (Base).
+        # 我们还需要成对统计数据 (Delong P, NRI, IDI)
+        # 如果模型数量 > 1，则将模型 [i] 与模型 [0] (基准) 进行比较。
         
         for idx, config in enumerate(model_configs):
             features = config['features']
@@ -824,13 +822,13 @@ class AdvancedModelingService:
             model_res = AdvancedModelingService._fit_simple_model(
                 df_clean, target, event_col, features[0], features[1:] if len(features)>1 else [], model_type
             )
-            # _fit_simple_model returns scalar params. We need FULL PREDICTIONS.
-            # We need to refactor or use standard fitting here.
+            # _fit_simple_model 返回标量参数。我们需要完整的预测值。
+            # 我们需要重构或在此使用标准拟合。
             
-            # Re-fit using standard libraries to get predictions
+            # 使用标准库重新拟合以获得预测值
             try:
                 if model_type == 'logistic':
-                    # formula
+                    # 公式
                     f = f"{target} ~ {' + '.join(features)}"
                     m = smf.logit(f, data=df_clean).fit(disp=0)
                     y_prob = m.predict(df_clean)
@@ -846,11 +844,11 @@ class AdvancedModelingService:
                     f = " + ".join(features)
                     cph.fit(df_clean, duration_col=target, event_col=event_col, formula=f)
                     
-                    # Predictions (Risk Score or Survival?)
-                    # For AUC, we typically use Risk Score (Partial Hazard).
+                    # 预测值 (风险评分或生存率？)
+                    # 对于 AUC，我们通常使用风险评分 (Partial Hazard)。
                     # cph.predict_partial_hazard(df)
                     y_prob = cph.predict_partial_hazard(df_clean)
-                    y_true = df_clean[event_col] # Not exactly y_true for AUC(t), but for Harrell's C
+                    y_true = df_clean[event_col] # 对于 AUC(t) 并不完全是 y_true，但适用于 Harrell's C
                     
                     metrics = {
                         'c_index': cph.concordance_index_,
@@ -858,7 +856,7 @@ class AdvancedModelingService:
                         'log_likelihood': cph.log_likelihood_
                     }
                     
-                    # For Time-Dependent AUC (if needed later), we use EvaluationService
+                    # 对于时间依赖性 AUC (如果以后需要)，我们使用 EvaluationService
                     
                 results.append({
                     'name': name,
@@ -870,13 +868,13 @@ class AdvancedModelingService:
             except Exception as e:
                 results.append({'name': name, 'error': str(e)})
                 
-        # 4. Compare (vs Model 1)
+        # 4. 比较 (相对于模型 1)
         if len(results) > 1:
             base = results[0]
             if 'y_prob' in base and not base.get('error'):
                 for res in results[1:]:
                     if 'y_prob' in res and not res.get('error'):
-                        # Delong (if binary)
+                        # Delong (如果是二元变量)
                         if model_type == 'logistic':
                             delong = EvaluationService.calculate_delong_test(
                                 df_clean[target], base['y_prob'], res['y_prob']
@@ -891,17 +889,17 @@ class AdvancedModelingService:
     @staticmethod
     def fit_fine_gray(df, duration_col, event_col, covariates, event_of_interest=1):
         """
-        Fit Fine-Gray Competing Risk Model (Subdistribution Hazard).
+        拟合 Fine-Gray 竞争风险模型 (子分布风险)。
         
-        Args:
-            df (pd.DataFrame): Data.
-            duration_col (str): Time.
-            event_col (str): Event (0=Censor, 1,2..=Risks).
-            covariates (list): Independent variables.
-            event_of_interest (int): The event code to model (default 1).
+        参数:
+            df (pd.DataFrame): 数据。
+            duration_col (str): 时间。
+            event_col (str): 事件 (0=删失, 1,2..=各类风险)。
+            covariates (list): 自变量。
+            event_of_interest (int): 要建模的事件代码 (默认为 1)。
             
-        Returns:
-            dict: Summary table of SHR (Subdistribution Hazard Ratios).
+        返回:
+            dict: SHR (子分布风险比) 的汇总表。
         """
         # Try importing FineGrayFitter
         try:
@@ -913,30 +911,14 @@ class AdvancedModelingService:
             # Let's hope it's available or we find it.
             raise ImportError("FineGrayFitter not found in lifelines. Please upgrade lifelines >= 0.26.0.")
             
-        # 1. Prepare Data
-        cols = [duration_col, event_col] + covariates
-        df_clean = df[cols].dropna()
-        
-        df_clean = DataService.preprocess_for_formula(df_clean)
-        
-        # 2. Fit
+        # 尝试导入 FineGrayFitter
         try:
-            fg = FineGrayFitter()
-            # Formula is supported in recent versions?
-            # Or use df directly with duration/event cols.
-            # formula argument is available in 0.26+
-            
-            formula = " + ".join(covariates)
-            fg.fit(df_clean, duration_col=duration_col, event_col=event_col, formula=formula)
-            
-            # 3. Extract Results
-            # Summary contains coef, se, p, etc.
-            # We want exp(coef) -> SHR
-            summary = fg.summary # DataFrame
-            
-            # Structure: 
-            # index = covariate
-            # col: coef, exp(coef), se(coef), p, ...
+            from lifelines import FineGrayFitter
+        except ImportError:
+            # 回退或报错
+            # 最近版本的 lifelines 可能需要特定的导入方式，或者已缺失。
+            # 如果缺失，我们可以手动实现加权逻辑，但这很复杂。
+            # 让我们希望它是可用的，或者我们能找到它。
             
             res_list = []
             for idx, row in summary.iterrows():
@@ -955,27 +937,27 @@ class AdvancedModelingService:
                     'event_type': event_of_interest,
                     'summary': res_list
                 }],
-                'methodology': "Fine-Gray subdistribution hazard models were used to estimate the effect of covariates on the cumulative incidence of the event of interest, accounting for competing risks."
+                'methodology': "使用 Fine-Gray 子分布风险模型来估算协变量对目标事件累积发生率的影响，并考虑了竞争风险。"
             }
             
         except Exception as e:
             raise ValueError(f"Fine-Gray Fit Failed: {str(e)}")
 
         
-        # Logic for Cox ROC Proxy
+        # Cox ROC 代理逻辑
         median_time = None
         if model_type == 'cox':
             if not event_col:
-                raise ValueError("Event column is required for Cox model.")
+                raise ValueError("Cox 模型必需提供事件列。")
             median_time = df_clean[target].median()
-            # We will calculate Incidence cumulative ROC at median time.
-            # Simplified: Keep (Event=1 & Time<=Median) as Case=1
-            # Keep (Time > Median) as Control=0
-            # Drop (Event=0 & Time <= Median) (Unknown at Median)
+            # 我们将计算中位随访时间的时变累积 ROC。
+            # 简化处理：保留 (Event=1 & Time<=Median) 作为 Case=1
+            # 保留 (Time > Median) 作为 Control=0
+            # 剔除 (Event=0 & Time <= Median) (在中位时间点状态未知)
         
         results = []
         
-        # 3. Loop Models
+        # 3. 遍历模型
         for config in model_configs:
             def calc_auc_stats(auc, n1, n2):
                 from scipy.stats import norm
@@ -986,7 +968,7 @@ class AdvancedModelingService:
                 lower = max(0, auc - 1.96*se)
                 upper = min(1, auc + 1.96*se)
                 
-                # P-value (H0: AUC=0.5)
+                # P 值 (H0: AUC=0.5)
                 # Z = (AUC - 0.5) / SE
                 z = (auc - 0.5) / se if se > 0 else 0
                 p = 2 * (1 - norm.cdf(abs(z)))
@@ -1000,33 +982,33 @@ class AdvancedModelingService:
                 metrics = {}
                 roc_data = []
 
-                # Store raw outputs for comparison
+                # 存储原始输出以供比较
                 raw_pred = None
                 raw_y = None
                 
                 if model_type == 'logistic':
-                    # Local fit for full control (consistent with Cox block)
-                    # Prepare formula
+                    # 本地拟合以实现完全控制 (与 Cox 代码块保持一致)
+                    # 准备公式
                     formula = f"{target} ~ {' + '.join(feats)}"
                     if not feats: formula = f"{target} ~ 1"
                     
                     try:
                         # Statsmodels Logit
-                        # Data must be numeric for statsmodels? DataService.preprocess handled it?
-                        # df_clean is strict complete case
-                        # Convert to dummy vars if needed? 
-                        # smf handles formulas (categorical) automatically if string/category type.
+                        # statsmodels 要求数据必须是数值型？DataService.preprocess 已经处理过了？
+                        # df_clean 是严格的全病例数据
+                        # 如果需要，转换为哑变量？
+                        # 如果是字符串/类别类型，smf 的 formula 会自动处理（定性变量）。
                         model = smf.logit(formula=formula, data=df_clean).fit(disp=0)
                         
-                        # Metrics
+                        # 指标
                         metrics['aic'] = model.aic
                         metrics['bic'] = model.bic
                         metrics['ll'] = model.llf
-                        metrics['n'] = len(df_clean)  # Add Sample Size
-                        metrics['r2'] = model.prsquared # Pseudo R2
+                        metrics['n'] = len(df_clean)  # 添加样本量
+                        metrics['r2'] = model.prsquared # 伪 R2
                         metrics['k'] = len(model.params)
-
-                        # Predictions (Probability)
+ 
+                        # 预测值 (概率)
                         y_prob = model.predict(df_clean)
                         y_true = df_clean[target]
                         
@@ -1040,20 +1022,19 @@ class AdvancedModelingService:
                         roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
                         
                         raw_pred = y_prob.values
-                        raw_pred = y_prob.values
                         raw_y = y_true.values
-
-                        # Advanced Plots (Calibration & DCA)
+ 
+                        # 高级图表 (校准曲线 & DCA)
                         from app.services.evaluation_service import EvaluationService
                         calib_data = EvaluationService.calculate_calibration(raw_y, raw_pred)
                         dca_data = EvaluationService.calculate_dca(raw_y, raw_pred)
                         
                     except Exception as e:
                         print(e)
-                        # Fallback to simple run if statsmodels fails (e.g. perfect separation)
+                        # 如果 statsmodels 失败（例如完全分离），则回退到简单运行
                         model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
                         metrics = model_res.get('metrics', {})
-                        # Ensure n is present even in fallback
+                        # 即使在回退时也要确保 n 存在
                         metrics['n'] = len(df_clean)
                         if 'plots' in model_res and 'roc' in model_res['plots']:
                              roc_data = model_res['plots']['roc']
@@ -1061,43 +1042,43 @@ class AdvancedModelingService:
 
 
                 elif model_type == 'cox':
-                    # Custom implementation for Cox ROC
-                    # Data Preprocessing
+                    # Cox ROC 的自定义实现
+                    # 数据预处理
                     temp_df = df_clean[[target, event_col] + feats].copy()
                     temp_df = DataService.preprocess_for_formula(temp_df)
                     
-                    # Fit
+                    # 拟合
                     cph = CoxPHFitter()
                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=" + ".join(feats))
                     
-                    # Fit Stats (Global)
+                    # 拟合统计指标 (全局)
                     metrics['c_index'] = cph.concordance_index_
                     metrics['auc'] = metrics['c_index'] 
                     metrics['aic'] = cph.AIC_partial_
                     metrics['ll'] = cph.log_likelihood_
                     n_events = cph.event_observed.sum()
-                    metrics['n'] = len(temp_df) # Add Sample Size
+                    metrics['n'] = len(temp_df) # 添加样本量
                     k = len(cph.params_)
                     metrics['k'] = k
                     metrics['bic'] = -2 * metrics['ll'] + k * np.log(n_events)
                     
-                    # Time-Dependent Metrics Loop
-                    # Determine points (reuse logic or simple heuristic)
+                    # 时变指标循环
+                    # 确定时间点 (复用逻辑或简单的启发式方法)
                     max_dur = temp_df[target].max()
                     points = []
                     time_unit = 'months'
-                    if max_dur > 730: # Roughly 2 years
+                    if max_dur > 730: # 大约 2 年
                         time_unit = 'days'
-                        candidates = [365, 730, 1095, 1460, 1825] # 1, 2, 3, 4, 5 years
+                        candidates = [365, 730, 1095, 1460, 1825] # 1, 2, 3, 4, 5 年
                         for c in candidates:
                              if max_dur > c: points.append(c)
-                    else: # Assume months if max duration is less than 2 years
+                    else: # 如果最大随访时间小于 2 年，默认为月
                         time_unit = 'months'
-                        candidates = [12, 24, 36, 48, 60] # 1, 2, 3, 4, 5 years
+                        candidates = [12, 24, 36, 48, 60] # 1, 2, 3, 4, 5 年
                         for c in candidates:
                              if max_dur > c: points.append(c)
                     
-                    # Always include median if no points or just as default
+                    # 如果没有指定时间点，或者作为默认值，始终包含中位时间
                     median_time = int(temp_df[target].median())
                     if not points: points = [median_time]
                     
@@ -1112,7 +1093,7 @@ class AdvancedModelingService:
                         surv_df = cph.predict_survival_function(temp_df, times=[t])
                         y_prob = 1 - surv_df.iloc[0].values
                         
-                        # Validation Mask at T
+                        # 在 T 时刻的验证掩码
                         mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= t)
                         mask_control = (temp_df[target] > t)
                         valid_mask = mask_case | mask_control
@@ -1144,13 +1125,13 @@ class AdvancedModelingService:
                             
                         metrics['time_dependent'][t] = t_metrics
                         
-                        # Store raw preds for NRI calculation later
-                        # We need consistent indexing for NRI
-                        # Store full array (y_prob) and let NRI function handle masking
+                        # 存储原始预测值以供后续 NRI 计算
+                        # 我们需要 NRI 的索引保持一致
+                        # 存储完整数组 (y_prob)，并让 NRI 函数处理掩码
                         raw_preds_dict[t] = y_prob
                     
-                    # Store raw outputs for NRI (Comparison step)
-                    # For Cox, raw_pred is now a dict of {t: y_prob}
+                    # 存储原始输出以供 NRI (比较步骤)
+                    # 对于 Cox 模型，raw_pred 现在是 {t: y_prob} 的字典
                     raw_pred = raw_preds_dict
                     raw_y = {
                         'time': temp_df[target].values,
@@ -1163,7 +1144,7 @@ class AdvancedModelingService:
                     'metrics': metrics
                 }
                 
-                # Attach plots to model result
+                # 将绘图数据附加到模型结果中
                 if model_type == 'logistic':
                     model_res['plots'] = {
                         'roc': roc_data,
@@ -1187,8 +1168,8 @@ class AdvancedModelingService:
                     'raw_y': None
                 })
 
-        # 2. Calculate NRI/IDI if base model exists (Model 0 = Base)
-        # Only feasible if models share same rows. We assumed strict complete case above.
+        # 2. 如果基准模型存在，则计算 NRI/IDI (模型 0 = 基准)
+        # 仅在模型共享相同行时可行。我们上面已经假设了严格的全病例分析。
         if len(results) >= 2 and results[0]['raw_pred'] is not None:
             from app.services.evaluation_service import EvaluationService
             from scipy.stats import chi2
@@ -1198,9 +1179,9 @@ class AdvancedModelingService:
                 curr = results[i]
                 if curr['raw_pred'] is None: continue
                 
-                # Check model type
+                # 检查模型类型
                 if model_type == 'logistic':
-                    # Standard NRI
+                    # 标准 NRI
                     try:
                         nri_res = EvaluationService.calculate_nri_idi(
                             base['raw_y'],
@@ -1210,12 +1191,12 @@ class AdvancedModelingService:
                         # Add to current model metrics
                         curr['model_res']['metrics'].update(nri_res)
                     except Exception as e:
-                        print(f"NRI failed for logistic model {curr['model_res']['name']}: {e}")
+                        print(f"Logistic 模型 {curr['model_res']['name']} 的 NRI 计算失败: {e}")
                         
                 elif model_type == 'cox':
-                    # Time-Dependent NRI for each T
-                    # base['raw_pred'] is {t: prob}, curr['raw_pred'] is {t: prob}
-                    # raw_y is {'time', 'event'}
+                    # 每个 T 点的时变 NRI
+                    # base['raw_pred'] 是 {t: prob}，curr['raw_pred'] 也是 {t: prob}
+                    # raw_y 是 {'time', 'event'}
                     
                     base_preds = base['raw_pred']
                     curr_preds = curr['raw_pred']
@@ -1227,11 +1208,11 @@ class AdvancedModelingService:
                         p_base = base_preds[t]
                         p_curr = curr_preds[t]
                         
-                        # Construct Binary Target at T
+                        # 构造 T 时刻的二元目标
                         times = base['raw_y']['time']
                         events = base['raw_y']['event']
                         
-                        # Mask: Censored before T are excluded
+                        # 掩码：排除在 T 之前删失的病例
                         mask_case = (events == 1) & (times <= t)
                         mask_control = (times > t)
                         valid = mask_case | mask_control
@@ -1246,15 +1227,15 @@ class AdvancedModelingService:
                                 y_prob_base,
                                 y_prob_curr
                             )
-                            # Add to time_dependent metrics
-                            # e.g. metrics['time_dependent'][t]['nri'] = ...
+                            # 添加到时变指标中
+                            # 例如 metrics['time_dependent'][t]['nri'] = ...
                             if t in curr['model_res']['metrics']['time_dependent']:
                                 curr['model_res']['metrics']['time_dependent'][t].update(nri_res)
                                 
                         except Exception as e:
-                            print(f"NRI at t={t} failed for Cox model {curr['model_res']['name']}: {e}")
-
-                        # Calculate Delong Test at t (Time-Dependent AUC Comparison)
+                            print(f"Cox 模型 {curr['model_res']['name']} 在 t={t} 的 NRI 计算失败: {e}")
+ 
+                        # 计算 t 时刻的 Delong 检验 (时变 AUC 比较)
                         try:
                              delong_res = EvaluationService.calculate_delong_test(
                                  y_true,
@@ -1266,7 +1247,7 @@ class AdvancedModelingService:
                         except Exception as e:
                              print(f"Delong at t={t} failed: {e}")
 
-        # 2b. Global Delong Test for Logistic
+        # 2b. Logistic 模型的全局 Delong 检验
         if len(results) >= 2 and results[0]['raw_pred'] is not None and not isinstance(results[0]['raw_pred'], dict):
              base = results[0]
              for i in range(1, len(results)):
@@ -1282,13 +1263,13 @@ class AdvancedModelingService:
                       except Exception as e:
                           print(f"Delong failed for logistic: {e}")
 
-        # 3. Likelihood Ratio Test (LRT) and AIC/BIC comparison (Global)
+        # 3. 似然比检验 (LRT) 和 AIC/BIC 比较 (全局)
         if len(results) > 0:
             base = results[0]
             base_model_metrics = base['model_res']['metrics']
             for i in range(1, len(results)):
                 curr = results[i]
-                if curr['raw_pred'] is None: continue # Skip if model failed
+                if curr['raw_pred'] is None: continue # 如果模型失败则跳过
                 curr_model_metrics = curr['model_res']['metrics']
 
                 if 'aic' in base_model_metrics and 'aic' in curr_model_metrics:
@@ -1297,7 +1278,7 @@ class AdvancedModelingService:
                 if 'bic' in base_model_metrics and 'bic' in curr_model_metrics:
                     curr_model_metrics['delta_bic'] = curr_model_metrics['bic'] - base_model_metrics['bic']
                     
-                # Likelihood Ratio Test (LRT) P-value
+                # 似然比检验 (LRT) P 值
                 # 2 * (LL_new - LL_old) ~ Chi2(df)
                 if 'll' in base_model_metrics and 'll' in curr_model_metrics:
                      ll_base = base_model_metrics['ll']
@@ -1305,7 +1286,7 @@ class AdvancedModelingService:
                      k_base = base_model_metrics.get('k', 0)
                      k_curr = curr_model_metrics.get('k', 0)
                      
-                     if k_curr > k_base: # Nested model assumption (adding vars)
+                     if k_curr > k_base: # 嵌套模型假设 (添加变量)
                          lrt_stat = 2 * (ll_curr - ll_base)
                          df_diff = k_curr - k_base
                          if lrt_stat > 0:
@@ -1314,7 +1295,7 @@ class AdvancedModelingService:
                              curr['model_res']['metrics']['lrt_stat'] = float(lrt_stat)
 
                              
-        # Clean up huge raw arrays
+        # 清理庞大的原始数组
         for r in results:
             if 'raw_pred' in r: del r['raw_pred']
             if 'raw_y' in r: del r['raw_y']
@@ -1326,22 +1307,22 @@ class AdvancedModelingService:
 
     @staticmethod
     def _generate_comparison_methodology():
-        return ("Model discrimination was evaluated using the Area Under the Receiver Operating Characteristic (ROC) Curve (AUC) or Harrell's C-index. "
-                "Models were compared based on their predictive performance on the same complete-case dataset.")
+        return ("使用受试者工作特征曲线 (ROC) 下面积 (AUC) 或 Harrell's C-index 来评估模型的区分度。"
+                "基于相同的全病例数据集，对模型的预测性能进行了比较分析。")
 
     @staticmethod
     def _generate_nomogram_methodology(model_type):
         if model_type == 'logistic':
-             return ("A nomogram was formulated based on the multivariate logistic regression analysis results. "
-                     "Points were assigned to each variable value based on its regression coefficient.")
+             return ("基于多元 Logistic 回归分析结果构建了诺谟图。"
+                     "根据回归系数，为每个变量值分配了相应的分值。")
         else:
-             return ("A nomogram was formulated based on the Cox proportional hazards model results. "
-                     "Points were assigned to each predictor to estimate survival probability at the median follow-up time.")
+             return ("基于 Cox 比例风险模型结果构建了诺谟图。"
+                     "为每个预测因子分配分值，用于估算中位随访时间的生存概率。")
 
     @staticmethod
     def fit_competing_risks(df, time_col, event_col, covariates):
         """
-        Fit Cause-Specific Cox Models for all competing events.
+        为所有竞争事件拟合原因特异性 Cox 模型 (Cause-Specific Cox)。
         """
         from lifelines import CoxPHFitter
         
@@ -1350,12 +1331,12 @@ class AdvancedModelingService:
             'events_found': []
         }
         
-        # 1. Identify Events (exclude 0/Censored)
+        # 1. 识别事件 (排除 0/删失)
         events = sorted([e for e in df[event_col].dropna().unique() if e != 0])
         results['events_found'] = [int(e) for e in events]
         
         if not events:
-            raise ValueError("No event types found (only 0/Censor found?)")
+            raise ValueError("未发现事件类型 (仅发现 0/删失？)")
 
         df_clean = df[[time_col, event_col] + covariates].dropna()
         df_clean = DataService.preprocess_for_formula(df_clean)
@@ -1364,7 +1345,7 @@ class AdvancedModelingService:
             temp_df = df_clean.copy()
             temp_df['__cs_event'] = (temp_df[event_col] == evt).astype(int)
             
-            # 1. Cause-Specific Cox
+            # 1. 原因特异性 Cox
             try:
                 cph = CoxPHFitter()
                 cov_str = " + ".join(covariates)
@@ -1394,10 +1375,10 @@ class AdvancedModelingService:
                 print(f"CS-Cox failed for event {evt}: {e}")
                 results['models'].append({'event_type': int(evt), 'error': str(e)})
 
-            # 2. Fine-Gray Subdistribution Hazard
+            # 2. Fine-Gray 子分布风险
             try:
-                # We pass the ORIGINAL df because Fine-Gray handles competing risks internally (0=Censor, 1..=Risks)
-                # Note: fit_fine_gray handles one event of interest.
+                # 我们传递原始 df，因为 Fine-Gray 内部处理竞争风险 (0=删失, 1..=各类风险)
+                # 注意：fit_fine_gray 处理一个感兴趣的事件。
                 fg_res = AdvancedModelingService.fit_fine_gray(
                     df, time_col, event_col, covariates, event_of_interest=int(evt)
                 )
@@ -1409,9 +1390,9 @@ class AdvancedModelingService:
                 results.setdefault('fine_gray_models', []).append({'event_type': int(evt), 'error': str(e)})
 
         results['methodology'] = (
-            "Competing Risk Analysis was performed. "
-            "Cause-Specific Hazard Ratios (CS-HR) were estimated using standard Cox models (censoring competing events). "
-            "Subdistribution Hazard Ratios (SHR) were estimated using the Fine-Gray model to account for the cumulative incidence of competing events. "
-            "The Aalen-Johansen estimator was used for Cumulative Incidence Function (CIF) visualization."
+            "进行了竞争风险分析。"
+            "使用标准 Cox 模型（将竞争事件视为删失）估算了原因特异性风险比 (CS-HR)。"
+            "使用 Fine-Gray 模型估算了子分布风险比 (SHR)，以考虑竞争事件的累积发生率。"
+            "使用 Aalen-Johansen 估量法进行累积发生率函数 (CIF) 的可视化。"
         )
         return results

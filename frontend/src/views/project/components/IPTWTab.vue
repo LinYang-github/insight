@@ -96,13 +96,13 @@
                     <el-row :gutter="20" style="margin-top: 20px">
                         <el-col :span="14">
                             <el-card shadow="never">
-                                <template #header>Love Plot (Standardized Mean Differences)</template>
+                                <template #header>Love 图 (标准化均值差 Standardized Mean Differences)</template>
                                 <div id="love-plot" style="width: 100%; height: 400px;"></div>
                             </el-card>
                         </el-col>
                         <el-col :span="10">
                             <el-card shadow="never">
-                                <template #header>Weight Distribution</template>
+                                <template #header>权重分布 (Weight Distribution)</template>
                                 <div id="weight-plot" style="width: 100%; height: 400px;"></div>
                             </el-card>
                         </el-col>
@@ -117,22 +117,22 @@
                              </div>
                         </template>
                         <el-table :data="results.balance" height="300" stripe size="small">
-                            <el-table-column prop="variable" label="Variable" />
-                            <el-table-column label="Pre-Weighting SMD">
+                            <el-table-column prop="variable" label="变量 (Variable)" />
+                            <el-table-column label="加权前 SMD (Unweighted)">
                                 <template #default="scope">
                                     <span :style="{color: scope.row.smd_pre > 0.1 ? '#D32F2F' : 'black'}">
                                         {{ scope.row.smd_pre.toFixed(3) }}
                                     </span>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="Post-Weighting SMD">
+                            <el-table-column label="加权后 SMD (Weighted)">
                                 <template #default="scope">
                                     <span :style="{color: scope.row.smd_post > 0.1 ? '#D32F2F' : '#2E7D32', fontWeight: 'bold'}">
                                         {{ scope.row.smd_post.toFixed(3) }}
                                     </span>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="Reduction (%)">
+                            <el-table-column label="降幅 (Reduction %)">
                                 <template #default="scope">
                                     {{ calculateReduction(scope.row.smd_pre, scope.row.smd_post) }}%
                                 </template>
@@ -146,6 +146,16 @@
 </template>
 
 <script setup>
+/**
+ * IPTWTab.vue
+ * 逆概率加权 (Inverse Probability of Treatment Weighting) 分析标签页。
+ * 
+ * 职责：
+ * 1. 提供倾向性评分加权 (PS weighting) 的参数配置：ATE/ATT、稳定权重、截断极端权重。
+ * 2. 自动评估加权前后的协变量均衡性 (SMD)。
+ * 3. 可视化加权效果 (Love Plot) 与权重分布 (Weight Distribution)。
+ * 4. 支持保存加权后的数据集，以便在回归模型中使用加权分析。
+ */
 import { ref, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
@@ -157,15 +167,18 @@ const props = defineProps({
     metadata: Object
 })
 
-const treatment = ref('')
-const covariates = ref([])
-const weightType = ref('ATE')
-const stabilized = ref(true)
-const truncate = ref(true)
-const saveResult = ref(false)
-const loading = ref(false)
-const results = ref(null)
+const treatment = ref('') // 处理组变量名
+const covariates = ref([]) // 协变量列表
+const weightType = ref('ATE') // 权重计算目标：ATE 或 ATT
+const stabilized = ref(true) // 是否使用稳定权重
+const truncate = ref(true) // 是否对极端权重进行截断 (1%/99%)
+const saveResult = ref(false) // 是否保存结果为新数据集
+const loading = ref(false) // 加载状态
+const results = ref(null) // 统计分析结果
 
+/**
+ * 筛选二分类变量（处理组）。
+ */
 const binaryVars = computed(() => {
     if (!props.metadata || !props.metadata.variables) return []
     // Simple logic: nunique=2 or likely categorical. 
@@ -174,6 +187,9 @@ const binaryVars = computed(() => {
     return props.metadata.variables
 })
 
+/**
+ * 排除当前处理组后的可选协变量。
+ */
 const availableCovariates = computed(() => {
     if (!props.metadata || !props.metadata.variables) return []
     return props.metadata.variables.filter(v => v.name !== treatment.value)
@@ -189,6 +205,9 @@ const calculateReduction = (pre, post) => {
     return red.toFixed(1)
 }
 
+/**
+ * 发送 IPTW 计算请求。
+ */
 const runIPTW = async () => {
     loading.value = true
     try {
@@ -218,6 +237,9 @@ const runIPTW = async () => {
     }
 }
 
+/**
+ * 渲染协变量平衡图 (Love Plot)。
+ */
 const renderLovePlot = () => {
     const el = document.getElementById('love-plot')
     if (!el || !results.value) return
@@ -234,7 +256,7 @@ const renderLovePlot = () => {
         y: vars,
         mode: 'markers',
         type: 'scatter',
-        name: 'Unweighted',
+        name: '未加权 (Unweighted)',
         marker: { color: 'red', size: 8, symbol: 'circle-open' }
     }
     
@@ -243,13 +265,13 @@ const renderLovePlot = () => {
         y: vars,
         mode: 'markers',
         type: 'scatter',
-        name: 'Weighted',
+        name: '加权后 (Weighted)',
         marker: { color: 'green', size: 10, symbol: 'circle' }
     }
     
     const layout = {
-        title: 'Covariate Balance (Love Plot)',
-        xaxis: { title: 'Absolute Standardized Mean Difference', range: [0, Math.max(0.5, ...smd_pre) + 0.1] },
+        title: '协变量平衡性诊断 (Love Plot)',
+        xaxis: { title: '绝对标准化均值差 (Absolute SMD)', range: [0, Math.max(0.5, ...smd_pre) + 0.1] },
         yaxis: { automargin: true },
         shapes: [
             {
@@ -265,6 +287,9 @@ const renderLovePlot = () => {
     Plotly.newPlot(el, [trace1, trace2], layout)
 }
 
+/**
+ * 渲染权重分布直方图。
+ */
 const renderWeightPlot = () => {
     const el = document.getElementById('weight-plot')
     if (!el || !results.value) return
@@ -279,9 +304,9 @@ const renderWeightPlot = () => {
     }
     
     const layout = {
-        title: 'Weight Distribution',
-        xaxis: { title: 'Weight' },
-        yaxis: { title: 'Frequency' },
+        title: '权重分布 (Weight Distribution)',
+        xaxis: { title: '权重 (Weight)' },
+        yaxis: { title: '频数 (Frequency)' },
         margin: { l: 40, r: 20, t: 40, b: 40 }
     }
     

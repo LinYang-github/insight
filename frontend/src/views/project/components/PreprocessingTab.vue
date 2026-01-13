@@ -63,8 +63,8 @@
                  <el-table-column label="处理策略 (Strategy)" width="220">
                      <template #default="scope">
                          <el-select v-model="imputeStrategies[scope.row.name]" placeholder="选择策略" size="small" :disabled="(scope.row.missing || scope.row.missing_count) === 0" style="width: 100%">
-                             <el-option label="不处理 (Ignore)" value="ignore" />
-                             <el-option label="剔除样本 (Drop Rows)" value="drop" />
+                             <el-option label="忽略 (Ignore)" value="ignore" />
+                             <el-option label="剔除缺失行 (Drop Rows)" value="drop" />
                              <el-option v-if="isNumeric(scope.row.type)" label="均值填补 (Mean)" value="mean" />
                              <el-option v-if="isNumeric(scope.row.type)" label="中位数填补 (Median)" value="median" />
                              <el-option v-if="isNumeric(scope.row.type)" label="多重插补 (MICE)" value="mice" />
@@ -141,7 +141,7 @@ const imputeStrategies = ref({})
 const selectedEncodeCols = ref([])
 const saveMode = ref('new') // 'new' or 'overwrite'
 
-// Reusable Save Option Control (can be extracted if needed)
+// 可重用的保存选项控制 (如有需要可提取)
 // For now, let's just make sure we pass it.
 
 const missingData = computed(() => {

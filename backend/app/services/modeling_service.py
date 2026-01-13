@@ -13,7 +13,7 @@ from app.modeling.tree import RandomForestStrategy, XGBoostStrategy
 import numpy as np
 import pandas as pd
 
-# Register Strategies
+# 注册建模策略
 ModelRegistry.register('linear', LinearRegressionStrategy)
 ModelRegistry.register('logistic', LogisticRegressionStrategy)
 ModelRegistry.register('cox', CoxStrategy)
@@ -54,24 +54,24 @@ class ModelingService:
             if df[col].nunique() <= 1:
                 raise ValueError(f"变量 '{col}' 是常数（方差为0），无法用于建模。")
         
-        # 4. Singularity / Multicollinearity Check
-        # Robust Clinical Grade requirement: Detect numeric singularity
+        # 4. 奇异性 / 多重共线性检查
+        # 稳健临床级别要求：检测数值奇异性
         numeric_features = df[features].select_dtypes(include=[np.number])
         if not numeric_features.empty and numeric_features.shape[1] > 1:
             try:
                 cond = np.linalg.cond(numeric_features)
                 if cond > 1e10:
-                    raise ValueError(f"Feature matrix is singular (Condition Number > 1e10). Perfect multicollinearity detected.")
+                    raise ValueError(f"特征矩阵是奇异的 (条件数 > 1e10)。检测到完美的共线性。")
             except np.linalg.LinAlgError:
-                 raise ValueError("Singular matrix detected (LinAlgError). Check for perfect multicollinearity.")
-
-        # Check target
+                 raise ValueError("检测到奇异矩阵 (LinAlgError)。请检查是否存在完美的共线性。")
+ 
+        # 校验结局变量
         if isinstance(target, str):
             if df[target].isnull().any():
-                raise ValueError(f"Target variable '{target}' contains missing values.")
-        elif isinstance(target, dict): # Cox time/event
+                raise ValueError(f"结局变量 '{target}' 包含缺失值。")
+        elif isinstance(target, dict): # Cox 时间/事件
             if df[target['time']].isnull().any() or df[target['event']].isnull().any():
-                 raise ValueError("Target variables (Time/Event) contain missing values.")
+                 raise ValueError("结局变量 (时间/事件) 包含缺失值。")
 
     @staticmethod
     def run_model(df: pd.DataFrame, model_type: str, target: "str | dict", features: list, model_params: dict = None) -> dict:
@@ -101,18 +101,18 @@ class ModelingService:
         # 1. Integrity Check (数据完整性校验)
         ModelingService.check_data_integrity(df, features, target)
         
-        # 2. Get Strategy (获取模型策略)
+        # 2. 获取模型策略
         try:
             strategy = ModelRegistry.get_strategy(model_type)
         except ValueError as e:
-            raise ValueError(f"Unknown model type: {model_type}")
+            raise ValueError(f"未知的模型类型: {model_type}")
             
-        # 3. Execute (执行建模)
+        # 3. 执行建模
         try:
-            # Extract ref_levels from model_params if available
+            # 如果可用，从 model_params 中提取参考层级 (ref_levels)
             ref_levels = model_params.get('ref_levels', None)
             
-            # Robust Preprocessing for Matrix-based methods
+            # 针对基于矩阵的方法进行稳健的预处理
             # NOTE: 显式进行 One-Hot 编码，确保 Pandas 由于版本差异导致的 dtype 问题不影响后续计算。
             df_processed, new_features = DataService.preprocess_for_matrix(df, features, ref_levels=ref_levels)
             
@@ -127,30 +127,30 @@ class ModelingService:
                     codes, uniques = pd.factorize(df_processed[col], sort=True)
                     df_processed[col] = codes
             elif model_type == 'cox':
-                # Encode Event column
+                # 为事件列编码
                 event_col = target['event']
                 if df_processed[event_col].dtype == 'object' or str(df_processed[event_col].dtype) == 'category':
                     codes, uniques = pd.factorize(df_processed[event_col], sort=True)
                     df_processed[event_col] = codes
             # -------------------------------
             
-            # Inject original data for advanced visualizations (Nomogram)
-            # We copy specific metadata needed for visualization that might be lost during preprocessing
+            # 为高级可视化 (如列线图 Nomogram) 注入原始数据
+            # 我们复制可视化所需的特定元数据，这些元数据在预处理过程中可能会丢失
             model_params['original_df'] = df
             model_params['original_features'] = features
             
             results = strategy.fit(df_processed, target, new_features, model_params)
             
-            # --- Generate Interpretation (Decoupling) ---
+            # --- 生成结果解读 (解耦) ---
             results['interpretation'] = ModelingService._generate_interpretation(model_type, results)
             
-            # --- Generate Methodology (Decoupling Stage 3) ---
+            # --- 生成方法学描述 (解耦) ---
             results['methodology'] = ModelingService._generate_methodology(model_type, model_params)
 
         except np.linalg.LinAlgError:
-            # Diagnose the issue (奇异矩阵诊断)
+            # 奇异矩阵诊断
             diagnosis_msg = ModelingService._diagnose_singularity(df_processed, new_features)
-            # Instead of raising, return a 'failed' result with diagnosis
+            # 不直接抛出异常，而是返回带有诊断信息的“失败”结果
             results = {
                 'status': 'failed',
                 'error_type': 'singular_matrix',
@@ -159,64 +159,64 @@ class ModelingService:
                 'metrics': {},
                 'plots': {}
             }
-            # Log it but don't crash
-            print(f"Model run failed: {diagnosis_msg}")
+            # 记录日志但不崩溃
+            print(f"模型运行失败: {diagnosis_msg}")
             
         except Exception as e:
-            # For other errors, we might still want to return a clean error if possible,
-            # but for now let's keep ValueError strictly for user errors if it was raised manually.
+            # 对于其他错误，如果可能，我们仍希望返回一个干净的错误，
+            # 但目前我们手动抛出的 ValueError 保持原样以提示用户错误。
             if isinstance(e, ValueError): raise e
-            raise RuntimeError(f"Model execution failed: {str(e)}")
+            raise RuntimeError(f"模型执行失败: {str(e)}")
 
         return DataService.sanitize_for_json(results)
 
     @staticmethod
     def _generate_methodology(model_type, params):
         """
-        Generate "Methods" section text for publications.
+        生成适用于论文发表的“方法学”部分文本。
         """
         params = params or {}
         
-        # 1. Type
+        # 1. 模型类型
         type_text = ""
-        if model_type == 'logistic': type_text = "Multivariate logistic regression analysis"
-        elif model_type == 'linear': type_text = "Multivariate linear regression analysis"
-        elif model_type == 'cox': type_text = "Multivariate Cox proportional hazards regression analysis"
-        elif model_type == 'random_forest': type_text = "Random Forest machine learning model"
-        elif model_type == 'xgboost': type_text = "XGBoost (Extreme Gradient Boosting) model"
-        else: type_text = "Statistical analysis"
+        if model_type == 'logistic': type_text = "使用多因素 Logistic 回归分析"
+        elif model_type == 'linear': type_text = "使用多因素线性回归分析"
+        elif model_type == 'cox': type_text = "使用多因素 Cox 比例风险回归分析"
+        elif model_type == 'random_forest': type_text = "使用随机森林 (Random Forest) 机器学习模型"
+        elif model_type == 'xgboost': type_text = "使用 XGBoost (极限梯度提升) 模型"
+        else: type_text = "进行统计学分析"
         
-        lines = [f"{type_text} was performed to identify factors associated with the outcome."]
+        lines = [f"{type_text}以识别与结局变量相关的因素。"]
         
-        # 2. Metrics
+        # 2. 统计指标
         metric_text = ""
         if model_type in ['logistic', 'cox']:
-            key = "Odds Ratios (OR)" if model_type == 'logistic' else "Hazard Ratios (HR)"
-            metric_text = f"Results were expressed as {key} with 95% confidence intervals (95% CI)."
+            key = "优势比 (OR)" if model_type == 'logistic' else "风险比 (HR)"
+            metric_text = f"分析结果以 {key} 及其 95% 置信区间 (95% CI) 表示。"
         elif model_type == 'linear':
-            metric_text = "Coefficients (Coef) with 95% confidence intervals were calculated."
+            metric_text = "计算了回归系数 (Coef) 及其 95% 置信区间。"
         
         if metric_text: lines.append(metric_text)
         
-        # 3. Significance
-        lines.append("A two-sided P-value < 0.05 was considered statistically significant.")
+        # 3. 显著性标准
+        lines.append("以双侧 P 值 < 0.05 为差异具有统计学意义。")
         
-        # 4. Software
-        lines.append("All analyses were performed using the Insight Statistical Platform (v1.0).")
+        # 4. 软件工具
+        lines.append("所有分析均使用 Insight 统计平台 (v1.0) 完成。")
         
-        # 5. Ref Levels
+        # 5. 参考层级 (对照组)
         ref_levels = params.get('ref_levels')
         if ref_levels:
-            refs = [f"{val} for {key}" for key, val in ref_levels.items()]
+            refs = [f"{key} 的参考组设为 {val}" for key, val in ref_levels.items()]
             if refs:
-                lines.append(f"Reference groups for categorical variables were set as follows: {', '.join(refs)}.")
+                lines.append(f"分类变量的参考组设置如下：{', '.join(refs)}。")
                 
         return " ".join(lines)
 
     @staticmethod
     def _generate_interpretation(model_type: str, results: dict) -> dict:
         """
-        Generate structured interpretation for frontend.
+        为前端生成结构化的结论解读。
         """
         # 1. Machine Learning Models (RF, XGBoost)
         if model_type in ['random_forest', 'xgboost']:
@@ -240,7 +240,7 @@ class ModelingService:
         if not summary:
             return None
             
-        # Filter significant vars
+        # 筛选显著变量
         sig_vars = [row for row in summary if row.get('p_value') is not None and row['p_value'] < 0.05]
         
         if not sig_vars:
@@ -250,7 +250,7 @@ class ModelingService:
                 "level": "info"
             }
             
-        # Pick best variable
+        # 挑选解释力度最强的变量
         top_var = None
         if model_type == 'logistic':
             # Max OR
@@ -258,11 +258,11 @@ class ModelingService:
         elif model_type == 'cox':
             # Max HR
             top_var = max(sig_vars, key=lambda x: x.get('hr', 0))
-        else: # linear
-            # Max Coef (abs)
+        else: # 线性回归
+            # 系数绝对值最大
             top_var = max(sig_vars, key=lambda x: abs(x.get('coef', 0)))
             
-        # Construct message
+        # 构造解读信息
         var_name = top_var['variable']
         p_val_fmt = "< 0.001" if top_var['p_value'] < 0.001 else f"{top_var['p_value']:.3f}"
         
@@ -309,20 +309,20 @@ class ModelingService:
     @staticmethod
     def _diagnose_singularity(df, features):
         """
-        Diagnose why the matrix is singular (usually high correlation).
-        Returns a user-friendly error message.
+        诊断矩阵为何是奇异的（通常是因为高度相关性）。
+        返回用户友好的错误消息。
         """
-        # Calculate correlation matrix
+        # 计算相关矩阵
         try:
-            # Select numeric features only
+            # 仅选择数值型特征
             numeric_df = df[features].select_dtypes(include=[np.number])
             if numeric_df.empty or numeric_df.shape[1] < 2:
-                return "Singular matrix detected. Please check if your data contains enough variance or if sample size is too small."
+                return "检测到奇异矩阵。请检查数据是否包含足够的变异，或者样本量是否过小。"
             
             corr_matrix = numeric_df.corr().abs()
             
-            # Find pairs with high correlation (>0.95)
-            # Iterate upper triangle
+            # 寻找具有高度相关性 (>0.95) 的变量对
+            # 迭代上三角矩阵
             high_corr_pairs = []
             cols = corr_matrix.columns
             for i in range(len(cols)):
@@ -339,10 +339,10 @@ class ModelingService:
                     f"建议：移除其中一个相关变量后重试。"
                 )
             
-            # 2. VIF Diagnosis (For Multi-variable Collinearity)
+            # 2. VIF 诊断（针对多变量共线性）
             try:
                 from app.utils.diagnostics import ModelDiagnostics
-                # VIF requires constant, and needs to handle NaNs/Infs
+                # VIF 需要常数项，并且需要处理 NaN/Inf
                 vif_data = ModelDiagnostics.calculate_vif(numeric_df, numeric_df.columns.tolist())
                 high_vif = [item['variable'] for item in vif_data if item['vif'] == 'inf' or (isinstance(item['vif'], (int, float)) and item['vif'] > 10)]
                 

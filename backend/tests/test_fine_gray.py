@@ -3,7 +3,7 @@ import numpy as np
 from app.services.advanced_modeling_service import AdvancedModelingService
 
 def test_fit_fine_gray_synthetic():
-    # 1. Create Synthetic Competing Risk Data
+    # 1. 创建模拟的竞争风险数据
     np.random.seed(42)
     n = 200
     df = pd.DataFrame({
@@ -13,7 +13,7 @@ def test_fit_fine_gray_synthetic():
         'treatment': np.random.binomial(1, 0.5, n)
     })
     
-    # 2. Fit Fine-Gray for Event 1
+    # 2. 为事件 1 拟合 Fine-Gray 模型
     try:
         res = AdvancedModelingService.fit_fine_gray(
             df, 'time', 'event', ['age', 'treatment'], event_of_interest=1

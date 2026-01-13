@@ -46,7 +46,7 @@
                      <el-col :span="14">
                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                              <h4 style="margin: 0;">固定效应 (Population Trends)</h4>
-                             <el-button v-if="lmmMethodology" size="small" type="primary" link @click="copyText(lmmMethodology)">Copy Methods</el-button>
+                             <el-button v-if="lmmMethodology" size="small" type="primary" link @click="copyText(lmmMethodology)">复制方法学 (Copy Methods)</el-button>
                          </div>
                          <PublicationTable :data="results.lmm.summary">
                              <el-table-column prop="variable" label="变量" />
@@ -72,7 +72,7 @@
                          </p>
                          <InsightChart
                             chartId="hist-slopes"
-                            title="Indiv. Slopes Distribution"
+                            title="个体斜率分布 (Indiv. Slopes Distribution)"
                             :data="charts.slopes.data"
                             :layout="charts.slopes.layout"
                          />
@@ -94,7 +94,7 @@
                       <el-col :span="16">
                           <InsightChart
                              chartId="traj-plot"
-                             title="Spaghetti Plot by Cluster"
+                             title="按簇划分的轨迹图 (Spaghetti Plot by Cluster)"
                              :data="charts.trajectory.data"
                              :layout="charts.trajectory.layout"
                           />
@@ -102,18 +102,18 @@
                       <el-col :span="8">
                           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                                <h4>簇中心 (Centroids)</h4>
-                               <el-button v-if="trajMethodology" size="small" type="primary" link @click="copyText(trajMethodology)">Copy Methods</el-button>
+                               <el-button v-if="trajMethodology" size="small" type="primary" link @click="copyText(trajMethodology)">复制方法学 (Copy Methods)</el-button>
                           </div>
                           <el-table :data="results.clustering.centroids" border size="small">
-                              <el-table-column prop="cluster" label="Cluster" width="80" />
-                              <el-table-column prop="slope" label="Avg Slope">
+                              <el-table-column prop="cluster" label="分组 (Cluster)" width="80" />
+                              <el-table-column prop="slope" label="平均斜率 (Avg Slope)">
                                   <template #default="scope">{{ scope.row.slope.toFixed(4) }}</template>
                               </el-table-column>
                           </el-table>
                           <div style="margin-top: 20px;">
                                <el-tag v-for="(item, i) in results.clustering.centroids" :key="i" 
                                     :color="clusterColors[i]" effect="dark" style="display: block; margin-bottom: 5px; border: none;">
-                                   Cluster {{ i }}: Slope {{ item.slope.toFixed(3) }}
+                                   分组 (Cluster) {{ i }}: 斜率 {{ item.slope.toFixed(3) }}
                                </el-tag>
                           </div>
                       </el-col>
@@ -129,18 +129,18 @@
              
              <div v-if="results.variability">
                  <PublicationTable :data="results.variability.slice(0, 10)">
-                     <el-table-column prop="id" label="ID" />
-                     <el-table-column prop="n_visits" label="Visits" />
-                     <el-table-column prop="mean" label="Mean">
+                     <el-table-column prop="id" label="个体 ID" />
+                     <el-table-column prop="n_visits" label="随访次数 (Visits)" />
+                     <el-table-column prop="mean" label="均值 (Mean)">
                          <template #default="scope">{{ scope.row.mean.toFixed(2) }}</template>
                      </el-table-column>
-                     <el-table-column prop="sd" label="SD">
+                     <el-table-column prop="sd" label="标准差 (SD)">
                          <template #default="scope">{{ scope.row.sd.toFixed(2) }}</template>
                      </el-table-column>
-                     <el-table-column prop="cv" label="CV (%)">
+                     <el-table-column prop="cv" label="变异系数 (CV %)">
                          <template #default="scope">{{ scope.row.cv.toFixed(2) }}</template>
                      </el-table-column>
-                     <el-table-column prop="arv" label="ARV">
+                     <el-table-column prop="arv" label="平均相继变异 (ARV)">
                          <template #default="scope">{{ scope.row.arv.toFixed(2) }}</template>
                      </el-table-column>
                  </PublicationTable>
@@ -152,6 +152,16 @@
 </template>
 
 <script setup>
+/**
+ * LongitudinalTab.vue
+ * 纵向数据分析 (Longitudinal Analysis) 标签页。
+ * 
+ * 职责：
+ * 1. 拟合线性混合效应模型 (LMM)，分析结局指标随时间变化的总体趋势及个体差异。
+ * 2. 执行轨迹聚类 (Trajectory Clustering)，识别具有相似变化斜率的患者亚组。
+ * 3. 计算随访间变异性 (Visit-to-Visit Variability) 指标，如 SD, CV, ARV 等。
+ * 4. 可视化纵向趋势图 (Spaghetti Plot) 与斜率分布。
+ */
 import { ref, reactive, computed } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'
@@ -178,33 +188,39 @@ const loading = reactive({
     lmm: false,
     clustering: false,
     variability: false
-})
+}) // 各模块的加载状态
 
 const results = reactive({
     lmm: null,
     clustering: null,
     variability: null
-})
+}) // 各模块的分析结果
 
 const charts = reactive({
     slopes: { data: [], layout: {} },
     trajectory: { data: [], layout: {} }
-})
+}) // 图表配置与数据
 
 // Methodology
 const lmmMethodology = ref('')
 const trajMethodology = ref('')
 const varMethodology = ref('')
 
+/**
+ * 复制方法学描述到剪贴板。
+ */
 const copyText = (text) => {
     navigator.clipboard.writeText(text).then(() => {
-        ElMessage.success('Copied methodology')
+        ElMessage.success('方法学段落已复制')
     })
 }
 
 const variables = computed(() => props.metadata?.variables || [])
 const clusterColors = ['#F56C6C', '#E6A23C', '#67C23A', '#409EFF', '#909399']
 
+/**
+ * 运行线性混合效应模型 (LMM)。
+ */
 const fitLMM = async () => {
     if (!config.id_col || !config.time_col || !config.outcome_col) {
         ElMessage.warning('请先完整配置 ID、时间和结局变量')
@@ -227,6 +243,9 @@ const fitLMM = async () => {
     }
 }
 
+/**
+ * 运行轨迹聚类分析。
+ */
 const runClustering = async () => {
     if (!config.id_col || !config.time_col || !config.outcome_col) {
         ElMessage.warning('请先完整配置参数')
@@ -249,6 +268,9 @@ const runClustering = async () => {
     }
 }
 
+/**
+ * 计算变异性指标。
+ */
 const calcVariability = async () => {
     if (!config.id_col || !config.outcome_col) {
         ElMessage.warning('请先配置 ID 和结局变量')
@@ -280,9 +302,9 @@ const renderSlopesChart = (re_data) => {
         marker: { color: '#3B71CA' }
     }]
     charts.slopes.layout = {
-        title: 'Total Slopes (Fixed + Random)',
-        xaxis: { title: 'Slope Value' },
-        yaxis: { title: 'Count' }
+        title: '总斜率分布 (固定+随机效应)',
+        xaxis: { title: '斜率值 (Slope Value)' },
+        yaxis: { title: '频数 (Count)' }
     }
 }
 
@@ -334,9 +356,9 @@ const renderTrajChart = (clusters) => {
     
     charts.trajectory.data = traces
     charts.trajectory.layout = {
-        title: 'Estimated Trajectories (Sampled)',
-        xaxis: { title: 'Time' },
-        yaxis: { title: 'Outcome' }
+        title: '预测轨迹图 (抽样展示)',
+        xaxis: { title: '时间 (Time)' },
+        yaxis: { title: '结局指标值 (Outcome)' }
     }
 }
 

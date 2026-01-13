@@ -1,12 +1,12 @@
 <template>
   <div class="login-container">
     <div class="login-wrapper">
-      <!-- Left Side: Brand Area -->
+      <!-- 左侧：品牌展示区域 -->
       <div class="brand-section">
         <div class="brand-content">
           <div class="logo-area">
             <div class="logo-icon">
-              <!-- Simple CSS Logo Placeholder -->
+              <!-- 简单的 CSS Logo 占位符 -->
               <div class="logo-circle"></div>
             </div>
             <h1 class="app-name">Insight</h1>
@@ -19,7 +19,7 @@
         </div>
       </div>
 
-      <!-- Right Side: Form Area -->
+      <!-- 右侧：表单区域 -->
       <div class="form-section">
         <div class="form-content">
           <div class="welcome-text">
@@ -140,7 +140,7 @@ const handleLogin = async () => {
   overflow: hidden;
 }
 
-/* --- Left Side --- */
+/* --- 左侧区域 --- */
 .brand-section {
   flex: 0.45;
   background: linear-gradient(135deg, #102a55 0%, #3B71CA 100%);
@@ -196,7 +196,7 @@ const handleLogin = async () => {
   font-weight: 300;
 }
 
-/* Decorative Circles */
+/* 装饰性圆圈 */
 .brand-decoration .circle {
   position: absolute;
   border-radius: 50%;
@@ -216,7 +216,7 @@ const handleLogin = async () => {
   right: -50px;
 }
 
-/* --- Right Side --- */
+/* --- 右侧区域 --- */
 .form-section {
   flex: 0.55;
   padding: 60px;
@@ -308,7 +308,7 @@ const handleLogin = async () => {
   text-decoration: underline;
 }
 
-/* Animations */
+/* 动画效果 */
 .login-wrapper {
   animation: fadeIn 0.6s ease-out;
 }
@@ -318,7 +318,7 @@ const handleLogin = async () => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile Responsive */
+/* 移动端响应式 */
 @media (max-width: 768px) {
   .login-wrapper {
     flex-direction: column;

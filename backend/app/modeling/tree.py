@@ -34,23 +34,23 @@ class TreeModelStrategy(BaseModelStrategy):
         X = df[features]
         y = df[target]
 
-        # Determine task
+        # 判定任务类型 (Classification 还是 Regression)
         is_classification = False
         if pd.api.types.is_numeric_dtype(y):
              if y.nunique() <= 10 and sorted(y.unique().tolist()) == [0, 1]:
                  is_classification = True
              elif y.nunique() <= 10:
-                 is_classification = True # Assumption
+                 is_classification = True # 启发式判定
              else:
                  is_classification = False
         else:
              is_classification = True
 
-        # Encode Y
+        # 对结局变量 Y 进行编码
         if is_classification and not pd.api.types.is_numeric_dtype(y):
              y = pd.Categorical(y).codes
         
-        # Encode X (Robust encoding for Categorical)
+        # 对特征变量 X 进行编码 (稳健的分类变量处理)
         X = X.copy()
         for col in X.columns:
             if not pd.api.types.is_numeric_dtype(X[col]):
@@ -71,21 +71,21 @@ class TreeModelStrategy(BaseModelStrategy):
         min_samples_split = int(params.get('min_samples_split', 2))
         min_samples_leaf = int(params.get('min_samples_leaf', 1))
         
-        # XGB specific
+        # XGBoost 特定参数
         subsample = float(params.get('subsample', 1.0))
         colsample_bytree = float(params.get('colsample_bytree', 1.0))
 
-        # Model Init
+        # 初始化模型
         model = self._init_model(is_classification, n_estimators, max_depth, learning_rate, 
                                  min_samples_split, min_samples_leaf, subsample, colsample_bytree)
         
         # Fit
         model.fit(X, y)
         
-        # Eval
+        # 模型评估
         metrics, plots = self._evaluate(model, X, y, is_classification)
         
-        # Explain
+        # 模型解释 (基于 SHAP)
         importance = self._explain(model, X, features)
         
         return {
@@ -127,14 +127,14 @@ class TreeModelStrategy(BaseModelStrategy):
             from app.utils.evaluation import ModelEvaluator
             metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob, y_pred)
             
-            # 5-Fold Cross Validation
+            # 5 折交叉验证
             try:
                 from sklearn.model_selection import cross_val_score
                 cv_scores = cross_val_score(model, X, y, cv=5, scoring='roc_auc')
                 metrics['cv_auc_mean'] = ResultFormatter.format_float(np.mean(cv_scores), 3)
                 metrics['cv_auc_std'] = ResultFormatter.format_float(np.std(cv_scores), 3)
             except Exception as e:
-                print(f"CV Failed: {e}")
+                print(f"交叉验证 (CV) 失败: {e}")
                 pass
         else:
             metrics['r2'] = ResultFormatter.format_float(r2_score(y, y_pred), 4)
@@ -147,8 +147,8 @@ class TreeModelStrategy(BaseModelStrategy):
         
         try:
             if shap is None:
-                raise ImportError("SHAP not installed")
-
+                raise ImportError("未安装 SHAP 库")
+ 
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X)
             
@@ -158,12 +158,12 @@ class TreeModelStrategy(BaseModelStrategy):
             feature_importance = np.abs(shap_values).mean(axis=0)
             
         except Exception as e:
-            # Fallback if SHAP fails (e.g. ValueError: could not convert string to float)
-            print(f"SHAP explanation failed: {e}. Using native feature_importances_.")
+            # 如果 SHAP 失败 (例如由于字符串无法转换为浮点数)，则使用原生的特征重要性作为回退
+            print(f"SHAP 解释失败: {e}。改用原生的特征重要性 (feature_importances_)。")
             if hasattr(model, 'feature_importances_'):
                 feature_importance = model.feature_importances_
             else:
-                return [{"feature": "Importance N/A", "importance": 0}]
+                return [{"feature": "重要性不可用 (N/A)", "importance": 0}]
 
         importance_df = pd.DataFrame({
             'feature': features,

@@ -187,36 +187,36 @@ class StatisticsService:
 
     @staticmethod
     def _generate_table1_methodology(has_group, tests, variables, df):
-        """Generate Methods text for Table 1."""
+        """生成适用于 Table 1 的方法学描述。"""
         lines = []
         
-        # 1. Descriptive
-        lines.append("Continuous variables were evaluated for normality using the Shapiro-Wilk test (or Kolmogorov-Smirnov test for large samples).")
-        lines.append("Normally distributed continuous variables were described as mean ± standard deviation (SD), while non-normally distributed variables were expressed as median (interquartile range, IQR).")
-        lines.append("Categorical variables were presented as frequency (percentage).")
+        # 1. 描述性统计
+        lines.append("连续变量使用 Shapiro-Wilk 检验（或针对大样本的 Kolmogorov-Smirnov 检验）进行正态性评估。")
+        lines.append("符合正态分布的连续变量以均数 ± 标准差 (mean ± SD) 表示，非正态分布的变量以中位数（四分位间距，IQR）表示。")
+        lines.append("分类变量以频数（百分比）表示。")
         
-        # 2. Inference
+        # 2. 推断性统计
         if has_group and tests:
             test_desc = []
             if "Student's T-test" in tests or "Welch's T-test" in tests:
-                test_desc.append("Student's/Welch's t-test for normally distributed continuous variables")
+                test_desc.append("符合正态分布的连续变量采用 Student's/Welch's t 检验")
             if "Mann-Whitney U Test" in tests:
-                test_desc.append("Mann-Whitney U test for non-normally distributed continuous variables")
+                test_desc.append("非正态分布的连续变量采用 Mann-Whitney U 检验")
                 
             if "ANOVA" in tests:
-                test_desc.append("Analysis of Variance (ANOVA) for normally distributed continuous variables")
+                test_desc.append("符合正态分布的连续变量采用方差分析 (ANOVA)")
             if "Kruskal-Wallis H Test" in tests:
-                test_desc.append("Kruskal-Wallis H test for non-normally distributed continuous variables")
+                test_desc.append("非正态分布的连续变量采用 Kruskal-Wallis H 检验")
                 
             if "Chi-square" in tests:
-                test_desc.append("Chi-square test for categorical variables")
+                test_desc.append("分类变量采用卡方检验")
             if "Fisher Exact Test" in tests:
-                test_desc.append("Fisher's exact test for categorical variables with expected frequency < 5")
+                test_desc.append("当期望频数 < 5 时，分类变量采用 Fisher 精确检验")
                 
             if test_desc:
-                lines.append(f"Differences between groups were analyzed using {', '.join(test_desc)}.")
+                lines.append(f"采用 {', '.join(test_desc)} 对组间差异进行分析。")
                 
-            lines.append("All statistical tests were two-sided, and P < 0.05 was considered statistically significant.")
+            lines.append("所有统计检验均为双侧检验，且以 P < 0.05 为具有统计学意义。")
             
         return " ".join(lines)
 
@@ -236,18 +236,18 @@ class StatisticsService:
     @staticmethod
     def _test_normality(series):
         """
-        Shapiro-Wilk test for normality.
-        Return True if p > 0.05 (Fail to reject H0: Normal), False otherwise.
-        For N > 5000, use Kolmogorov-Smirnov test to avoid p-value bias.
+        Shapiro-Wilk 正态性检验。
+        如果 P > 0.05，则返回 True（不拒绝原假设 H0：服从正态分布），否则返回 False。
+        当 N > 5000 时，使用 Kolmogorov-Smirnov 检验以避免 P 值的样本量偏差。
         """
         try:
-            # Drop NaN and ensure numeric
+            # 剔除缺失值并确保是数值型
             clean_s = pd.to_numeric(series.dropna(), errors='coerce').dropna()
-            if len(clean_s) < 3: return True # Too few samples, assume normal to avoid issues or defaulting.
+            if len(clean_s) < 3: return True # 样本量太少，为了避免错误或默认处理，假定其正态。
             
             if len(clean_s) > 5000:
-                # KS Test comparing to standard normal (after standardization)
-                # Standardize
+                # KS 检验（与标准化后的标准正态分布进行对比）
+                # 标准化
                 z_score = (clean_s - clean_s.mean()) / clean_s.std()
                 stat, p = stats.kstest(z_score, 'norm')
             else:
@@ -255,7 +255,7 @@ class StatisticsService:
             
             return p > 0.05
         except:
-            return True # Default to Parametric on error
+            return True # 出错时默认为参数检验
 
     @staticmethod
     def _calc_stats(series, is_normal=True):
@@ -339,10 +339,10 @@ class StatisticsService:
                 }
                 plot_data.append(trace)
         else:
-            # Overall
-            kmf.fit(df[time_col], df[event_col], label='Overall')
+            # 全体人群 (Overall)
+            kmf.fit(df[time_col], df[event_col], label='全体 (Overall)')
             trace = {
-                'name': 'Overall',
+                'name': '全体 (Overall)',
                 'times': kmf.survival_function_.index.tolist(),
                 'probs': kmf.survival_function_.iloc[:, 0].tolist(),
                 'ci_lower': kmf.confidence_interval_.iloc[:, 0].tolist(),
@@ -350,7 +350,7 @@ class StatisticsService:
             }
             plot_data.append(trace)
             
-        # --- Generate Interpretation & Methodology ---
+        # --- 生成结果解读与方法学描述 ---
         interpretation = None
         if p_value and p_value != 'N/A':
             p_float = float(p_value) if isinstance(p_value, (float, int)) else float(p_value.replace('<', '').strip())
@@ -367,10 +367,11 @@ class StatisticsService:
 
     @staticmethod
     def _generate_km_methodology(has_group):
-        text = "Survival curves were estimated using the Kaplan-Meier method."
+        """生成 Kaplan-Meier 分析的方法学文本。"""
+        text = "采用 Kaplan-Meier 方法估算生存曲线。"
         if has_group:
-            text += " Differences between groups were compared using the log-rank test."
-        text += " All analyses were performed using the Insight Statistical Platform (v1.0)."
+            text += " 使用 Log-rank 检验比较各组间的差异。"
+        text += " 所有分析均使用 Insight 统计平台 (v1.0) 完成。"
         return text
 
     @staticmethod
@@ -405,7 +406,7 @@ class StatisticsService:
             4. 计算匹配前后的标准化均数差 (SMD) 以评估平衡性。
 
         Returns:
-            dict: 匹配后的索引列表、平衡性统计指标及样本量变化。
+            dict: 包含匹配后的索引列表、平衡性统计指标及样本量变化的字典。
         """
         if treatment not in df.columns:
              raise ValueError(f"Treatment '{treatment}' not found.")
@@ -431,7 +432,7 @@ class StatisticsService:
         control = data[data[treatment] == 0]
         
         if treated.empty or control.empty:
-             raise ValueError("Treatment or Control group is empty.")
+             raise ValueError("实验组或对照组为空。")
              
         # Fit NN on Control PS
         control_ps = control[['ps_score']].values
@@ -445,15 +446,10 @@ class StatisticsService:
         # distances is (n_treated, 1)
         
         matched_indices_list = []
-        visited_control_indices = set() # Optional: prevent replacement? 1:1 without replacement is standard.
-        # However, simple NN with replacement is easier. 
-        # Standard PSM is usually without replacement (greedy).
-        # sklearn NN finds neighbors independently (with replacement effectively if mulitple treated match same control).
+        # 实验证明，1:1 不回置 (Greedy) 匹配是标准做法。
+        # sklearn 的 NN 默认是独立寻找邻居（如果有多个实验组匹配到同一个对照组，实际上相当于有回置）。
         
-        # Let's enforce 1:1 without replacement GREEDY match if possible? 
-        # For MVP, let's allow replacement or just keep simple. The user asked for Caliper.
-        # But if we use replacement, standard error calculation is complex.
-        # Let's simple check caliper first.
+        # 我们先检查卡钳值。
         
         valid_matches = [] # (treated_idx_in_data, control_idx_in_data)
         
@@ -465,20 +461,16 @@ class StatisticsService:
                 
             ctr_iloc = indices[i][0]
             
-            # If we want without replacement, we need to handle collisions.
-            # Simple approach: If multiple treated match same control, taking the best one is hard with just kneighbors.
-            # We would need to calculate all pairs.
-            # For this 'Shortcoming Analysis' context, Caliper is the P1 key.
-            # We will keep replacement behavior (or whatever current logic is) but filter by caliper.
-            # Actually, standard clinical papers prefer 1:1 WITHOUT replacement.
-            # The previous implementation allowed replacement implicitly (kneighbors returns independent best).
+            # 如果需要不回置匹配，我们需要处理冲突。
+            # 简单方法：目前保持现有的匹配逻辑，但通过卡钳值进行过滤。
+            # 医学论文通常倾向于 1:1 不回置匹配。
             
             valid_matches.append((treated.index[i], control.index[ctr_iloc]))
 
-        # Reconstruct Matched Data
-        # Flatten tuple list
+        # 重建匹配后的数据
+        # 展平元组列表
         if not valid_matches:
-            raise ValueError(f"No matches found within caliper {caliper}.")
+            raise ValueError(f"在卡钳值 {caliper} 范围内未找到匹配项。")
             
         t_idxs = [m[0] for m in valid_matches]
         c_idxs = [m[1] for m in valid_matches]
@@ -490,10 +482,10 @@ class StatisticsService:
         
         matched_data = pd.concat([matched_treated, matched_control])
         
-        # 3. Balance Check (SMD)
+        # 3. 平衡性检查 (SMD)
         balance_stats = []
         for var in covariates:
-             # Before
+             # 匹配前
             mean_t_pre = treated[var].mean() if pd.api.types.is_numeric_dtype(treated[var]) else 0 
             mean_c_pre = control[var].mean() if pd.api.types.is_numeric_dtype(control[var]) else 0
             
@@ -521,31 +513,30 @@ class StatisticsService:
         """
         执行逆概率加权 (IPTW, Inverse Probability of Treatment Weighting).
 
-        Args:
-           df: DataFrame
-           treatment: str (0/1)
-           covariates: list[str]
-           weight_type: 'ATE' (default) or 'ATT'
-           stabilized: bool (default True). Multiply by marginal probability P(T).
-           truncate: bool (default True). Truncate extreme weights (1st/99th percentile).
+        参数:
+           df: 原始数据框
+           treatment: 暴露变量名 (0/1)
+           covariates: 协变量列表
+           weight_type: 'ATE' (默认) 或 'ATT'
+           stabilized: 布尔值 (默认 True)，是否使用稳定权重（乘以边缘概率 P(T)）
+           truncate: 布尔值 (默认 True)，是否截断极端权重 (第1和第99百分位数)
            
-        Returns:
+        返回:
            dict: {
-               'weights': list[float],
-               'balance': list[dict], # SMD table
-               'n_treated': int,
-               'n_control': int,
-               'ess_treated': float, # Effective Sample Size
-               'ess_control': float
+               'weights': 权重列表,
+               'balance': 平衡性结果列表 (SMD 表),
+               'n_treated': 实验组样本量,
+               'n_control': 对照组样本量,
+               'ess_treated': 实验组有效样本量 (Effective Sample Size),
+               'ess_control': 对照组有效样本量
            }
-        """
         if treatment not in df.columns:
              raise ValueError(f"Treatment '{treatment}' not found.")
              
         cols = [treatment] + covariates
         data = df[cols].dropna().copy()
         
-        # 1. PS Estimation
+        # 1. 倾向性评分 (PS) 估算
         T = data[treatment]
         X = data[covariates]
         X_encoded = pd.get_dummies(X, drop_first=True)
@@ -556,8 +547,8 @@ class StatisticsService:
         ps = ps_model.predict_proba(X_encoded)[:, 1]
         data['ps'] = ps
         
-        # 2. Weight Calculation
-        # Avoid division by zero
+        # 2. 权重计算
+        # 避免除以零
         data['ps'] = data['ps'].clip(1e-6, 1 - 1e-6)
         
         p_t = T.mean() # Marginal Prob P(T=1)
@@ -575,13 +566,13 @@ class StatisticsService:
             # Standard ATT W: T=1 -> 1, T=0 -> ps/(1-ps)
             data['weight'] = np.where(T==1, 1, data['ps'] / (1-data['ps']))
             
-        # 3. Truncation
+        # 3. 权重截断
         if truncate:
             lower = data['weight'].quantile(0.01)
             upper = data['weight'].quantile(0.99)
             data['weight'] = data['weight'].clip(lower, upper)
             
-        # 4. Effective Sample Size (ESS)
+        # 4. 有效样本量 (ESS)
         # ESS = (Sum W)^2 / Sum (W^2)
         def calc_ess(weights):
             return (weights.sum()**2) / (weights**2).sum()
@@ -589,27 +580,27 @@ class StatisticsService:
         ess_treated = calc_ess(data[data[treatment]==1]['weight'])
         ess_control = calc_ess(data[data[treatment]==0]['weight'])
         
-        # 5. Balance Check (Weighted SMD)
+        # 5. 平衡性检查 (加权 SMD)
         balance_stats = []
         
-        # Weighted Variance Calculation
+        # 加权方差计算
         def weighted_avg_var(val, w):
             avg = np.average(val, weights=w)
-            # Variance
-            # S^2 = Sum(w * (x - avg)^2) / Sum(w) * (N/(N-1)) ? Or just reliability weights.
-            # Simplified: Sum(w * (x-avg)^2) / Sum(w)
+            # 权重方差
+            # S^2 = Sum(w * (x - avg)^2) / Sum(w) * (N/(N-1)) ? 或者仅使用可靠性权重。
+            # 简化方案：Sum(w * (x-avg)^2) / Sum(w)
             variance = np.average((val - avg)**2, weights=w)
             return avg, variance
 
         for var in covariates:
-            # Pre (Unweighted)
+            # 加权前
             t_pre = data[data[treatment]==1][var]
             c_pre = data[data[treatment]==0][var]
             
             if pd.api.types.is_numeric_dtype(t_pre):
                  smd_pre = StatisticsService._calc_smd(data[data[treatment]==1], data[data[treatment]==0], var)
                  
-                 # Post (Weighted)
+                 # 加权后
                  t_w = data[data[treatment]==1]['weight']
                  c_w = data[data[treatment]==0]['weight']
                  
@@ -620,7 +611,7 @@ class StatisticsService:
                  if pooled_std_w == 0: smd_post = 0
                  else: smd_post = abs(m1 - m0) / pooled_std_w
             else:
-                 smd_pre = 0 # Placeholder for categorical
+                 smd_pre = 0 # 分类变量占位符
                  smd_post = 0
             
             balance_stats.append({
@@ -629,9 +620,9 @@ class StatisticsService:
                 'smd_post': smd_post
             })
             
-        # Sort indices to match original df
+        # 排序索引以匹配原始数据集
         return {
-            'weights': data['weight'].tolist(), # Aligned with processed data rows
+            'weights': data['weight'].tolist(), # 与处理后的数据行对齐
             'indices': data.index.tolist(),
             'balance': balance_stats,
             'n_treated': int(data[treatment].sum()),
@@ -643,7 +634,6 @@ class StatisticsService:
     @staticmethod
     def recommend_covariates(df, treatment):
         """
-        推荐协变量。
         通过计算所有其他变量与处理变量（treatment）之间的关联显著性，
         找出组间差异显著 (P < 0.05) 的变量作为潜在混杂因素。
         """
@@ -659,7 +649,7 @@ class StatisticsService:
         variables = [c for c in df.columns if c != treatment]
         
         for var in variables:
-            # Skip high cardinality strings or non-relevant columns
+            # 跳过高基数基数或无关列
             if df[var].dtype == 'object' and df[var].nunique() > 20:
                 continue
                 
@@ -682,7 +672,7 @@ class StatisticsService:
             except:
                 continue
                 
-        # Sort by P-value (most significant first)
+        # 按 P 值排序（最显著的排在前面）
         recommendations.sort(key=lambda x: x['p_value'])
         return recommendations
 
@@ -709,7 +699,7 @@ class StatisticsService:
                 status = 'warning'
                 message = f'缺失率较高 ({missing_rate:.1%})，可能导致样本量锐减。'
             
-            # For categorical, check if any level has very few samples
+            # 对于分类变量，检查是否存在样本量极少的水平
             if not pd.api.types.is_numeric_dtype(df[var]):
                 counts = df[var].value_counts()
                 if (counts < 5).any():
@@ -739,10 +729,10 @@ class StatisticsService:
             return None
             
         if pd.api.types.is_numeric_dtype(series):
-            # Calculate Histogram data
+            # 计算直方图数据
             counts, bin_edges = np.histogram(series, bins='auto')
             
-            # Normal distribution curve for overlay
+            # 用于叠加的正态分布曲线
             mu = series.mean()
             std = series.std()
             x_range = np.linspace(series.min(), series.max(), 100)
@@ -765,7 +755,7 @@ class StatisticsService:
                 }
             }
         else:
-            # Categorical counts
+            # 分类变量计数
             counts = series.value_counts().to_dict()
             return {
                 'type': 'categorical',
@@ -778,7 +768,7 @@ class StatisticsService:
 
     @staticmethod
     def _calc_smd(df1, df2, var):
-        # Handle numeric
+        # 处理数值型
         if pd.api.types.is_numeric_dtype(df1[var]):
              m1 = df1[var].mean()
              m2 = df2[var].mean()
@@ -789,10 +779,8 @@ class StatisticsService:
              if pooled_std == 0: return 0.0
              return abs(m1 - m2) / pooled_std
         else:
-             # Categorical: use first level or overall Chi-square derived d?
-             # Simple approach: Turn to dummy and max SMD
-             # Or just ignore non-numeric for MVP
-             return 0.0 # Placeholder for non-numeric
+             # 分类变量：采用占位符 0.0
+             return 0.0
 
     @staticmethod
     def check_multicollinearity(df, features):
@@ -803,24 +791,24 @@ class StatisticsService:
         if not features or len(features) < 2:
             return {'status': 'ok', 'report': []}
             
-        # Filter numeric only for VIF/Corr
-        # For categorical, we might need Cramer's V (skipped for MVP, assuming OneHot or skipping)
+        # 针对 VIF/相关性仅过滤数值型变量
+        # 针对分类变量，可能需要 Cramer's V（MVP 版本暂不实现）
         numeric_df = df[features].select_dtypes(include=[np.number])
         if numeric_df.empty or numeric_df.shape[1] < 2:
              return {'status': 'ok', 'report': []}
-
-        # Handle missing for calculation
+ 
+        # 为了计算，需要处理缺失值
         numeric_df = numeric_df.dropna()
         if numeric_df.empty:
-             return {'status': 'warning', 'message': '有效样本不足，无法计算共线性。'}
+             return {'status': 'warning', 'message': '有效样本量不足，无法计算共线性。'}
 
         report = []
         status = 'ok'
         
-        # 1. Pairwise Correlation
+        # 1. 两两相关性
         corr_matrix = numeric_df.corr().abs()
         
-        # Upper triangle
+        # 上三角矩阵
         cols = corr_matrix.columns
         for i in range(len(cols)):
             for j in range(i+1, len(cols)):
@@ -834,8 +822,8 @@ class StatisticsService:
                         'message': f"'{cols[i]}' 与 '{cols[j]}' 高度相关 (r={r:.2f})"
                     })
 
-        # 2. VIF (Variance Inflation Factor)
-        # Only if no perfect linear dependency?
+        # 2. VIF (方差膨胀因子)
+        # 仅在不存在完全线性依赖的情况下计算
         try:
             from app.utils.diagnostics import ModelDiagnostics
             vif_data = ModelDiagnostics.calculate_vif(numeric_df, numeric_df.columns.tolist())
@@ -861,8 +849,8 @@ class StatisticsService:
     @staticmethod
     def recommend_modeling_strategy(df):
         """
-        Intelligent Recommendation Engine.
-        Scans data to suggest the most appropriate modeling strategy, target, and features.
+        智能推荐引擎。
+        通过扫描数据特征，推荐最合适的建模策略、结局变量及特征变量。
         """
         recommendation = {
             'model_type': 'logistic', # default
@@ -874,17 +862,17 @@ class StatisticsService:
         columns = df.columns.tolist()
         lower_cols = {c.lower(): c for c in columns}
         
-        # 1. Detection Keywords
+        # 1. 关键词检测
         time_keywords = ['time', 'duration', 'days', 'month', 'year', 'os', 'pfs', 'rfs']
         event_keywords = ['status', 'event', 'outcome', 'death', 'died', 'recurrence', 'y', 'flag', 'class', 'target']
         id_keywords = ['id', 'no', 'code', 'name', 'patient', 'sample']
         
-        # 2. Heuristic Scan
+        # 2. 启发式扫描
         found_time = None
         found_event = None
         found_target = None
         
-        # Search for Time
+        # 寻找时间变量 (Time)
         for k in time_keywords:
             for lc, real_c in lower_cols.items():
                 if k in lc and not any(ik in lc for ik in id_keywords) and pd.api.types.is_numeric_dtype(df[real_c]):
@@ -892,22 +880,22 @@ class StatisticsService:
                     break
             if found_time: break
             
-        # Search for Event/Target
+        # 寻找事件/结局变量 (Event/Target)
         for k in event_keywords:
             for lc, real_c in lower_cols.items():
                 if k in lc and not any(ik in lc for ik in id_keywords):
-                    # Check unique values
+                    # 检查唯一值
                     uniques = df[real_c].dropna().unique()
                     n_uniq = len(uniques)
                     
-                    if n_uniq == 2: # Binary likely event
+                    if n_uniq == 2: # 极可能是二分类事件
                         found_event = real_c
                         if not found_target: found_target = real_c
                     elif n_uniq > 2 and pd.api.types.is_numeric_dtype(df[real_c]):
-                        # Continuous target?
+                        # 连续型结局变量？
                         if not found_target: found_target = real_c
         
-        # 3. Strategy Decision
+        # 3. 策略决策
         exclude_targets = []
         if found_time and found_event:
             recommendation['model_type'] = 'cox'
@@ -916,7 +904,7 @@ class StatisticsService:
             exclude_targets = [found_time, found_event]
             
         elif found_target:
-            # Check if binary or continuous
+            # 检查是二分类还是连续型
             uniques = df[found_target].dropna().unique()
             if len(uniques) == 2:
                 recommendation['model_type'] = 'logistic'
@@ -929,30 +917,30 @@ class StatisticsService:
                 recommendation['reason'] = f"检测到连续型结局变量 ({found_target})，推荐使用 **线性回归 (Linear Regression)**。"
                 exclude_targets = [found_target]
             else:
-                 # Classification but >2 classes?
-                 recommendation['model_type'] = 'logistic' # Multiclass fallback (not impl yet but safe default)
+                 # 可能是多分类但暂未实现？
+                 recommendation['model_type'] = 'logistic' # 多分类回退方案
                  recommendation['target'] = found_target
                  recommendation['reason'] = f"目标变量 ({found_target}) 为分类型，推荐使用逻辑回归。"
                  exclude_targets = [found_target]
         else:
-            # Fallback
+            # 回退方案
             recommendation['reason'] = "未能自动识别明确的结局变量，默认推荐逻辑回归。请手动选择。"
             exclude_targets = []
 
-        # 4. Feature Selection
+        # 4. 特征选择
         features = []
         for c in columns:
             if c in exclude_targets: continue
             
             lc = c.lower()
-            # Skip ID-like
+            # 跳过 ID 类变量
             if any(ik in lc for ik in id_keywords): continue
             
-            # Skip high cardinality strings (likely names/desc)
+            # 跳过高基数基数变量（可能是姓名/描述）
             if df[c].dtype == 'object':
                 if df[c].nunique() > 10: continue
             
-            # Skip strict constants
+            # 跳过严格常数变量
             if df[c].dropna().nunique() <= 1: continue
             
             features.append(c)

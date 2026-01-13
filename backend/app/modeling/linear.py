@@ -23,12 +23,12 @@ class LinearRegressionStrategy(BaseModelStrategy):
         
         model = sm.OLS(y, X)
         
-        # Debugging Singular Matrix
+        # 诊断是否存在奇异矩阵 (Singular Matrix)
         rank = np.linalg.matrix_rank(X)
         cols = X.shape[1]
         if rank < cols:
-             # Raise LinAlgError so ModelingService can catch and diagnose it
-             raise np.linalg.LinAlgError("Singular matrix detected")
+             # 抛出 LinAlgError，以便 ModelingService 进行捕获并给出诊断建议
+             raise np.linalg.LinAlgError("检测到奇异矩阵 (Singular Matrix)")
              
         res = model.fit()
         
@@ -37,7 +37,7 @@ class LinearRegressionStrategy(BaseModelStrategy):
 
 
     def _format_results(self, res, df=None, features=None):
-        # Calculate VIF
+        # 计算方差膨胀因子 (VIF)
         vif_data = []
         if df is not None and features is not None:
              from app.utils.diagnostics import ModelDiagnostics
@@ -61,8 +61,8 @@ class LinearRegressionStrategy(BaseModelStrategy):
                 'ci_upper': float(conf.loc[name][1]),
                 'vif': vn # VIF stays string or we should ensure it handles '-'
             }
-            # VIF handling: if hyphen, keep string, else float? Frontend handles string '-' perfectly.
-            # But wait, logic above: vif_map.get(name, '-')
+            # VIF 处理：如果是横杠则保持字符串，否则为浮点数？前端可以很好地处理字符串 '-'。
+            # 这里的逻辑：vif_map.get(name, '-')
             row['vif'] = vif_map.get(name, '-') if name != 'const' else '-'
             summary.append(row)
 
@@ -91,23 +91,23 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         try:
             res = model.fit(disp=0)
             
-            # Check for convergence and perfect separation signs
+            # 检查收敛及是否存在完全分离 (Perfect Separation) 的迹象
             # if np.abs(res.params).max() > 20 or np.any(np.isnan(res.bse)):
-            #       raise ValueError("Model failed to converge (Perfect Separation detected).")
+            #       raise ValueError("模型未能收敛（检测到完全分离）。")
                   
         except Exception as e:
             if 'singular matrix' in str(e).lower():
-                 raise np.linalg.LinAlgError("Singular matrix detected")
+                 raise np.linalg.LinAlgError("检测到奇异矩阵 (Singular Matrix)")
             if 'Perfect separation' in str(e):
-                 raise ValueError("Model failed to converge. Possible reasons: Perfect separation.")
+                 raise ValueError("模型未能收敛。可能原因：存在数据完全分离 (Perfect separation)。")
             raise e
             
-        # Evaluation
+        # 模型评价
         y_prob = res.predict(X)
         from app.utils.evaluation import ModelEvaluator
         metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob)
         
-        # 3. Nomogram Data (Coefficients for Scorekeeper)
+        # 3. 列线图 (Nomogram) 数据 (用于打分系统)
         nomogram_data = {
             'intercept': res.params.get('const', 0),
             'vars': []
@@ -121,7 +121,7 @@ class LogisticRegressionStrategy(BaseModelStrategy):
             })
         plots['nomogram'] = nomogram_data
         
-        # 5-Fold Cross Validation
+        # 5 折交叉验证
         from sklearn.model_selection import KFold
         from sklearn.metrics import roc_auc_score
         
@@ -129,8 +129,8 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         cv_aucs = []
         
         try:
-            # Need to re-prepare X without constant for splitting if using sklearn, but sm handles it.
-            # Using dataframe indices is safest.
+            # 如果使用 sklearn，需要重新准备不含常数项的 X 以便分割，但 sm (statsmodels) 可以处理。
+            # 使用 dataframe 索引是最稳妥的。
             X_reset = X.reset_index(drop=True)
             y_reset = y.reset_index(drop=True)
             
@@ -142,25 +142,25 @@ class LogisticRegressionStrategy(BaseModelStrategy):
                 try:
                     cv_model = sm.Logit(y_train, X_train)
                     cv_res = cv_model.fit(disp=0)
-                    # Predict on test
+                    # 在测试集上进行预测
                     y_cv_prob = cv_res.predict(X_test)
                     
                     if len(np.unique(y_test)) == 2:
                         cv_aucs.append(roc_auc_score(y_test, y_cv_prob))
                 except Exception:
-                    continue # Skip failed folds (e.g. separation)
+                    continue # 跳过失败的折叠 (例如由于完全分离)
                     
             if cv_aucs:
                 metrics['cv_auc_mean'] = ResultFormatter.format_float(np.mean(cv_aucs), 3)
                 metrics['cv_auc_std'] = ResultFormatter.format_float(np.std(cv_aucs), 3)
                 
         except Exception as e:
-            # CV failure shouldn't block main result
-            print(f"CV Failed: {e}")
+            # 交叉验证失败不应阻碍主结果的生成
+            print(f"交叉验证 (CV) 失败: {e}")
             pass
-        # CV logic ... (keep existing)
+        # 交叉验证逻辑 ... (保留现有逻辑)
             
-        # Diagnostics: VIF
+        # 模型诊断: VIF
         from app.utils.diagnostics import ModelDiagnostics
         vif_data = ModelDiagnostics.calculate_vif(df, features)
         
@@ -173,7 +173,7 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         pvalues = res.pvalues
         conf = res.conf_int()
         
-        # Create VIF map
+        # 创建 VIF 映射表
         vif_map = {item['variable']: item['vif'] for item in (vif_data or [])}
 
         for name in params.index:
@@ -191,9 +191,9 @@ class LogisticRegressionStrategy(BaseModelStrategy):
             }
             summary.append(row)
             
-        # Add const if needed, currently loop iterates all params
-        # But 'const' might be in params.index.
-        # My loop above handles whatever is in params.index.
+        # 如果需要则添加截距，目前循环会遍历所有参数
+        # 截距 (const) 可能已在 params.index 中。
+        # 上方的循环会处理 params.index 中的任何内容。
         
         metrics = metrics or {}
         metrics['prsquared'] = ResultFormatter.format_float(res.prsquared, 4)

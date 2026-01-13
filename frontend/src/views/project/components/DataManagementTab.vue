@@ -83,7 +83,7 @@
                             </el-icon>
                             <span class="node-label">{{ data.label }}</span>
                             
-                            <el-tag v-if="data.original.id === activeDatasetId" size="small" type="success" effect="dark" class="active-tag">Active</el-tag>
+                            <el-tag v-if="data.original.id === activeDatasetId" size="small" type="success" effect="dark" class="active-tag">活跃 (Active)</el-tag>
                             
                             <!-- Action Info Popover -->
                             <el-popover
@@ -95,7 +95,7 @@
                             >
                                 <template #reference>
                                     <el-tag size="small" effect="plain" type="info" class="action-tag">
-                                        {{ data.original.action_type || 'Upload' }}
+                                        {{ data.original.action_type || '上传 (Upload)' }}
                                     </el-tag>
                                 </template>
                                 <div class="action-log-content">

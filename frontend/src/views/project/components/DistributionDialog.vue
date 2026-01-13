@@ -27,6 +27,15 @@
 </template>
 
 <script setup>
+/**
+ * DistributionDialog.vue
+ * 变量分布查看弹窗组件。
+ * 
+ * 职责：
+ * 1. 异步获取特定变量的统计分布数据。
+ * 2. 针对数值型变量绘制直方图 (Histogram) 并叠加正态分布拟合曲线。
+ * 3. 针对分类型变量绘制环形图 (Donut Chart) 展示比例。
+ */
 import { ref, watch, nextTick } from 'vue'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
@@ -40,8 +49,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const visible = ref(props.modelValue)
-const loading = ref(false)
-const distData = ref(null)
+const loading = ref(false)  // 加载状态
+const distData = ref(null) // 变量分布统计数据
 
 watch(() => props.modelValue, (val) => {
   visible.value = val
@@ -54,6 +63,9 @@ watch(visible, (val) => {
   emit('update:modelValue', val)
 })
 
+/**
+ * 向后端请求变量分布与汇总统计指标。
+ */
 const fetchDistribution = async () => {
   loading.value = true
   distData.value = null
@@ -73,6 +85,9 @@ const fetchDistribution = async () => {
   }
 }
 
+/**
+ * 渲染分布图表。
+ */
 const renderPlot = () => {
   if (!distData.value) return
   

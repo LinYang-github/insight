@@ -16,7 +16,7 @@ class DataService:
     @staticmethod
     def save_dataframe(df, filepath):
         """
-        Save DataFrame to file, handling DuckDB or CSV based on extension.
+        将 DataFrame 保存到文件，根据扩展名处理 DuckDB 或 CSV。
         """
         if filepath.endswith('.duckdb'):
             if os.path.exists(filepath):
@@ -32,11 +32,11 @@ class DataService:
     @staticmethod
     def ingest_data(raw_filepath, db_filepath):
         """
-        Ingest raw file (CSV/Excel) into a persistent DuckDB file.
+        将原始文件 (CSV/Excel) 导入持久化的 DuckDB 文件。
         
-        Args:
-            raw_filepath (str): Path to temporary raw file.
-            db_filepath (str): Target path for .duckdb file.
+        参数:
+            raw_filepath (str): 临时原始文件路径。
+            db_filepath (str): 目标 .duckdb 文件路径。
         """
         if os.path.exists(db_filepath):
             os.remove(db_filepath)
@@ -55,20 +55,19 @@ class DataService:
                  raise ValueError("Unsupported format")
         finally:
             con.close()
-            # Cleanup raw file if needed? Let caller decide or do it here.
-            # Usually strict cleanup is good.
+            # 需要时清理原始文件。由此方法的调用者决定或在此处执行。
+            # 通常进行严格清理是好的。
             if os.path.exists(raw_filepath):
                 os.remove(raw_filepath)
 
     @staticmethod
     def export_to_csv(db_filepath, output_csv_path):
         """
-        Export data from DuckDB file to CSV.
+        将数据从 DuckDB 文件导出到 CSV。
         """
         con = duckdb.connect(db_filepath, read_only=True)
         try:
-            # Use COPY statement for efficient export
-            # HEADER implies writing header row
+            # 使用带有 HEADER 的 COPY 语句进行高效导出
             con.sql(f"COPY data TO '{output_csv_path}' (HEADER, DELIMITER ',')")
         finally:
             con.close()
@@ -88,28 +87,28 @@ class DataService:
         if filepath.endswith('.duckdb'):
              con = duckdb.connect(filepath, read_only=True)
              try:
-                 # Legacy fallback: load all to pandas (expensive but compatible)
+                 # 旧版回退：将所有内容加载到 pandas（开销大但兼容性好）
                  return con.sql("SELECT * FROM data").df()
              finally:
                  con.close()
-
-        # 1. Size Check
+ 
+        # 1. 存在性检查
         if not os.path.exists(filepath):
-             raise FileNotFoundError(f"File not found: {filepath}")
+             raise FileNotFoundError(f"文件未找到: {filepath}")
 
         file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
         if file_size_mb > DataService.MAX_FILE_SIZE_MB:
             raise ValueError(f"文件大小 ({file_size_mb:.1f}MB) 超过限制 ({DataService.MAX_FILE_SIZE_MB}MB)。建议先进行本地预处理。")
 
         if filepath.endswith('.csv'):
-             # Roboust parsing with encoding detection
+             # 使用编码检测进行稳健解析
             encodings = ['utf-8', 'gb18030', 'latin1']
             df = None
             for encoding in encodings:
                 try:
-                    # low_memory=False to avoid DtypeWarning and ensure accurate parsing
+                    # low_memory=False 以避免 DtypeWarning 并确保解析准确
                     if use_chunk:
-                         # Read only first chunk for metadata
+                         # 仅读取第一个分块以获取元数据
                          return pd.read_csv(filepath, encoding=encoding, chunksize=1000)
                     else:
                          df = pd.read_csv(filepath, encoding=encoding, low_memory=False)
@@ -128,21 +127,21 @@ class DataService:
     @staticmethod
     def load_data_optimized(filepath, columns=None):
         """
-        Optimized data loader using DuckDB's projection pushdown.
-        Loads ONLY the specified columns to minimize memory usage.
+        利用 DuckDB 的投影下推（Projection Pushdown）功能优化数据加载。
+        仅加载指定的列以最小化内存占用。
         
-        Args:
-            filepath (str): Path to file (.csv, .xlsx, .parquet).
-            columns (list): List of column names to load. If None, loads all.
+        参数:
+            filepath (str): 文件路径 (.csv, .xlsx, .parquet)。
+            columns (list): 要加载的列名列表。如果为 None，则加载所有列。
             
-        Returns:
-            pd.DataFrame: Dataframe containing only requested columns.
+        返回:
+            pd.DataFrame: 仅包含所请求列的数据框。
         """
         if not columns:
             return DataService.load_data(filepath)
             
         if filepath.endswith('.duckdb'):
-            # Zero-Parsing query
+            # 零解析查询（直接内存读取）
             try:
                 con = duckdb.connect(filepath, read_only=True)
                 cols_sql = ", ".join([f'"{c}"' for c in columns])
@@ -150,38 +149,38 @@ class DataService:
                 con.close()
                 return df
             except Exception as e:
-                # If column missing, DuckDB raises generic Binder Error
-                raise ValueError(f"DuckDB Query Error: {e}")
-
+                # 如果列缺失，DuckDB 会抛出通用的 Binder Error
+                raise ValueError(f"DuckDB 查询错误: {e}")
+ 
         if not filepath.endswith('.csv'):
-            # Fallback to Pandas for Excel (DuckDB excel support needs extension)
+            # 针对 Excel 回退到 Pandas（DuckDB 的 Excel 支持需要安装扩展）
             df = DataService.load_data(filepath)
             missing = [c for c in columns if c not in df.columns]
             if missing:
-                raise ValueError(f"Columns not found: {missing}")
+                raise ValueError(f"列未找到: {missing}")
             return df[columns]
             
         try:
-            # DuckDB SQL Injection Protection: internally handles parameterized paths?
-            # DuckDB python API usually safe with f-string for local paths if trusted.
-            # But column names need sanitization.
-            # Assuming columns are validated/sanitized upstream or trusted enough.
+            # DuckDB SQL 注入保护：内部是否处理了参数化路径？
+            # 如果本地路径可信，DuckDB 的 Python API 通常使用 f-string 处理本地路径是安全的。
+            # 但列名需要进行清理。
+            # 假设列名已经在上游进行了验证/清理，或者足够可信。
             
-            # Construct Column String
-            # Quote columns to handle spaces/special chars
+            # 构建列名字符串
+            # 使用双引号引用列名以处理空格/特殊字符
             cols_sql = ", ".join([f'"{c}"' for c in columns])
             
-            # Use DuckDB to query
-            # read_csv_auto handles headers and types
+            # 使用 DuckDB 进行查询
+            # read_csv_auto 自动处理表头和类型
             query = f"SELECT {cols_sql} FROM read_csv_auto('{filepath}', ignore_errors=true)"
             
-            # Execute and fetch as Pandas
-            # This triggers Projection Pushdown: only reads these columns from disk
+            # 执行并获取 Pandas DataFrame
+            # 这将触发投影下推：仅从磁盘读取这些特定的列
             df = duckdb.sql(query).df()
             return df
             
         except Exception as e:
-            # Fallback to Pandas if DuckDB fails (e.g. encoding issues, though read_csv_auto is robust)
+            # 如果 DuckDB 失败（例如编码问题，尽管 read_csv_auto 很稳健），则回退到 Pandas
             # print(f"DuckDB failed: {e}, falling back to Pandas")
             df = DataService.load_data(filepath)
             return df[columns]
@@ -217,13 +216,13 @@ class DataService:
         #    Let's implement an optimized approach: Read full file but with size limit check first.
         #    Actually, `use_chunk` in `load_data` is a good first step.
         
-        # Re-reading user request: "使用 chunksize 进行大文件元数据提取，避免一次性读入"
-        # OK, I will read the first chunk to get columns and types. 
-        # For rows/missing/unique, it's expensive to scan all if we don't load.
-        # I will use the full load for now because 200MB limit protects us. 
-        # But I will use the `use_chunk` param logic in `load_data` to support future expansion.
+        # TODO: 重新阅读用户需求：“使用 chunksize 进行大文件元数据提取，避免一次性读入”
+        # 好的，我将读取第一个分块以获取列名和类型。
+        # 对于行数/缺失值/唯一值，如果不加载所有数据，扫描整改文件的开销很大。
+        # 我现在使用全量加载，因为 200MB 的限制保护了我们。
+        # 但我会使用 load_data 中的 use_chunk 参数逻辑来支持未来的扩展。
         
-        # Current implementation: Load full (safe due to size check).
+        # 当前实现：全量加载（由于有大小检查，是安全的）。
         df = DataService.load_data(filepath)
             
         metadata = []
@@ -245,7 +244,7 @@ class DataService:
                 'role': 'covariate',
                 'missing_count': int(df[col].isnull().sum()),
                 'unique_count': int(df[col].nunique()),
-                # Add categories for dropdowns (limit to 50 to avoid payload explosion)
+                # 添加下拉框的类别（仅限 50 个以内，以避免负载爆炸）
                 'categories': df[col].unique().tolist() if var_type == 'categorical' and df[col].nunique() < 50 else None
             })
             
@@ -287,8 +286,8 @@ class DataService:
     @staticmethod
     def preprocess_for_formula(df):
         """
-        Prepare dataframe for Formula-based libraries (statsmodels formulas, lifelines formulas).
-        Ensures Object columns are cast to 'category' so the formula engine can auto-encode them.
+        为基于公式的库 (statsmodels, lifelines) 准备数据框。
+        确保将 Object 类型的列转换为 'category'，以便公式引擎能够自动对其进行编码。
         """
         df_mod = df.copy()
         for col in df_mod.columns:
@@ -302,18 +301,18 @@ class DataService:
     @staticmethod
     def preprocess_for_matrix(df, features, ref_levels=None):
         """
-        Prepare dataframe for Matrix-based libraries.
-        Explicitly performs One-Hot Encoding for categorical variables in 'features'.
-        Preserves other columns (like target).
+        为基于矩阵的库准备数据框。
+        对 'features' 中的定性变量显式执行独热编码 (One-Hot Encoding)。
+        保留其他列（如结局变量）。
         
-        Args:
-            df (pd.DataFrame): Input dataframe.
-            features (list): List of feature names to use.
-            ref_levels (dict): Optional. Dict mapping col_name -> ref_category.
-                               If provided, the ref_category will be set as the first category 
-                               (and thus dropped by drop_first=True to serve as reference).
+        参数:
+            df (pd.DataFrame): 输入的数据框。
+            features (list): 要使用的特征列表。
+            ref_levels (dict): 可选。映射列名 -> 参考层级 (ref_category) 的字典。
+                               如果提供，参考层级将被设为第一类
+                               （因此会被 drop_first=True 丢弃，作为基准参考层）。
             
-        Returns:
+        返回:
             tuple: (df_encoded, new_features_list)
         """
         df_mod = df.copy()
@@ -335,7 +334,7 @@ class DataService:
                         ref_val = ref_levels[col]
                         unique_vals = list(df_mod[col].unique())
                         
-                        # Type conversion if needed (e.g. ref is string '0', val is int 0)
+                        # 必要时进行类型转换（例如：参考层是字符串 '0'，实际值是整数 0）
                         if df_mod[col].dtype != 'object' and isinstance(ref_val, str):
                             try:
                                 ref_val = type(unique_vals[0])(ref_val)
@@ -343,30 +342,30 @@ class DataService:
                                 pass
                                 
                         if ref_val in unique_vals:
-                            # Move ref_val to front
+                            # 将参考层移动到最前面
                             categories = [ref_val] + [x for x in unique_vals if x != ref_val]
                             df_mod[col] = pd.Categorical(df_mod[col], categories=categories, ordered=True)
                         else:
-                            # Warn or ignore? For now ignore, let get_dummies handle defaults
+                            # 警告或忽略？目前先忽略，让 get_dummies 处理默认情况
                             pass
                 
         if not cat_cols:
             return df_mod, features
             
-        # One-Hot Encoding
+        # 独热编码 (One-Hot Encoding)
         df_encoded = pd.get_dummies(df_mod, columns=cat_cols, drop_first=True, dtype=int)
         
-        # Update feature list
+        # 更新特征列表
         new_features = [f for f in features if f not in cat_cols]
         
         original_cols = set(df_mod.columns)
         new_cols_set = set(df_encoded.columns)
         
-        # Re-calculate generated dummies
-        # Note: df_mod might have changed due to Categorical conversion, so we trust new_cols_set
-        # Identify new columns that were NOT in original
+        # 重新计算生成的哑变量
+        # 注意：df_mod 可能会因为 Categorical 转换而改变，所以我们信任 new_cols_set
+        # 识别不在原始列中的新列
         
-        # Robust way: iterate new columns and check if they start with cat_col + separator
+        # 稳健的方法：迭代新列并检查它们是否以 cat_col + 分隔符开头
         added_cols = []
         for col in df_encoded.columns:
             if col not in df_mod.columns:

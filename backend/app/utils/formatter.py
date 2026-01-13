@@ -23,17 +23,17 @@ class ResultFormatter:
     @staticmethod
     def format_float(val, precision=3):
         """
-        Formats float with specific precision.
+        按照指定的精度格式化浮点数。
         """
         if val is None:
             return None
-        # Handle numpy / list types
+        # 处理 numpy 或列表类型
         if isinstance(val, (list, tuple, np.ndarray)):
-            # If single element, extract it
+            # 如果是单元素，则提取它
             if np.size(val) == 1:
                 val = np.array(val).item()
             else:
-                # Cannot format array
+                # 无法直接格式化数组
                 return val
         
         if pd.isna(val):

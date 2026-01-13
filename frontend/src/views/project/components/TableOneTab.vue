@@ -49,7 +49,7 @@
             <el-card class="box-card" v-loading="loading">
                 <template #header>
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>Table 1: Baseline Characteristics</span>
+                        <span>基线特征表 (Table 1: Baseline Characteristics)</span>
                         <el-button v-if="methodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
                         <el-button v-if="results.length > 0" type="success" size="small" @click="exportExcel">导出 Excel</el-button>
                     </div>
@@ -63,14 +63,14 @@
                     highlight-current-row
                     @row-click="(row) => selectedRow = row"
                 >
-                    <el-table-column prop="variable" label="Variable" width="180">
+                    <el-table-column prop="variable" label="变量 (Variable)" width="180">
                         <template #default="scope">
                             <el-link type="primary" underline="never" @click.stop="openDistribution(scope.row.variable)">
                                 {{ scope.row.variable }}
                             </el-link>
                         </template>
                     </el-table-column>
-                    <el-table-column label="Overall">
+                    <el-table-column label="合计 (Overall)">
                         <template #default="scope">
                             <span v-if="scope.row.type === 'numeric'">
                                 {{ scope.row.overall.mean }} ({{ scope.row.overall.sd }})
@@ -101,7 +101,7 @@
 
                     <el-table-column v-if="config.groupBy" prop="p_value" width="150" fixed="right">
                          <template #header>
-                             <GlossaryTooltip term="p_value">P-value</GlossaryTooltip>
+                             <GlossaryTooltip term="p_value">P 值 (P-value)</GlossaryTooltip>
                          </template>
                          <template #default="scope">
                              <StatValue :value="scope.row.p_value" type="p-value" />
@@ -147,9 +147,10 @@
  * 基线特征描述表 (Table 1) 组件。
  * 
  * 职责：
- * 1. 提供变量选择和分组设置界面。
- * 2. 展示统计描述结果（均值±标准差 或 频数/百分比）。
- * 3. 自动计算组间差异的 P 值（T检验、ANOVA 或 卡方检验）。
+ * 1. 提供变量选择和分组设置界面，支持对全人群或分组人群进行基线描述。
+ * 2. 智能选择统计方法：正态分布选 T 检验/ANOVA，非正态选非参检验，分类变量选卡方/Fisher。
+ * 3. 实时可视化变量分布（直通 DistributionDialog）。
+ * 4. 支持复制符合 SCI 发表规范的方法学段落，并支持导出表格。
  */
 import { ref, computed, reactive } from 'vue'
 import api from '../../../api/client'
@@ -173,10 +174,10 @@ const openDistribution = (varName) => {
     distVisible.value = true
 }
 
-const loading = ref(false)
-const results = ref([])
-const groupNames = ref([])
-const selectedRow = ref(null)
+const loading = ref(false) // 加载状态
+const results = ref([])    // Table 1 结果数组
+const groupNames = ref([]) // 动态提取的组别名称列表
+const selectedRow = ref(null) // 当前选中的行，用于高亮显示智能解读
 
 const config = reactive({
     groupBy: null,
@@ -201,6 +202,9 @@ const allOptions = computed(() => variableOptions.value)
 
 const methodology = ref('')
 
+/**
+ * 调用后端接口生成基线表数据。
+ */
 const generateTable = async () => {
     if (config.variables.length === 0) {
         ElMessage.warning("请至少选择一个统计变量")

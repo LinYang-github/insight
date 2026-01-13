@@ -1,6 +1,6 @@
 <template>
   <div class="dashboard-container">
-    <!-- 1. Welcome Header Section -->
+    <!-- 1. 欢迎页头部区域 -->
     <div class="welcome-header">
       <div class="header-content">
         <h1>早安，研究员</h1>
@@ -18,8 +18,8 @@
         </div>
       </div>
     </div>
-
-    <!-- 2. Action Toolbar -->
+ 
+    <!-- 2. 操作工具栏 -->
     <div class="action-bar">
       <div class="search-box">
          <el-input 
@@ -34,8 +34,8 @@
       创建新研究
       </el-button>
     </div>
-
-    <!-- 3. Projects Grid -->
+ 
+    <!-- 3. 项目卡片网格 -->
     <div v-if="filteredProjects.length > 0" class="projects-grid">
        <div 
           v-for="project in filteredProjects" 
@@ -72,8 +72,8 @@
           </div>
        </div>
     </div>
-
-    <!-- 4. Empty State -->
+ 
+    <!-- 4. 空状态界面 -->
     <div v-else class="empty-state">
         <template v-if="searchQuery">
             <el-empty description="未找到匹配的项目" />
@@ -88,7 +88,7 @@
         </template>
     </div>
     
-    <!-- Dialog -->
+    <!-- 创建/编辑项目弹窗 -->
     <el-dialog v-model="showModal" title="新建项目" width="480px" class="custom-dialog" align-center>
          <el-form label-position="top" size="large">
              <el-form-item label="项目名称">
@@ -128,10 +128,12 @@ const creating = ref(false)
 const searchQuery = ref('')
 const newProject = reactive({ name: '', description: '' })
 
-// Mock recent count for demo
+const newProject = reactive({ name: '', description: '' })
+
+// 模拟最近活动计数（仅用于演示）
 const recentCount = computed(() => {
-    // Logic to count projects updated in last 7 days? 
-    // Simplified: Just 80% of total for visual balance
+    // 统计过去 7 天内更新的项目逻辑？
+    // 简化处理：取总数的 80% 以保持视觉平衡
     return Math.ceil(projects.value.length * 0.8)
 })
 
@@ -144,8 +146,8 @@ const filteredProjects = computed(() => {
 const fetchProjects = async () => {
     try {
         const { data } = await api.get('/projects/')
-        // Sort by updated_at desc if available, or id desc
-        projects.value = data.projects.reverse() // Assuming backend appends new ones
+        // 按更新时间降序排列（如果后端支持），或按 ID 降序
+        projects.value = data.projects.reverse() // 假设后端是追加新项目的
     } catch (error) {
         ElMessage.warning('项目加载失败')
     }
@@ -203,7 +205,7 @@ const enterProject = (id) => {
 
 const formatDate = (str) => {
     if (!str) return '刚刚'
-    return new Date().toLocaleDateString() // Mock for now if string format varies
+    return new Date().toLocaleDateString() // 如果字符串格式多变，暂时使用模拟日期
 }
 
 const getRandomColor = (id) => {

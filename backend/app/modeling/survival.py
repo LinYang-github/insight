@@ -55,27 +55,27 @@ class CoxStrategy(BaseModelStrategy):
         except Exception as e:
             err_msg = str(e).lower()
             
-            # Diagnose specific variable causing separation (诊断完全分离的具体变量)
+            # 诊断导致完全分离的具体变量 (culprit)
             culprit = self._diagnose_separation(data, features, event_col)
             culprit_msg = f"\n可能的问题变量：{culprit} (在某一组中方差极低或完全分离)" if culprit else ""
-
+ 
             if 'singular matrix' in err_msg:
                 raise ValueError(f"模型计算失败：检测到严重的多重共线性 (Singular Matrix)。{culprit_msg}\n建议移除该变量后重试。")
             if 'low variance' in err_msg or 'complete separation' in err_msg or 'converge' in err_msg or 'nan' in err_msg:
                  raise ValueError(f"模型收敛失败：检测到完全分离 (Perfect Separation) 或数据异常。{culprit_msg}\n详细错误：{str(e)}\n建议：检查并移除样本量极少或分布极不平衡的特征变量。")
             raise e
             
-        # PH Assumption Test
+        # PH 假定校验 (Proportional Hazard Test)
         from lifelines.statistics import proportional_hazard_test
         ph_test_results = None
         try:
-             # decimals=3 for rounding
+             # decimals=3 用于四舍五入
              ph_test = proportional_hazard_test(cph, data, time_transform='km')
              ph_test_results = ph_test
         except Exception as e:
              pass
 
-        # --- Clinical Evaluation (DCA, Calibration, Time-Dep ROC) ---
+        # --- 临床评价 (DCA, 校准曲线, 时间依赖 ROC) ---
         from app.services.evaluation_service import EvaluationService
         clinical_eval = {
             'dca': {},
@@ -86,11 +86,11 @@ class CoxStrategy(BaseModelStrategy):
             'nomogram': {}
         }
         
-        # 1. Nomogram Generation (Independent)
+        # 1. 生成列线图 (Nomogram)
         try:
             from app.utils.nomogram_generator import NomogramGenerator
             
-            original_df = params.get('original_df', data) # Fallback to 'data' (which is processed) if missing
+            original_df = params.get('original_df', data) # 如果缺失，回退到 'data' (已处理过的数据)
             original_features = params.get('original_features', features)
             
             max_t = data[time_col].max()
@@ -106,21 +106,21 @@ class CoxStrategy(BaseModelStrategy):
             if nomogram_spec:
                 clinical_eval['nomogram'] = nomogram_spec
         except Exception as e:
-            print(f"Nomogram Generation Failed: {e}")
+            print(f"列线图生成失败: {e}")
             import traceback
             traceback.print_exc()
 
-        # 2. Determine Time Points for Eval Charts
+        # 2. 确定评价图表的时间点
         try:
             max_dur = data[time_col].max()
             points = []
             
-            # Simple Heuristic: If max duration > 730 (2 years in days), assume 'Days'.
-            # Else assume 'Months'.
+            # 简单启发式判定：如果最大随访时间 > 730 (假设以天为单位的 2 年)，则判定单位为“天”。
+            # 否则判定为“月”。
             time_unit = 'months'
             if max_dur > 730:
                 time_unit = 'days'
-                # 1y, 2y, 3y, 4y, 5y
+                # 1年, 2年, 3年, 4年, 5年
                 candidates = [365, 730, 1095, 1460, 1825]
                 for c in candidates:
                      if max_dur > c: points.append(c)
@@ -130,36 +130,36 @@ class CoxStrategy(BaseModelStrategy):
                 for c in candidates:
                      if max_dur > c: points.append(c)
             
-            # User Request: "All Endpoints" -> Include the time of the last event
+            # 用户需求：“所有终点” -> 包含最后一次发生事件的时间
             try:
                 max_evt_time = int(data.loc[data[event_col]==1, time_col].max())
-                # Only add if it's reasonably distinct from existing points (e.g. > 10% diff)? 
-                # For simplicity, just add and deduplicate.
+                # 仅当该时间点与现有时间点有明显区分时才添加 (例如 > 10% 差异)？
+                # 为简单起见，直接添加并去重。
                 points.append(max_evt_time)
             except: pass
             
-            # Deduplicate and Sort
+            # 去重并排序
             points = sorted(list(set(points)))
             
             clinical_eval['time_unit'] = time_unit
             if not points:
                 points = [int(data[time_col].median())]
                 
-            # 3. Loop points (Granular Error Handling)
+            # 3. 遍历时间点 (细粒度错误处理)
             for t in points:
-                # Calibration
+                # 校准曲线 (Calibration)
                 try:
                     cal = EvaluationService.calculate_survival_calibration(cph, data, time_col, event_col, t)
                     clinical_eval['calibration'][t] = cal
                 except Exception: pass
                 
-                # DCA
+                # DCA 曲线
                 try:
                     dca = EvaluationService.calculate_survival_dca(cph, data, time_col, event_col, t)
                     clinical_eval['dca'][t] = dca
                 except Exception: pass
                 
-                # Time-Dep ROC
+                # 时间依赖 ROC
                 try:
                     surv_df = cph.predict_survival_function(data, times=[t])
                     y_score = 1 - surv_df.iloc[0].values
@@ -177,25 +177,22 @@ class CoxStrategy(BaseModelStrategy):
                             'auc': roc_auc
                         }
                     
-                    # Store predictions (NRI/IDI)
+                    # 存储预测值 (用于计算 NRI/IDI)
                     clinical_eval['predictions'][t] = {
                         'y_true': y_true.tolist(),
                         'y_pred': y_score_masked.tolist()
                     }
                 except Exception: pass
 
-                # Extended Metrics
+                # 扩展指标 (Extended Metrics)
                 try:
                     ext_metrics = EvaluationService.calculate_survival_metrics_at_t(cph, data, time_col, event_col, t)
                     clinical_eval['extended_metrics'][t] = ext_metrics
                 except Exception: pass
 
         except Exception as e:
-            print(f"Clinical Evaluation Setup Failed: {e}")
-            
-        except Exception as e:
-            print(f"Cox Clinical Evaluation Failed: {e}")
-            # Do not fail the whole model run
+            print(f"Cox 临床评价设置失败: {e}")
+            # 不应因为评价失败而导致整个模型运行中断
 
         return self._format_results(cph, ph_test_results, clinical_eval)
 
@@ -214,20 +211,20 @@ class CoxStrategy(BaseModelStrategy):
            event_col: 结局列名.
 
         Returns:
-           str: 疑似问题的变量名，如果未找到则返回 None.
+           str: 疑似存在问题的变量名，如果未找到则返回 None.
         """
         for feature in features:
             try:
-                # 1. Check Variance in each group
-                # If a feature is constant within the Event=1 or Event=0 group, it causes separation.
+                # 1. 检查各组方差
+                # 如果某个特征在 Event=1 或 Event=0 组内是常数，则会导致分离。
                 groups = df.groupby(event_col)[feature]
                 for name, group in groups:
                     if group.dropna().nunique() <= 1:
                         return feature
                 
-                # 2. For Categorical with very unbalanced splits (e.g. 5 vs 0)
-                # Crosstab check
-                if df[feature].nunique() < 10: # Only check categorical-like
+                # 2. 针对分类变量进行分布不均检测 (例如 5 vs 0)
+                # 列联表检查
+                if df[feature].nunique() < 10: # 仅检查类似分类的变量
                     ct = pd.crosstab(df[feature], df[event_col])
                     if (ct == 0).any().any():
                          return feature
@@ -238,8 +235,8 @@ class CoxStrategy(BaseModelStrategy):
     def _format_results(self, cph, ph_results=None, clinical_eval=None):
         summary = []
         
-        # Parse PH results if available
-        # ph_results.summary is a DataFrame with index = variable
+        # 如果可用，解析 PH 校验结果
+        # ph_results.summary 是一个以变量名为索引的 DataFrame
         ph_table = None
         if ph_results is not None:
              ph_table = ph_results.summary
@@ -257,7 +254,7 @@ class CoxStrategy(BaseModelStrategy):
                 'hr': float(cph.hazard_ratios_[name]),
                 'hr_ci_lower': float(np.exp(cph.confidence_intervals_.loc[name].iloc[0])),
                 'hr_ci_upper': float(np.exp(cph.confidence_intervals_.loc[name].iloc[1])),
-                'ph_test_p': ph_p # This one can stay string or float depending on formatter
+                'ph_test_p': ph_p # 该值根据格式化器的不同可以是字符串或浮点数
             }
             summary.append(row)
             

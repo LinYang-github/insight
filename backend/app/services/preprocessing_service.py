@@ -28,8 +28,8 @@ class PreprocessingService:
         # copy to avoid mutating original if needed (though here we want to return new one)
         df = df.copy()
 
-        # 1. Handle Simple Imputation & Drop first
-        # (Doing this first ensures they provide complete data for MICE predictors if needed)
+        # 1. 首先处理简单填补和删除
+        # (先执行这一步可以确保后续 MICE 预测器在需要时能获得完整的数据)
         mice_cols = []
         
         for col, method in strategies.items():
@@ -41,7 +41,7 @@ class PreprocessingService:
             elif method == 'mean':
                 if pd.api.types.is_numeric_dtype(df[col]):
                     val = df[col].mean()
-                    # If column is integer (including nullable Int64), cast to float to accept mean
+                    # 如果列是整数类型（包括可为空的 Int64），则转换为 float 以接受均值
                     if pd.api.types.is_integer_dtype(df[col]):
                          df[col] = df[col].astype(float)
                     df[col] = df[col].fillna(val)
@@ -54,45 +54,45 @@ class PreprocessingService:
                     val = df[col].mode()[0]
                     df[col] = df[col].fillna(val)
             elif method == 'mice':
-                # Defer MICE
+                # 延迟处理 MICE
                 if pd.api.types.is_numeric_dtype(df[col]):
                     mice_cols.append(col)
         
-        # 2. Handle MICE
+        # 2. 处理 MICE 填补
         if mice_cols:
             try:
                 from sklearn.experimental import enable_iterative_imputer
                 from sklearn.impute import IterativeImputer
                 
-                # Use all numeric columns as context for MICE
+                # 使用所有数值列作为 MICE 的上下文
                 numeric_df = df.select_dtypes(include=[np.number])
                 
-                # To be safe, MICE needs at least 2 columns usually? 
-                # Or it uses itself if univariate? (IterativeImputer acts as simple regression if multivariate)
+                # 为了安全起见，MICE 通常需要至少 2 列？
+                # 或者如果只有一列则使用单变量填补？ (IterativeImputer 在多变量情况下充当简单回归)
                 if numeric_df.shape[1] > 0:
-                    # We only need to impute if there are still NaNs in the mice_cols
-                    # (Though strategies[col]=='mice' implies we want to fix it)
+                    # 我们仅需对 mice_cols 中仍包含缺失值的列进行填补
+                    # (由于 strategies[col]=='mice'，意味我们要修复它)
                     cols_to_impute = [c for c in mice_cols if df[c].isnull().any()]
                     
                     if cols_to_impute:
                         imputer = IterativeImputer(max_iter=10, random_state=0)
-                        # Fit transform on ALL numeric (imputes all missing numeric actually)
+                        # 在所有数值列上进行拟合和转换（实际上会填补所有缺失的数值列）
                         imputed_matrix = imputer.fit_transform(numeric_df)
                         
-                        # Convert back to DF
+                        # 转回 DataFrame
                         imputed_df = pd.DataFrame(imputed_matrix, columns=numeric_df.columns, index=numeric_df.index)
                         
-                        # Update original df with imputed values for requested cols
+                        # 用请求列的填补值更新原始数据框
                         for col in mice_cols:
                             if col in imputed_df.columns:
                                 df[col] = imputed_df[col]
             except ImportError:
-                 # Fallback if sklearn version issue or not installed
-                 print("Warning: MICE requires sklearn>=0.21. Basic mean imputation used as fallback.")
+                 # sklearn 版本问题或未安装时的回退方案
+                 print("警告: MICE 需要 sklearn>=0.21。回退至基本的均值填补。")
                  for col in mice_cols:
                      df[col] = df[col].fillna(df[col].mean())
             except Exception as e:
-                 print(f"MICE failed: {e}")
+                 print(f"MICE 填补失败: {e}")
                  
         return df
 
@@ -106,8 +106,8 @@ class PreprocessingService:
 
         Args:
             df (pd.DataFrame): 原始数据。
-                columns (list): 需要编码的列名列表。
-
+            columns (list): 需要编码的列名列表。
+ 
         Returns:
             pd.DataFrame: 编码后的数据集。
         """
@@ -117,8 +117,8 @@ class PreprocessingService:
         if not valid_cols:
             return df
 
-        # Use get_dummies with drop_first=True for rigorous statistical modeling
-        # This converts nominal 'A','B','C' -> 'B','C' (A is reference)
+        # 使用 get_dummies 并设置 drop_first=True 以进行严谨的统计建模
+        # 这会将分类 'A','B','C' 转换为 'B','C' (A 作为参考组)
         df = pd.get_dummies(df, columns=valid_cols, drop_first=True)
             
         return df
@@ -128,22 +128,22 @@ class PreprocessingService:
     def save_processed_dataset(original_dataset_id, new_df, suffix, user_id, overwrite_id=None, parent_id=None, action_type=None, log=None):
         """
         将处理后的 DataFrame 保存为新的数据集记录并生成物理文件。
-        If overwrite_id is provided, updates that dataset instead of creating new.
+        如果提供了 overwrite_id，则更新该数据集而非创建新数据集。
         """
         if overwrite_id:
-            # Overwrite existing dataset
+            # 覆盖现有数据集
             target_dataset = db.session.get(Dataset, overwrite_id)
             if not target_dataset:
-                raise ValueError("Overwrite target not found")
+                raise ValueError("未找到覆盖目标")
             
-            # Use existing filepath
+            # 使用现有的文件路径
             new_filepath = target_dataset.filepath
             new_dataset = target_dataset
             
-            # Save Data (Overwrite)
+            # 保存数据 (覆盖)
             DataService.save_dataframe(new_df, new_filepath)
             
-            # Update Metadata
+            # 更新元数据
             try:
                 meta = DataService.get_initial_metadata(new_filepath)
                 new_dataset.meta_data = meta
@@ -154,25 +154,25 @@ class PreprocessingService:
             return new_dataset
             
         else:
-            # Create NEW dataset
+            # 创建新数据集
             original = db.session.get(Dataset, original_dataset_id)
             if not original:
-                raise ValueError("Original dataset not found")
+                raise ValueError("未找到原始数据集")
     
-            # Create new filename
+            # 创建新文件名
             dir_name = os.path.dirname(original.filepath)
             base_name = os.path.basename(original.filepath)
             name_part, ext = os.path.splitext(base_name)
             
-            # If original is already a Result file, maybe strip existing suffix?
-            # Ideally we keep accumulating suffix logic simple for now.
+            # 如果原始文件已经是结果文件，也许需要剥离现有后缀？
+            # 目前先保持累积后缀逻辑简单。
             new_filename = f"{name_part}_{suffix}{ext}"
             new_filepath = os.path.join(dir_name, new_filename)
             
-            # Save Data (DuckDB or CSV)
+            # 保存数据 (DuckDB 或 CSV)
             DataService.save_dataframe(new_df, new_filepath)
             
-            # Create DB entry
+            # 创建数据库条目
             new_dataset = Dataset(
                 project_id=original.project_id,
                 name=new_filename,
@@ -181,7 +181,7 @@ class PreprocessingService:
                 action_type=action_type,
                 action_log=json.dumps(log) if log else None
             )
-            # Generate metadata
+            # 生成元数据
             try:
                 meta = DataService.get_initial_metadata(new_filepath)
                 new_dataset.meta_data = meta
@@ -215,16 +215,16 @@ class PreprocessingService:
                 scr_col = params.get('scr')
                 age_col = params.get('age')
                 sex_col = params.get('sex')
-                race_col = params.get('race') # Optional, 1=Black, 0=Other
+                race_col = params.get('race') # 可选, 1=Black, 0=Other
                 
                 if not (scr_col and age_col and sex_col):
-                     raise ValueError("Missing required columns: scr, age, sex")
-
+                     raise ValueError("缺少必要列：scr, age, sex")
+ 
                 def calc_2009(row):
                     scr = pd.to_numeric(row[scr_col], errors='coerce')
                     age = pd.to_numeric(row[age_col], errors='coerce')
-                    sex = str(row[sex_col]).lower() # female/male or 0/1 (need standard)
-                    # Simple heuristic for Sex: 'f', 'female', '0' -> Female
+                    sex = str(row[sex_col]).lower() # female/male 或 0/1 (需统一规范)
+                    # 性别简单启发式判定: 'f', 'female', '0' -> Female
                     is_female = sex in ['f', 'female', '0', 'woman']
                     is_black = False
                     if race_col and race_col in row:
@@ -237,26 +237,26 @@ class PreprocessingService:
                     k = 0.7 if is_female else 0.9
                     a = -0.329 if is_female else -0.411
                     
-                    # Race factor
+                    # 种族系数
                     race_factor = 1.159 if is_black else 1.0
                     sex_factor = 1.018 if is_female else 1.0 
-                    # Note: The single equation form:
+                    # 注：单方程形式：
                     # eGFR = 141 * min(Scr/k, 1)^a * max(Scr/k, 1)^-1.209 * 0.993^Age * sex_factor * race_factor
                     
-                    # Let's use the explicit breakdown
+                    # 我们使用显式的拆解计算
                     return 141 * (min(scr/k, 1)**a) * (max(scr/k, 1)**-1.209) * (0.993**age) * sex_factor * race_factor
 
                 df['eGFR_CKDEPI_2009'] = df.apply(calc_2009, axis=1)
 
             elif type == 'egfr_ckdepi2021':
-                # CKD-EPI 2021 (Refit without Race)
-                # Params: scr, age, sex
+                # CKD-EPI 2021 (不含种族因素)
+                # 参数: scr, age, sex
                 scr_col = params.get('scr')
                 age_col = params.get('age')
                 sex_col = params.get('sex')
                 
                 if not (scr_col and age_col and sex_col):
-                     raise ValueError("Missing required columns: scr, age, sex")
+                     raise ValueError("缺少必要列：scr, age, sex")
 
                 def calc_2021(row):
                     scr = pd.to_numeric(row[scr_col], errors='coerce')
@@ -282,9 +282,9 @@ class PreprocessingService:
                 age_col = params.get('age')
                 sex_col = params.get('sex')
                 race_col = params.get('race')
-
+ 
                 if not (scr_col and age_col and sex_col):
-                     raise ValueError("Missing required columns")
+                     raise ValueError("缺少必要列")
 
                 def calc_mdrd(row):
                     scr = pd.to_numeric(row[scr_col], errors='coerce')
@@ -306,13 +306,13 @@ class PreprocessingService:
                 df['eGFR_MDRD'] = df.apply(calc_mdrd, axis=1)
 
             elif type == 'egfr_schwartz':
-                # Bedside Schwartz (Children)
-                # eGFR = 0.413 * (Height cm / Scr )
+                # Bedside Schwartz 法 (儿童)
+                # eGFR = 0.413 * (身高 cm / Scr )
                 scr_col = params.get('scr')
                 height_col = params.get('height')
                 
                 if not (scr_col and height_col):
-                     raise ValueError("Missing columns: scr, height")
+                     raise ValueError("缺少必要列：scr, height")
                 
                 def calc_schwartz(row):
                     scr = pd.to_numeric(row[scr_col], errors='coerce')
@@ -323,7 +323,7 @@ class PreprocessingService:
                 df['eGFR_Schwartz'] = df.apply(calc_schwartz, axis=1)
 
         except Exception as e:
-            raise ValueError(f"Derivation failed: {str(e)}")
+            raise ValueError(f"变量衍生失败: {str(e)}")
 
         return df
 
@@ -343,10 +343,10 @@ class PreprocessingService:
         df = df.copy()
         
         egfr_col = params.get('egfr')
-        acr_col = params.get('acr') # ACR (mg/g) or PCR
+        acr_col = params.get('acr') # ACR (mg/g) 或 PCR
         
         if not egfr_col:
-            raise ValueError("eGFR column is required")
+            raise ValueError("eGFR 列是必需的")
             
         # 1. G-Stage
         def calc_g_stage(val):
@@ -364,7 +364,7 @@ class PreprocessingService:
         
         df['CKD_G_Stage'] = df[egfr_col].apply(calc_g_stage)
         
-        # 2. A-Stage (Optional if ACR not provided)
+        # 2. A 分期 (如果提供了 ACR)
         if acr_col:
             def calc_a_stage(val):
                 try:
@@ -377,29 +377,29 @@ class PreprocessingService:
                     return np.nan
             df['CKD_A_Stage'] = df[acr_col].apply(calc_a_stage)
             
-            # 3. Risk Stratification (KDIGO Heatmap)
-            # Low (Green), Moderate (Yellow), High (Orange), Very High (Red)
+            # 3. 风险分层 (KDIGO 热图)
+            # 低风险 (绿色), 中度风险 (黄色), 高风险 (橙色), 极高风险 (红色)
             def calc_risk(row):
                 g = row.get('CKD_G_Stage')
                 a = row.get('CKD_A_Stage')
                 if pd.isna(g) or pd.isna(a): return np.nan
                 
-                # KDIGO 2012 Heatmap Logic
+                # KDIGO 2012 热图逻辑
                 #      A1      A2      A3
-                # G1   Low     Mod     High
-                # G2   Low     Mod     High
-                # G3a  Mod     High    V.High
-                # G3b  High    V.High  V.High
-                # G4   V.High  V.High  V.High
-                # G5   V.High  V.High  V.High
+                # G1   低风险  中偏高  高风险
+                # G2   低风险  中偏高  高风险
+                # G3a  中偏高  高风险  极高
+                # G3b  高风险  极高    极高
+                # G4   极高    极高    极高
+                # G5   极高    极高    极高
                 
                 risk_map = {
-                    ('G1', 'A1'): 'Low Risk',   ('G1', 'A2'): 'Moderate Risk', ('G1', 'A3'): 'High Risk',
-                    ('G2', 'A1'): 'Low Risk',   ('G2', 'A2'): 'Moderate Risk', ('G2', 'A3'): 'High Risk',
-                    ('G3a', 'A1'): 'Moderate Risk', ('G3a', 'A2'): 'High Risk',   ('G3a', 'A3'): 'Very High Risk',
-                    ('G3b', 'A1'): 'High Risk',     ('G3b', 'A2'): 'Very High Risk', ('G3b', 'A3'): 'Very High Risk',
-                    ('G4', 'A1'): 'Very High Risk', ('G4', 'A2'): 'Very High Risk', ('G4', 'A3'): 'Very High Risk',
-                    ('G5', 'A1'): 'Very High Risk', ('G5', 'A2'): 'Very High Risk', ('G5', 'A3'): 'Very High Risk',
+                    ('G1', 'A1'): '低风险 (Low Risk)',   ('G1', 'A2'): '中度风险 (Moderate Risk)', ('G1', 'A3'): '高风险 (High Risk)',
+                    ('G2', 'A1'): '低风险 (Low Risk)',   ('G2', 'A2'): '中度风险 (Moderate Risk)', ('G2', 'A3'): '高风险 (High Risk)',
+                    ('G3a', 'A1'): '中度风险 (Moderate Risk)', ('G3a', 'A2'): '高风险 (High Risk)',   ('G3a', 'A3'): '极高风险 (Very High Risk)',
+                    ('G3b', 'A1'): '高风险 (High Risk)',     ('G3b', 'A2'): '极高风险 (Very High Risk)', ('G3b', 'A3'): '极高风险 (Very High Risk)',
+                    ('G4', 'A1'): '极高风险 (Very High Risk)', ('G4', 'A2'): '极高风险 (Very High Risk)', ('G4', 'A3'): '极高风险 (Very High Risk)',
+                    ('G5', 'A1'): '极高风险 (Very High Risk)', ('G5', 'A2'): '极高风险 (Very High Risk)', ('G5', 'A3'): '极高风险 (Very High Risk)',
                 }
                 
                 return risk_map.get((g, a), np.nan)
@@ -440,12 +440,12 @@ class PreprocessingService:
     @staticmethod
     def calculate_slope(df, id_col, time_col, value_col):
         """
-        计算线性斜率 (OLS Slope).
-        model: Value ~ Intercept + Slope * Time
+        计算线性斜率 (OLS Slope)。
+        模型: Value ~ Intercept + Slope * Time
         
         Args:
-            df (pd.DataFrame): Long format data.
-            id_col, time_col, value_col: column names.
+            df (pd.DataFrame): 长格式数据。
+            id_col, time_col, value_col: 列名。
             
         Returns:
             pd.DataFrame: [id_col, 'Slope', 'Intercept', 'R2', 'N_Points']
@@ -457,7 +457,7 @@ class PreprocessingService:
         grouped = df.groupby(id_col)
         
         for pid, group in grouped:
-            # Need at least 2 points
+            # 至少需要 2 个点
             clean_group = group.dropna(subset=[time_col, value_col])
             if len(clean_group) < 2:
                 results.append({
@@ -481,9 +481,9 @@ class PreprocessingService:
 
     @staticmethod
     def _read_robust(filepath):
-        # Reinventing the wheel slightly vs DataService, but keeping isolated for safe import
-        # Or better: use DataService if possible, but avoiding circular imports is good.
-        # Let's simple duplicate robust read logic for now (KISS)
+        # 稍微重复了 DataService 的逻辑，但为了安全导入保持独立
+        # 或更好：如果可能，使用 DataService，但避免循环导入更重要。
+        # 目前暂时复制稳健读取逻辑 (KISS)
         encodings = ['utf-8', 'gb18030', 'latin1']
         for enc in encodings:
             try:

@@ -70,7 +70,7 @@
                     style="margin-bottom: 20px"
                 >
                     <div v-if="egfrMethod === 'egfr_ckdepi2021'">
-                        <b>CKD-EPI 2021 (New Standard)</b>: 去种族化公式，适用于所有成年人群。
+                        <b>CKD-EPI 2021 (新标准)</b>: 去种族化公式，适用于所有成年人群。
                         <div style="margin-top:5px; color:#E6A23C">
                              <el-icon><InfoFilled /></el-icon> <b>为什么首选?</b> 2021版公式移除了种族系数，消除了医疗中的潜在种族偏见，被 ASN/NKF 权威指南列为当前推荐公式。
                         </div>
@@ -117,7 +117,7 @@
                         
                         <!-- Race (Optional for CKD-EPI 2009 / MDRD) -->
                         <el-col :span="12" v-if="['egfr_ckdepi2009', 'egfr_mdrd'].includes(egfrMethod)">
-                             <el-form-item label="种族 (Race) - Optional">
+                             <el-form-item label="种族 (Race) - 可选">
                                 <el-select v-model="params.race" placeholder="选择种族列 (Black/Non-Black)" filterable clearable>
                                     <el-option v-for="v in catVars" :key="v.name" :label="v.name" :value="v.name" />
                                 </el-select>
@@ -318,6 +318,16 @@
 </template>
 
 <script setup>
+/**
+ * ClinicalTab.vue
+ * 临床肾脏病学术工具箱。
+ * 
+ * 职责：
+ * 1. eGFR 计算器：支持 CKD-EPI 2021/2009, MDRD, Schwartz 等多种公式自动衍生。
+ * 2. CKD 自动分期：根据 KDIGO 2012 指南自动生成 G/A 分期及风险分层变量。
+ * 3. 纵向数据转换：提供“宽表转长表”功能，为后续纵向分析做准备。
+ * 4. 肾功能斜率计算：采用 OLS 方法计算个体 eGFR 变化速率。
+ */
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../../../api/client'
@@ -329,16 +339,16 @@ const props = defineProps({
 
 const emit = defineEmits(['dataset-updated'])
 
-const activeTool = ref('egfr')
-const egfrMethod = ref('egfr_ckdepi2021')
-const calculating = ref(false)
+const activeTool = ref('egfr') // 当前活跃的工具模块 (egfr/staging/slope)
+const egfrMethod = ref('egfr_ckdepi2021') // 当前选中的 eGFR 计算公式
+const calculating = ref(false) // 计算状态
 
 const params = ref({
-    scr: '',
-    age: '',
-    sex: '',
-    race: '',
-    height: ''
+    scr: '',   // 血肌酐变量名
+    age: '',   // 年龄变量名
+    sex: '',   // 性别变量名
+    race: '',  // 种族变量名（可选）
+    height: '' // 身高变量名（Schwartz 专用）
 })
 
 const stagingParams = ref({
@@ -354,9 +364,9 @@ const meltParams = ref({
     points: [{ col: '', time: '' }]
 })
 const slopeParams = ref({
-    id_col: '',
-    time_col: '',
-    value_col: ''
+    id_col: '',   // 患者 ID 列
+    time_col: '', // 时间轴列 (Time)
+    value_col: '' // 待计算斜率的数值列
 })
 
 // Variables
@@ -386,6 +396,9 @@ const canCalculate = computed(() => {
 })
 
 
+/**
+ * 执行 eGFR 衍生计算。
+ */
 const handleDerive = async () => {
     calculating.value = true
     try {
@@ -420,6 +433,9 @@ const canStage = computed(() => {
     return !!stagingParams.value.egfr
 })
 
+/**
+ * 执行 CKD 分期与风险分层计算。
+ */
 const handleStage = async () => {
     calculating.value = true
     try {
@@ -456,6 +472,9 @@ const canMelt = computed(() => {
     return meltParams.value.id_col && meltParams.value.points.length >= 2 && meltParams.value.points.every(p => p.col && p.time !== '')
 })
 
+/**
+ * 执行数据宽表转长表转换。
+ */
 const handleMelt = async () => {
     calculating.value = true
     try {
@@ -486,6 +505,9 @@ const canSlope = computed(() => {
     return slopeParams.value.id_col && slopeParams.value.time_col && slopeParams.value.value_col
 })
 
+/**
+ * 执行 eGFR 变化斜率 (Slope) 计算。
+ */
 const handleSlope = async () => {
     calculating.value = true
     try {

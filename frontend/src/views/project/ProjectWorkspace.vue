@@ -8,7 +8,7 @@
                 <span>{{ dataset.name }}</span>
             </div>
             <div class="info-meta" v-if="dataset.metadata">
-                {{ dataset.metadata.row_count }} Rows • {{ dataset.metadata.variables?.length }} Vars
+                {{ dataset.metadata.row_count }} 行 • {{ dataset.metadata.variables?.length }} 个变量
             </div>
         </div>
 
@@ -30,7 +30,7 @@
             <el-menu-item index="preprocessing" :disabled="!dataset">
                 <el-icon><Brush /></el-icon>
                 <span>数据体检 (Health Check)</span>
-                <!-- TODO: Check missing values for status -->
+                <!-- TODO: 检查缺失值以确定状态 -->
                 <span class="status-dot green"></span> 
             </el-menu-item>
             <el-menu-item index="clinical" :disabled="!dataset">
@@ -87,8 +87,8 @@
     </el-aside>
 
     <el-main class="project-main">
-         <!-- Dynamic Component Cache could be used here if we want to keep state -->
-         <!-- Using v-if/v-show or simple div mapping -->
+         <!-- 如果需要保留状态，可以在此处使用 Dynamic Component Cache -->
+         <!-- 使用 v-if/v-show 或简单的 div 映射 -->
          <div v-if="activeTabName === 'data'">
              <DataTab :projectId="route.params.id" :dataset="dataset" @dataset-updated="handleDatasetUpdate" />
          </div>
@@ -171,45 +171,51 @@ import api from '../../api/client'
 import { Upload, Brush, DataLine, TrendCharts, List, Timer, Connection, FirstAidKit, FolderOpened, Histogram, Cpu, Document, Odometer, ScaleToOriginal, PieChart } from '@element-plus/icons-vue'
 
 const route = useRoute()
-const dataset = ref(null)
-const datasetList = ref([]) // All datasets for list
-const activeTabName = ref('data')
+const dataset = ref(null) // 当前工作区的活跃数据集对象
+const datasetList = ref([]) // 当前项目下的所有数据集列表
+const activeTabName = ref('data') // 当前选中的左侧导航 Tab 名称
 
 const handleTabChange = (name) => {
-    // Logic if needed
+    // 逻辑占位
 }
 
+/**
+ * 获取项目的基础元数据和最近活跃的数据集。
+ */
 const fetchProjectData = async () => {
     try {
         const { data } = await api.get(`/data/metadata/${route.params.id}`)
         dataset.value = data
-        // Also fetch all datasets for management? 
-        // Currently metadata endpoint returns "latest".
-        // We probably need a LIST endpoint.
-        // For now, let's assume metadata endpoint is extended OR we add a list endpoint.
-        // Wait, current design is: 1 project = N datasets.
-        // Let's add GET /data/list/<project_id> later?
-        // Or reuse metadata endpoint if it returns list.
-        // Checking data.py... /metadata/<id> returns single Dataset metadata.
-        // We need a way to list ALL datasets. 
+        // 同时获取所有数据集以供管理？
+        // 目前元数据端点仅返回“最新”的一条。
+        // 我们可能需要一个专门的列表端点。
+        // 暂时假设元数据端点已扩展，或者我们稍后添加列表端点。
+        // 等等，当前设计是：1 个项目对应 N 个数据集。
+        // 稍后添加 GET /data/list/<project_id>？
+        // 或者如果元数据端点返回列表则重用它。
+        // 检查 data.py... /metadata/<id> 返回单个数据集元数据。
+        // 我们需要一种列出所有数据集的方法。
         fetchDatasetList()
     } catch (error) {
-        // No dataset yet
+        // 暂无数据集
     }
 }
 
+/**
+ * 获取该项目关联的所有历史数据集列表。
+ */
 const fetchDatasetList = async () => {
     try {
         const { data } = await api.get(`/projects/${route.params.id}`)
-         // Project response usually includes datasets relationship?
-         // Let's check project.py or just use what we have.
-         // Actually, let's add a specialized endpoint or just rely on Project details.
-         // For expediency, let's try to get list from project detail.
+         // 项目响应通常包含数据集关联关系？
+         // 检查 project.py 或者直接使用现有数据。
+         // 实际上，让我们添加一个专用端点或者直接依赖项目详情。
+         // 为了快速实现，尝试从项目详情中获取列表。
          datasetList.value = data.datasets || []
          
-         // Find active one if exists and set it?
+         // 如果存在活跃数据集，在列表中找到并设置？
          if(dataset.value && datasetList.value.length > 0){
-             // ensure dataset.value matches one in list
+             // 确保 dataset.value 与列表中的某项匹配
          }
     } catch (e) {
         console.error(e)
@@ -217,24 +223,27 @@ const fetchDatasetList = async () => {
 }
 
 
+/**
+ * 将当前选中的数据集 ID 同步到服务器项目配置中，实现断点续作。
+ */
 const persistActiveDataset = async (dsId) => {
     if (!dsId) return
     try {
         await api.put(`/projects/${route.params.id}`, { active_dataset_id: dsId })
     } catch(e) {
-        console.error("Failed to persist active dataset", e)
+        console.error("无法持久化活跃数据集状态", e)
     }
 }
 
+/**
+ * 处理数据集全局更新事件。
+ * 通常由子组件（如数据导入、特征工程）触发。
+ */
 const handleDatasetUpdate = (newDataset) => {
     dataset.value = newDataset
     persistActiveDataset(newDataset.dataset_id || newDataset.id)
     fetchDatasetList()
-    // Auto advance locally, or stay? Usually stay if clinical tool.
-    // But original code advanced to preprocessing?
-    // Only if it's import? 
-    // Logic: If activeTab is 'data', move to 'preprocessing'. 
-    // If 'clinical', stay in 'clinical'.
+    // 逻辑：如果当前在“数据导入”页，则自动跳转到“数据体检”页。
     if (activeTabName.value === 'data') {
         activeTabName.value = 'preprocessing'
     }
@@ -245,8 +254,11 @@ const handleDatasetCreated = (newDatasetId) => {
     fetchDatasetList()
 }
 
+/**
+ * 切换项目当前活跃的数据集，所有子组件将自动重载对应数据。
+ */
 const handleSwitchDataset = async (targetDataset) => {
-    // Normalize dataset object to ensure dataset_id exists
+    // 规范化数据集对象，确保 dataset_id 存在
     const normalized = {
         ...targetDataset,
         dataset_id: targetDataset.dataset_id || targetDataset.id

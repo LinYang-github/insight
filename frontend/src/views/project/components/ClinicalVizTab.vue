@@ -132,7 +132,7 @@
                           <h3>预测结果</h3>
                           <div class="risk-circle" :style="{ backgroundColor: riskColor }">
                               <span class="risk-value">{{ (currentRisk * 100).toFixed(1) }}%</span>
-                              <span class="risk-label">Predicted Probability</span>
+                              <span class="risk-label">预测概率 (Predicted Probability)</span>
                           </div>
                       </el-col>
                   </el-row>
@@ -168,6 +168,15 @@
 </template>
 
 <script setup>
+/**
+ * ClinicalVizTab.vue
+ * 临床预测工具可视化标签页。
+ * 
+ * 职责：
+ * 1. 提供交互式在线风险计算器 (Web Calculator)。
+ * 2. 生成静态或交互式的列线图 (Nomogram)。
+ * 3. 支持 Logistic 回归和 Cox 生存分析两种模型。
+ */
 import { ref, reactive, computed, watch, nextTick } from "vue";
 import { ElMessage } from "element-plus";
 import api from "../../../api/client";
@@ -178,10 +187,10 @@ const props = defineProps({
   metadata: Object,
 });
 
-const loading = ref(false);
-const vizData = ref(null);
-const activeTab = ref("calculator");
-const inputs = reactive({});
+const loading = ref(false); // 加载状态
+const vizData = ref(null);   // 模型计算结果数据
+const activeTab = ref("calculator"); // 当前选中的标签页
+const inputs = reactive({}); // 患者指标输入值
 
 const config = reactive({
   model_type: "logistic",
@@ -198,6 +207,9 @@ const variableOptions = computed(() => {
   }));
 });
 
+/**
+ * 向后端请求生成列线图数据。
+ */
 const generateViz = async () => {
   if (!config.target || config.predictors.length === 0) {
     ElMessage.warning("请选择结局变量和至少一个预测因子");
@@ -214,7 +226,7 @@ const generateViz = async () => {
     });
     vizData.value = data;
     
-    // Initialize inputs
+    // 初始化输入框，数值型选最小值，分类型选第一项
     data.variables.forEach(v => {
         if (v.type === 'numeric') {
             inputs[v.name] = v.min;
@@ -237,41 +249,38 @@ const generateViz = async () => {
   }
 };
 
-// --- Calculator Logic ---
+// --- 计算器逻辑 (基于后端返回的公式) ---
+/**
+ * 根据当前输入的指标值计算实时预测风险。
+ */
 const currentRisk = computed(() => {
     if (!vizData.value || !vizData.value.formula) return 0;
     
     const f = vizData.value.formula;
-    let lp = f.intercept;
+    let lp = f.intercept; // 线性预测值 (Linear Predictor)
     
-    // Sum Betas * X
+    // 累加系数：Sum(Beta_i * X_i)
     for (const [varName, coef_or_map] of Object.entries(f.coeffs)) {
         const val = inputs[varName];
         
-        // Check if numeric or categorical (based on coef structure)
+        // 判断是连续变量还是分类变量
         if (typeof coef_or_map === 'number') {
-            // Numeric: val * coef
+            // 数值型：变量值 * 系数
             lp += (Number(val) || 0) * coef_or_map;
         } else if (typeof coef_or_map === 'object') {
-            // Categorical: look up level coef
-            // val is the level string
-            // coef_or_map is {LevelA: 1.2, LevelB: 0.5, ...}
+            // 分类型：根据 Level 查找对应的系数偏移
             const levelCoef = coef_or_map[val] || 0;
             lp += levelCoef;
         }
     }
     
     if (f.model_type === 'logistic') {
+        // Logistic 模型：1 / (1 + exp(-LP))
         return 1 / (1 + Math.exp(-lp));
     } else if (f.model_type === 'cox') {
         if (f.baseline_survival) {
-            // Note: backend sends ORIGINAL intercept.
-            // Cox LP needs to be compatible.
-            // If backend logic for Cox LP in Nomogram generation was consistent,
-            // we apply the same formula: Risk = 1 - S0^exp(LP).
-            // Usually Cox LP excludes intercept, but we included it if fit returned it?
-            // Actually CoxPHFitter usually has no intercept in params_.
-            // So f.intercept is likely 0 unless we forced it.
+            // Cox 模型：1 - S0 ^ exp(LP)
+            // 注意：此处 LP 通常不包含截距，后端已处理。
             return 1 - Math.pow(f.baseline_survival, Math.exp(lp));
         }
         return 0;
@@ -279,33 +288,39 @@ const currentRisk = computed(() => {
     return 0;
 });
 
+/**
+ * 风险颜色反馈：低风险绿色，中风险橙色，高风险红色。
+ */
 const riskColor = computed(() => {
     const p = currentRisk.value;
-    if (p < 0.1) return '#67C23A'; // Green
-    if (p < 0.5) return '#E6A23C'; // Orange
-    return '#F56C6C'; // Red
+    if (p < 0.1) return '#67C23A'; // 绿色 (低)
+    if (p < 0.5) return '#E6A23C'; // 橙色 (中)
+    return '#F56C6C'; // 红色 (高)
 });
 
-// --- Nomogram Plotting ---
+// --- 列线图绘制逻辑 (基于 Plotly) ---
+/**
+ * 渲染列线图。
+ * 通过将每个变量映射到 0-100 的 Score 轴，实现可视化的风险评估。
+ */
 const renderNomogram = (data) => {
     const traces = [];
-    let yOffset = 0;
     const yTickVals = [];
     const yTickText = [];
     
-    // 1. Plot Variables
+    // 1. 绘制各预测因子的坐标轴
     data.variables.forEach((v, idx) => {
         const yPos = idx * 2; 
         yTickVals.push(yPos);
         yTickText.push(v.name);
         
-        // Line spanning range
+        // 坐标轴线条
         const pts = v.points_mapping.map(m => m.pts);
         const vals = v.points_mapping.map(m => m.val);
         const minPt = Math.min(...pts);
         const maxPt = Math.max(...pts);
         
-        // Main Line
+        // 主干线
         traces.push({
             x: [minPt, maxPt],
             y: [yPos, yPos],
@@ -315,27 +330,25 @@ const renderNomogram = (data) => {
             hoverinfo: 'none'
         });
         
-        // Ticks
+        // 刻度线与数值
         traces.push({
             x: pts,
             y: Array(pts.length).fill(yPos),
             mode: 'markers+text',
-            text: vals.map(val => v.type === 'numeric' ? Number(val).toFixed(1) : val), // Value labels
+            text: vals.map(val => v.type === 'numeric' ? Number(val).toFixed(1) : val), 
             textposition: 'top center',
             marker: { symbol: 'line-ns-open', color: 'black', size: 10, line: {width: 2} },
             showlegend: false,
             hoverinfo: 'text',
-            hovertext: vals.map((val, i) => `${v.name}=${val} -> ${pts[i].toFixed(1)} pts`)
+            hovertext: vals.map((val, i) => `${v.name}=${val} -> ${pts[i].toFixed(1)} 分`)
         });
     });
     
-    // 2. Plot Total Points Scale
+    // 2. 绘制总分 (Total Points) 轴
     const totalPointsY = data.variables.length * 2 + 1;
     yTickVals.push(totalPointsY);
-    yTickText.push("Total Points");
+    yTickText.push("总分 (Total Points)");
     
-    // Find absolute max points possible (sum of all max points)
-    // data.risk_table covers the range.
     const riskPts = data.risk_table.map(r => r.points);
     const minRPt = Math.min(...riskPts);
     const maxRPt = Math.max(...riskPts);
@@ -348,7 +361,7 @@ const renderNomogram = (data) => {
         showlegend: false
     });
     
-    // Ticks for Total Points (every 10 or so)
+    // 总分轴刻度
     const tpTicks = [];
     for(let i=Math.ceil(minRPt/10)*10; i<=maxRPt; i+=10) tpTicks.push(i);
     
@@ -362,27 +375,22 @@ const renderNomogram = (data) => {
         showlegend: false
     });
     
-    // 3. Risk Scale
+    // 3. 绘制概率 (Risk/Prob) 轴
     const riskY = totalPointsY + 1;
     yTickVals.push(riskY);
-    yTickText.push("Risk / Prob");
+    yTickText.push("风险概率 (Risk / Prob)");
     
-    // Map Risk back to Points for plotting
-    // risk_table has {points, risk}.
-    // We want to show ticks for Risk = 0.1, 0.2 ... 0.9.
+    // 概率刻度：通常展示关键的概率点 (0.1, 0.2 ... 0.9)
     const riskTicks = [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99];
     const riskTickPts = [];
     const riskTickLabels = [];
     
-    // Interpolate Points for these Risks
-    // risk_table is monotonic
+    // 根据概率反推对应的总分，用于在轴上定位
     const table_sorted = [...data.risk_table].sort((a,b) => a.points - b.points);
     
     riskTicks.forEach(r => {
-        // Find closest point or linear interp
-        // For simplicity: Find nearest
         const nearest = table_sorted.reduce((prev, curr) => Math.abs(curr.risk - r) < Math.abs(prev.risk - r) ? curr : prev);
-        if (Math.abs(nearest.risk - r) < 0.05) { // Threshold
+        if (Math.abs(nearest.risk - r) < 0.05) { 
             riskTickPts.push(nearest.points);
             riskTickLabels.push(r.toString());
         }
@@ -409,7 +417,7 @@ const renderNomogram = (data) => {
 
     const layout = {
         title: 'Nomogram',
-        xaxis: { title: 'Points', zeroline: false },
+        xaxis: { title: '分值 (Points)', zeroline: false },
         yaxis: { 
             tickvals: yTickVals,
             ticktext: yTickText,

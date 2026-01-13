@@ -225,6 +225,16 @@
 </template>
 
 <script setup>
+/**
+ * ModelComparisonTab.vue
+ * 多模型对比分析标签页。
+ * 
+ * 职责：
+ * 1. 提供可视化界面，允许用户构建多个不同的模型（Logistic 或 Cox）。
+ * 2. 统计学对比：计算并展示 C-index/AUC、LRT P值、AIC/BIC、NRI、IDI 等关键对比指标。
+ * 3. 可视化对比：通过 ROC 曲线、校准曲线 (Calibration) 和决策曲线 (DCA) 评估模型优劣。
+ * 4. 支持 Cox 随访时间点的动态切换。
+ */
 import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdvancedModelingService from '@/services/advanced_modeling_service'
@@ -235,14 +245,14 @@ const props = defineProps({
     metadata: Object
 })
 
-// State
-const modelType = ref('cox') // logistic, cox
-const target = ref('')
-const eventCol = ref('')
-const loading = ref(false)
-const results = ref(null)
-const selectedTimePoint = ref(null)
-const activeVizTab = ref('roc')
+// 响应式状态
+const modelType = ref('cox') // 当前选中的模型类型：logistic 或 cox
+const target = ref('') // 结局变量（或 Cox 的时间变量）
+const eventCol = ref('') // 事件状态列（Cox 专用）
+const loading = ref(false) // 加载状态
+const results = ref(null) // 后端返回的所有对比数据
+const selectedTimePoint = ref(null) // Cox 模型下当前选中的预测时间点
+const activeVizTab = ref('roc') // 当前活跃的可视化标签页 (roc/calibration/dca)
 
 // Computed
 const allVars = computed(() => {
@@ -271,6 +281,10 @@ const timeUnit = computed(() => {
 })
 
 // Auto-select first time point when available
+/**
+ * 更新选中的时间点。
+ * 当结果更新或时间点列表变化时，确保有一个合法的选中项。
+ */
 const updateSelectedTimePoint = () => {
     if (availableTimePoints.value.length > 0) {
         // Default to the middle or last point? Usually median or user pref.
@@ -314,6 +328,10 @@ const removeModel = (index) => {
     modelConfigs.value.splice(index, 1)
 }
 
+/**
+ * 发送模型对比请求。
+ * 包含所有模型的变量配置、目标变量及类型。
+ */
 const runComparison = async () => {
     loading.value = true
     try {
@@ -329,10 +347,10 @@ const runComparison = async () => {
         if (res.error) throw new Error(res.error)
         
         results.value = res.comparison_data
-        ElMessage.success('Comparison Complete!')
+        ElMessage.success('模型对比完成！')
         
     } catch (e) {
-        ElMessage.error(e.message || 'Comparison failed')
+        ElMessage.error(e.message || '模型对比失败')
         console.error(e)
     } finally {
         loading.value = false
@@ -355,7 +373,7 @@ const timeUnitDisplayName = computed(() => {
 
 const copyText = () => {
     navigator.clipboard.writeText(methodology.value)
-    ElMessage.success('Methodology copied')
+    ElMessage.success('方法学段落已复制')
 }
 
 // Table Data (Computed for Display)
@@ -418,10 +436,13 @@ import { DocumentCopy } from '@element-plus/icons-vue'
 
 // ... existing code ...
 
+/**
+ * 以 TSV 格式（Tab 分隔）将统计表格数据复制到剪贴板。
+ */
 const copyTableData = () => {
     if (!results.value || !tableData.value) return
     
-    // Headers
+    // 表头
     const headers = [
         '模型名称', 
         'AUC/C-index', 'AUC 95% CI', 'AUC P-Value',
@@ -432,7 +453,7 @@ const copyTableData = () => {
         '样本量', '纳入变量'
     ]
     
-    // Rows
+    // 行数据
     const rows = tableData.value.map(row => [
         row.name,
         row.auc, row.auc_ci, row.auc_p,
@@ -444,13 +465,13 @@ const copyTableData = () => {
         row.features.join(' + ')
     ])
     
-    // TSV Content (Tab separated for Paste)
+    // 拼接为字符串
     const tsvContent = [
         headers.join('\t'),
         ...rows.map(r => r.join('\t'))
     ].join('\n')
     
-    // Copy to clipboard
+    // 写入剪贴板
     navigator.clipboard.writeText(tsvContent).then(() => {
         ElMessage.success('表格数据已复制，可直接粘贴到 Excel')
     }).catch(err => {
@@ -469,7 +490,10 @@ const handleTabChange = () => {
     })
 }
 
-// 1. ROC Curve
+/**
+ * 1. 绘制 ROC 曲线对比图。
+ * 支持 Logistic (普通 ROC) 和 Cox (时间依赖性 ROC)。
+ */
 const renderPlot = () => {
     const el = document.getElementById('comparison-plot')
     if (!el || !results.value) return
@@ -480,7 +504,7 @@ const renderPlot = () => {
         let rocData = null
         let titleSuffix = ''
         
-        // 1. 获取数据源
+        // 获取数据源
         if (modelType.value === 'logistic') {
             rocData = r.plots ? r.plots.roc : r.roc_data
             if (r.metrics && r.metrics.auc) {
@@ -488,7 +512,6 @@ const renderPlot = () => {
             }
         } else if (modelType.value === 'cox' && selectedTimePoint.value) {
            if (r.metrics && r.metrics.time_dependent) {
-               // Handle String/Number key mismatch
                const t = selectedTimePoint.value
                const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
                if (tm) {
@@ -508,7 +531,7 @@ const renderPlot = () => {
         }
     })
     
-    // Diagonal
+    // 绘制 45 度基准线 (对角线)
     traces.push({
         x: [0, 1], y: [0, 1],
         mode: 'lines',
@@ -517,13 +540,13 @@ const renderPlot = () => {
     })
     
     const title = modelType.value === 'cox' 
-        ? `Time-Dependent ROC (t=${selectedTimePoint.value})`
-        : 'ROC Curve Comparison'
+        ? `时间依赖性 ROC (Time-Dependent ROC, t=${selectedTimePoint.value})`
+        : '模型 ROC 曲线对比 (ROC Comparison)'
 
     const layout = {
         title: title,
-        xaxis: { title: '1 - Specificity (FPR)', range: [0, 1] },
-        yaxis: { title: 'Sensitivity (TPR)', range: [0, 1] },
+        xaxis: { title: '1 - 特异度 (FPR)', range: [0, 1] },
+        yaxis: { title: '灵敏度 (TPR)', range: [0, 1] },
         legend: { x: 0.6, y: 0.1 },
         margin: { l: 50, r: 20, t: 40, b: 40 }
     }
@@ -531,7 +554,9 @@ const renderPlot = () => {
     Plotly.newPlot(el, traces, layout)
 }
 
-// 2. Calibration Plot
+/**
+ * 2. 绘制校准曲线对比图。
+ */
 const renderCalibration = () => {
     const el = document.getElementById('calibration-plot')
     if (!el || !results.value) return
@@ -560,7 +585,7 @@ const renderCalibration = () => {
         }
     })
     
-    // Ideal Line (Perfect Calibration)
+    // 绘制理想校准线 (y=x)
     traces.push({
         x: [0, 1], y: [0, 1],
         mode: 'lines',
@@ -570,16 +595,18 @@ const renderCalibration = () => {
     })
 
     const layout = {
-        title: 'Calibration Plot',
-        xaxis: { title: 'Predicted Probability', range: [0, 1] },
-        yaxis: { title: 'Observed Fraction', range: [0, 1] },
+        title: '校准曲线 (Calibration Plot)',
+        xaxis: { title: '预测概率 (Predicted Probability)', range: [0, 1] },
+        yaxis: { title: '实际观察比例 (Observed Fraction)', range: [0, 1] },
         margin: { l: 50, r: 20, t: 40, b: 40 },
         height: 450
     }
     Plotly.newPlot(el, traces, layout)
 }
 
-// 3. DCA Plot
+/**
+ * 3. 绘制决策曲线 (Decision Curve Analysis) 对比图。
+ */
 const renderDCA = () => {
     const el = document.getElementById('dca-plot')
     if (!el || !results.value) return
@@ -601,7 +628,7 @@ const renderDCA = () => {
         
         if (dcaData) {
             hasData = true
-            // Plot Model Net Benefit
+            // 各模型的净获益曲线
             traces.push({
                 x: dcaData.thresholds,
                 y: dcaData.net_benefit_model,
@@ -609,7 +636,7 @@ const renderDCA = () => {
                 name: r.name
             })
             
-            // Add 'All' / 'None' lines only once (from first valid model)
+            // 绘制全处理 (Treat All) 和不处理 (Treat None) 的基准线（仅需从第一条数据中提取一次）
             if (traces.length === 1) { 
                  traces.unshift({
                     x: dcaData.thresholds,
@@ -630,9 +657,9 @@ const renderDCA = () => {
     })
     
     const layout = {
-        title: 'Decision Curve Analysis (DCA)',
-        xaxis: { title: 'Threshold Probability', range: [0, 1] },
-        yaxis: { title: 'Net Benefit', range: [-0.05, 0.4] },
+        title: '临床决策曲线 (Decision Curve Analysis)',
+        xaxis: { title: '阈值概率 (Threshold Probability)', range: [0, 1] },
+        yaxis: { title: '净获益 (Net Benefit)', range: [-0.05, 0.4] },
         margin: { l: 50, r: 20, t: 40, b: 40 },
         height: 450
     }

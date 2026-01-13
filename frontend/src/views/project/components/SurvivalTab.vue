@@ -28,19 +28,19 @@
                         </template>
                     </el-alert>
                     <el-form-item label="时间变量 (Time)">
-                        <el-select v-model="config.time" placeholder="Select Time" filterable style="width: 100%">
+                        <el-select v-model="config.time" placeholder="选择时间变量" filterable style="width: 100%">
                              <el-option v-for="opt in numericOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
                     </el-form-item>
 
                     <el-form-item label="事件变量 (Event)">
-                        <el-select v-model="config.event" placeholder="Select Event (0/1)" filterable style="width: 100%">
+                        <el-select v-model="config.event" placeholder="选择事件变量 (0/1)" filterable style="width: 100%">
                              <el-option v-for="opt in numericOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
                     </el-form-item>
 
                     <el-form-item label="分组变量 (Group By)">
-                         <el-select v-model="config.group" placeholder="Optional" clearable filterable style="width: 100%">
+                         <el-select v-model="config.group" placeholder="可选 (Optional)" clearable filterable style="width: 100%">
                              <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                         </el-select>
                     </el-form-item>
@@ -56,7 +56,7 @@
                  <template #header>
                      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <span>Survival Analysis (Kaplan-Meier)</span>
+                            <span>生存分析 (Kaplan-Meier)</span>
                             <el-tag v-if="pValue" type="info">
                                 Log-Rank P: {{ pValue }}
                             </el-tag>
@@ -69,8 +69,8 @@
                                 </el-button>
                                 <template #dropdown>
                                     <el-dropdown-menu>
-                                        <el-dropdown-item command="png">High-Res PNG (300dpi)</el-dropdown-item>
-                                        <el-dropdown-item command="svg">Vector SVG</el-dropdown-item>
+                                        <el-dropdown-item command="png">高清 PNG (300dpi)</el-dropdown-item>
+                                        <el-dropdown-item command="svg">矢量 SVG (Vector)</el-dropdown-item>
                                     </el-dropdown-menu>
                                 </template>
                             </el-dropdown>
@@ -99,14 +99,25 @@ import Plotly from 'plotly.js-dist-min'
 import { ArrowDown } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 
+/**
+ * SurvivalTab.vue
+ * 生存分析 (Kaplan-Meier) 标签页。
+ * 
+ * 职责：
+ * 1. 提供 KM 生存曲线的参数配置（时间、事件、分组）。
+ * 2. 绘制具有学术发表质量的阶梯状生存曲线图。
+ * 3. 显示 Log-rank 检验结果，并提供智能化的统计解读。
+ * 4. 支持复制符合论文要求的方法学描述。
+ */
+
 const props = defineProps({
     datasetId: Number,
     metadata: Object
 })
 
-const loading = ref(false)
-const pValue = ref(null)
-const kmInterpretation = ref(null)
+const loading = ref(false) // 加载状态
+const pValue = ref(null)    // Log-rank 检验的 P 值
+const kmInterpretation = ref(null) // 智能解读对象
 
 const config = reactive({
     time: null,
@@ -129,6 +140,9 @@ const numericOptions = computed(() => {
 
 const kmMethodology = ref('')
 
+/**
+ * 向后端请求 KM 分析数据。
+ */
 const generatePlot = async () => {
     if (!config.time || !config.event) {
         ElMessage.warning("请选择时间变量和事件变量")
@@ -199,9 +213,9 @@ const renderPlot = (plotData) => {
     })
     
     const layout = {
-        title: 'Kaplan-Meier Survival Estimates',
-        xaxis: { title: 'Time' },
-        yaxis: { title: 'Survival Probability', range: [0, 1.05] },
+        title: 'Kaplan-Meier 生存估计 (Survival Estimates)',
+        xaxis: { title: '时间 (Time)' },
+        yaxis: { title: '生存概率 (Survival Probability)', range: [0, 1.05] },
         showlegend: true
     }
     
