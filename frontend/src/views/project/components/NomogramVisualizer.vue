@@ -76,19 +76,37 @@
                           <!-- Drop Line -->
                           <line :x1="scaleTotal(currentUserTotal)" y1="0" :x2="scaleTotal(currentUserTotal)" :y2="150" stroke="red" stroke-dasharray="4,4" />
                      </g>
-                     
-                     <!-- 4. Survival Probabilities -->
-                     <g v-for="(scale, idx) in spec.survival_scales" :key="scale.time" :transform="`translate(0, ${80 + spec.axes.length * 50 + 80 + idx * 40})`">
-                         <text x="10" y="0" font-weight="bold" font-size="12">{{ scale.time }}个月生存率</text>
-                         <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
-                         
-                         <g v-for="(tick, i) in scale.ticks" :key="i">
-                             <template v-if="i % 2 === 0"> <!-- Reduce density -->
-                                <line :x1="scaleTotal(tick.points)" y1="0" :x2="scaleTotal(tick.points)" y2="5" stroke="black" />
-                                <text :x="scaleTotal(tick.points)" y="15" text-anchor="middle" font-size="9">{{ tick.survival.toFixed(2) }}</text>
-                             </template>
-                         </g>
-                     </g>
+                                          <!-- 4. Outcome Scales (Survival or Binary) -->
+                      
+                      <!-- Case A: Survival (Cox) -->
+                      <template v-if="spec.outcome_type === 'survival'">
+                        <g v-for="(scale, idx) in spec.survival_scales" :key="scale.time" :transform="`translate(0, ${80 + spec.axes.length * 50 + 80 + idx * 40})`">
+                            <text x="10" y="0" font-weight="bold" font-size="12">{{ scale.time }}个月生存率</text>
+                            <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
+                            
+                            <g v-for="(tick, i) in scale.ticks" :key="i">
+                                <template v-if="i % 2 === 0"> <!-- Reduce density -->
+                                   <line :x1="scaleTotal(tick.points)" y1="0" :x2="scaleTotal(tick.points)" y2="5" stroke="black" />
+                                   <text :x="scaleTotal(tick.points)" y="15" text-anchor="middle" font-size="9">{{ tick.survival.toFixed(2) }}</text>
+                                </template>
+                            </g>
+                        </g>
+                      </template>
+                      
+                      <!-- Case B: Binary (Logistic) -->
+                      <template v-else-if="spec.outcome_type === 'binary' && spec.probability_scale">
+                        <g :transform="`translate(0, ${80 + spec.axes.length * 50 + 80})`">
+                            <text x="10" y="0" font-weight="bold" font-size="12">{{ spec.probability_scale.label }}</text>
+                            <line :x1="leftMargin" y1="0" :x2="rightMargin" y2="0" stroke="black" stroke-width="1.5" />
+                            
+                            <g v-for="(tick, i) in spec.probability_scale.ticks" :key="i">
+                                <template v-if="i % 2 === 0">
+                                   <line :x1="scaleTotal(tick.points)" y1="0" :x2="scaleTotal(tick.points)" y2="5" stroke="black" />
+                                   <text :x="scaleTotal(tick.points)" y="15" text-anchor="middle" font-size="9">{{ tick.probability.toFixed(2) }}</text>
+                                </template>
+                            </g>
+                        </g>
+                      </template>
                      
                      <!-- Interactive Red Lines (Vertical from Vars to Top Points) -->
                       <g v-for="(pt, name) in userPoints" :key="name">
@@ -109,36 +127,60 @@
                  </svg>
              </div>
          </el-col>
-         
-         <!-- Forms Area -->
-         <el-col :span="8">
-             <el-card shadow="hover" header="预测计算器 (Calculator)">
-                 <el-form label-position="top" size="small">
-                     <div v-for="axis in spec.axes" :key="axis.name" style="margin-bottom: 5px;">
-                         <el-form-item :label="axis.name">
-                             <template v-if="axis.type === 'continuous'">
-                                 <el-slider v-model="userInputs[axis.name]" :min="axis.min" :max="axis.max" :step="(axis.max-axis.min)/100 || 1" show-input />
-                             </template>
-                             <template v-else>
-                                 <el-select v-model="userInputs[axis.name]" style="width: 100%">
-                                     <el-option v-for="l in axis.levels" :key="l.label" :label="l.label" :value="l.label" />
-                                 </el-select>
-                             </template>
-                         </el-form-item>
-                     </div>
-                 </el-form>
-                 
-                 <div class="calc-results" style="margin-top: 20px; background: #f0f9eb; padding: 15px; border-radius: 4px;">
-                     <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">预测结果:</div>
-                     <div style="margin-bottom: 5px;">总分 (Total Points): <b>{{ currentUserTotal.toFixed(1) }}</b></div>
-                     <el-divider style="margin: 10px 0" />
-                     <div v-for="(prob, t) in currentPredictions" :key="t" style="margin-bottom: 5px; display: flex; justify-content: space-between;">
-                         <span>{{ t }}个月生存率:</span>
-                         <span style="color: #67C23A; font-weight: bold;">{{ (prob * 100).toFixed(1) }}%</span>
-                     </div>
-                 </div>
-             </el-card>
-         </el-col>
+                  <!-- Forms Area -->
+          <el-col :span="8">
+              <el-card shadow="hover">
+                  <template #header>
+                      <div style="display: flex; align-items: center; justify-content: space-between;">
+                          <span style="font-weight: bold;">预测计算器 (Calculator)</span>
+                          <el-tooltip content="在下方调整变量值，左侧图中红色标记将同步移动，实时显示预测风险。" placement="top">
+                              <el-icon><QuestionFilled /></el-icon>
+                          </el-tooltip>
+                      </div>
+                  </template>
+                  
+                  <el-form label-position="top" size="small">
+                      <div v-for="axis in spec.axes" :key="axis.name" style="margin-bottom: 5px;">
+                          <el-form-item :label="axis.name">
+                              <template v-if="axis.type === 'continuous'">
+                                  <el-slider v-model="userInputs[axis.name]" :min="axis.min" :max="axis.max" :step="(axis.max-axis.min)/200 || 0.1" show-input />
+                              </template>
+                              <template v-else>
+                                  <el-select v-model="userInputs[axis.name]" style="width: 100%">
+                                      <el-option v-for="l in axis.levels" :key="l.label" :label="l.label" :value="l.label" />
+                                  </el-select>
+                              </template>
+                          </el-form-item>
+                      </div>
+                  </el-form>
+                  
+                  <div class="calc-results" style="margin-top: 20px; background: #f0f9eb; padding: 15px; border-radius: 8px; border-left: 5px solid #67C23A;">
+                      <div style="font-size: 15px; font-weight: bold; margin-bottom: 12px; color: #303133;">实时预测结果:</div>
+                      <div style="margin-bottom: 8px; font-size: 14px;">总分 (Total Points): <b style="color: #409EFF; font-size: 18px;">{{ currentUserTotal.toFixed(1) }}</b></div>
+                      <el-divider style="margin: 12px 0" />
+                      
+                      <!-- Case A: Survival -->
+                      <template v-if="spec.outcome_type === 'survival'">
+                          <div v-for="(prob, t) in currentPredictions" :key="t" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                              <span style="font-size: 13px; color: #606266;">{{ t }}个月生存率:</span>
+                              <span style="color: #67C23A; font-weight: bold; font-size: 16px;">{{ (prob * 100).toFixed(1) }}%</span>
+                          </div>
+                      </template>
+                      
+                      <!-- Case B: Binary -->
+                      <template v-if="spec.outcome_type === 'binary'">
+                           <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                              <span style="font-size: 13px; color: #606266;">发生风险概率:</span>
+                              <span style="color: #F56C6C; font-weight: bold; font-size: 20px;">{{ (currentPredictions.probability * 100).toFixed(1) }}%</span>
+                          </div>
+                      </template>
+                  </div>
+                  
+                  <div style="margin-top: 15px; font-size: 12px; color: #909399; line-height: 1.4;">
+                      * 注：基于回归模型计算。该结果仅供研究参考，不作为唯一临床诊断依据。
+                  </div>
+              </el-card>
+          </el-col>
      </el-row>
   </div>
 </template>
@@ -151,9 +193,10 @@
  * 职责：
  * 1. 接收后端生成的列线图规格 (Spec)，采用 SVG 渲染学术标准的列线图。
  * 2. 支持交互式预测：用户拖动或输入变量值，图中红色指示线同步更新，实时反馈预测概率。
- * 3. 实现了 Cox 回归公式在前端的重构，确保图形映射与数学计算的一致性。
+ * * 实现了 Cox 与 Logistic 回归公式在前端的重构，确保图形映射与数学计算的一致性。
  */
 import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { QuestionFilled } from '@element-plus/icons-vue'
 
 const props = defineProps({
     spec: {
@@ -271,11 +314,15 @@ const currentPredictions = computed(() => {
     const ppu = props.spec.formula_params.points_per_unit
     const offset = props.spec.formula_params.constant_offset
     
-    // 1. 将总分还原为线性预测值 (Linear Predictor): LP = (Total / Scale) + Offset
+    // LP = (Total / Scale) + Offset
     const lp = (total / ppu) + offset
     
+    if (props.spec.outcome_type === 'binary') {
+        const prob = 1 / (1 + Math.exp(-lp))
+        return { probability: prob }
+    }
+    
     const preds = {}
-    // 2. 应用 Cox 生存函数公式: S(t) = S0(t) ^ exp(LP)
     if (props.spec.base_survivals) {
         for (const [t, s0] of Object.entries(props.spec.base_survivals)) {
             const prob = Math.pow(s0, Math.exp(lp))

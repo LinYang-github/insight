@@ -108,18 +108,26 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         metrics, plots = ModelEvaluator.evaluate_classification(y, y_prob)
         
         # 3. 列线图 (Nomogram) 数据 (用于打分系统)
-        nomogram_data = {
-            'intercept': res.params.get('const', 0),
-            'vars': []
-        }
-        for name, coef in res.params.items():
-            if name == 'const': continue
-            nomogram_data['vars'].append({
-                'name': name,
-                'coef': coef,
-                'or': np.exp(coef)
-            })
-        plots['nomogram'] = nomogram_data
+        try:
+            from app.utils.nomogram_generator import NomogramGenerator
+            nomogram_spec = NomogramGenerator.generate_spec(res, df, features)
+            if nomogram_spec:
+                 plots['nomogram'] = nomogram_spec
+        except Exception as e:
+            print(f"Logistic 诺谟图生成失败: {e}")
+            # 回退到简易版
+            nomogram_data = {
+                'intercept': res.params.get('const', 0),
+                'vars': []
+            }
+            for name, coef in res.params.items():
+                if name == 'const': continue
+                nomogram_data['vars'].append({
+                    'name': name,
+                    'coef': coef,
+                    'or': np.exp(coef)
+                })
+            plots['nomogram'] = nomogram_data
         
         # 5 折交叉验证
         from sklearn.model_selection import KFold

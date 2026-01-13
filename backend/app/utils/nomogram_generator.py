@@ -16,21 +16,29 @@ class NomogramGenerator:
         pass 
 
     @staticmethod
-    def generate_spec(cph_model, df, features, time_points):
+    def generate_spec(model, df, features, time_points=None):
         """
+        生成列线图规格配置。支持 lifelines (Cox) 和 statsmodels (Logit)。
+
         Args:
-            cph_model: 拟合好的 lifelines CoxPHFitter 模型
-            df: 原始 DataFrame (One-Hot 编码前，用于获取变量范围)
-            features: 所使用的特征变量列表 (One-Hot 编码前)
-            time_points: 预测的时间点列表 [12, 36, 60]
+            model: 拟合好的模型 (CoxPHFitter 或 LogitResults)
+            df: 原始 DataFrame
+            features: 特征变量列表
+            time_points: 生存分析的时间点 [12, 36, 60], 对 Logistic 可为 None
             
         Returns:
-            dict: 列线图规格配置 (Nomogram Specification)
+            dict: 列线图规格配置
         """
-        # 1. 解析系数并按原始变量分组
-        # Lifelines 的参数索引为：连续型 (Age), 哑变量 (Sex_Male, Race_Black...)
-        params = cph_model.params_
-        summary = cph_model.summary 
+        # 1. 自动识别模型类型
+        outcome_type = 'survival'
+        if hasattr(model, 'params') and not hasattr(model, 'baseline_survival_'):
+             outcome_type = 'binary'
+             
+        # 获取系数
+        if outcome_type == 'survival':
+            params = model.params_
+        else:
+            params = model.params
         
         # 我们需要将模型系数映射回特征规格
         # 结构示例：
@@ -205,16 +213,8 @@ class NomogramGenerator:
                     'levels': levels_visual
                 })
 
-        # 4. 总分到生存概率的映射
-        # 公式: S(t|x) = S0(t) ^ exp(LP)
-        # LP = Sum(Coef * X)  [线性预测值]
-        # TotalPoints = Sum(LocalPoints)
-        # 我们需要建立 LP 和 TotalPoints 之间的关系。
-        # LocalPoints_i = (Coef_i * X_i - MinContrib_i) * Scale
-        # Sum(LocalPoints) = Scale * (Sum(Coef*X) - Sum(MinContrib))
-        # Sum(LocalPoints) = Scale * (LP - Constant_Offset)
+        # 4. 结局概率映射
         # LP = (TotalPoints / Scale) + Constant_Offset
-        # Constant_Offset = Sum(所有变量的最小贡献值 MinContrib_i) 
         
         sum_min_contrib = 0
         for name, spec in var_specs.items():
@@ -224,53 +224,68 @@ class NomogramGenerator:
             elif spec['type'] == 'categorical':
                  coefs = [l['coef'] for l in spec['levels']]
                  sum_min_contrib += min(coefs)
-                 
-        # 预计算基准生存概率 S0(t)
-        baseline_survival = cph_model.baseline_survival_
-        # baseline_survival 的索引为时间，值为 S0(t)
         
-        survival_scales = []
-        for t in time_points:
-            # 寻找 S0(t)
-            # 寻找最接近的索引
-            idx = baseline_survival.index.get_indexer([t], method='nearest')[0]
-            s0_t = baseline_survival.iloc[idx, 0]
-            
-            # 为可视化轴生成映射表
-            # 总分：0 到 max_total_points (例如 200)
-            # 步长设为 10
-            ticks = []
-            steps = 20
-            step_size = max_total_points / steps
-            
-            for i in range(steps + 1):
-                pt = i * step_size
-                # 转换 Pt -> LP
-                # LP = (Pt / Scale) + Offset
-                lp = (pt / points_per_unit) + sum_min_contrib
-                # S(t) = S0(t) ^ exp(LP)
-                surv = s0_t ** np.exp(lp)
-                
-                ticks.append({
-                    'points': pt,
-                    'survival': surv
-                })
-                
-            survival_scales.append({
-                'time': t,
-                'ticks': ticks
-            })
-            
-        return {
+        # Logistic 模型的截距项 (const) 处理
+        if outcome_type == 'binary':
+             intercept = params.get('const', 0)
+             sum_min_contrib += intercept
+
+        result = {
+            'outcome_type': outcome_type,
             'axes': axes,
             'total_points': {
                 'min': 0,
                 'max': max_total_points
             },
-            'survival_scales': survival_scales,
-            'base_survivals': { t: baseline_survival.iloc[baseline_survival.index.get_indexer([t], method='nearest')[0], 0] for t in time_points },
             'formula_params': {
                 'points_per_unit': points_per_unit,
                 'constant_offset': sum_min_contrib
             }
         }
+
+        if outcome_type == 'survival' and time_points:
+            # 生存概率映射 (Cox)
+            baseline_survival = model.baseline_survival_
+            survival_scales = []
+            base_survivals = {}
+
+            for t in time_points:
+                idx = baseline_survival.index.get_indexer([t], method='nearest')[0]
+                s0_t = baseline_survival.iloc[idx, 0]
+                base_survivals[t] = float(s0_t)
+                
+                ticks = []
+                steps = 20
+                step_size = max_total_points / steps
+                for i in range(steps + 1):
+                    pt = i * step_size
+                    lp = (pt / points_per_unit) + sum_min_contrib
+                    surv = s0_t ** np.exp(lp)
+                    ticks.append({'points': pt, 'survival': float(surv)})
+                
+                survival_scales.append({'time': t, 'ticks': ticks})
+            
+            result['survival_scales'] = survival_scales
+            result['base_survivals'] = base_survivals
+
+        elif outcome_type == 'binary':
+            # 患病概率映射 (Logistic)
+            prob_ticks = []
+            steps = 20
+            step_size = max_total_points / steps
+            for i in range(steps + 1):
+                pt = i * step_size
+                lp = (pt / points_per_unit) + sum_min_contrib
+                # Prob = 1 / (1 + exp(-LP))
+                prob = 1 / (1 + np.exp(-lp))
+                prob_ticks.append({
+                    'points': pt,
+                    'probability': float(prob)
+                })
+            
+            result['probability_scale'] = {
+                'label': '发生概率 (Probability)',
+                'ticks': prob_ticks
+            }
+
+        return result
