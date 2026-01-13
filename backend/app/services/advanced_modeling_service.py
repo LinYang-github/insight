@@ -844,46 +844,133 @@ class AdvancedModelingService:
                     f = " + ".join(features)
                     cph.fit(df_clean, duration_col=target, event_col=event_col, formula=f)
                     
-                    # 预测值 (风险评分或生存率？)
-                    # 对于 AUC，我们通常使用风险评分 (Partial Hazard)。
-                    # cph.predict_partial_hazard(df)
+                    # 预测值 (Partial Hazard for consistency in simple comparison)
+                    # Note: For time-dependent ROC/DCA, we need specific time points.
+                    # Current implementation uses simple partial hazard for "overall" comparison if t not specified of
+                    # uses a default method (e.g. Harrels C)
+                    # But for plots, we usually need a specific time t.
+                    # As a default, let's use the median time.
+                    median_t = df_clean[target].median()
+                    
                     y_prob = cph.predict_partial_hazard(df_clean)
-                    y_true = df_clean[event_col] # 对于 AUC(t) 并不完全是 y_true，但适用于 Harrell's C
+                    y_true = df_clean[event_col] 
                     
                     metrics = {
                         'c_index': cph.concordance_index_,
                         'aic': cph.AIC_partial_,
-                        'log_likelihood': cph.log_likelihood_
+                        'log_likelihood': cph.log_likelihood_,
+                        'available_time_points': [float(median_t)], # MVP default
+                        'time_unit': 'months' # Logic to detect unit?
                     }
                     
-                    # 对于时间依赖性 AUC (如果以后需要)，我们使用 EvaluationService
+                    # Time-dependent metrics for Plot
+                    # We calc metrics at median time for the "Default" view
+                    # But actually frontend expects time_dependent dict
+                    from app.services.evaluation_service import EvaluationService
+                    
+                    # Calculate at median time
+                    metrics_t = EvaluationService.calculate_survival_metrics_at_t(cph, df_clean, target, event_col, median_t)
+                    
+                    # Store in time_dependent
+                    metrics['time_dependent'] = {}
+                    metrics['time_dependent'][median_t] = metrics_t
+                    
+                    # Generate Plots Data (Time-Dependent at Median T by default)
+                    # ROC
+                    surv_df = cph.predict_survival_function(df_clean, times=[median_t])
+                    prob_evt = 1 - surv_df.iloc[0].values
+                    # Mask for evaluation (exclude censored before t)
+                    mask = (df_clean[target] > median_t) | ((df_clean[target] <= median_t) & (df_clean[event_col] == 1))
+                    y_eval = (df_clean[target] <= median_t).astype(int)[mask]
+                    p_eval = prob_evt[mask]
+                    
+                    if len(y_eval) > 0:
+                        fpr, tpr, _ = roc_curve(y_eval, p_eval)
+                        metrics_t['roc_data'] = [{'fpr': float(f), 'tpr': float(t)} for f, t in zip(fpr, tpr)]
+                        metrics_t['auc'] = calc_auc(fpr, tpr) # overwrite with time-dependent AUC
+                        
+                        # Format CI from separate lower/upper keys
+                        if 'auc_ci_lower' in metrics_t:
+                            metrics_t['auc_ci'] = f"{metrics_t['auc_ci_lower']:.3f}-{metrics_t['auc_ci_upper']:.3f}"
+                        
+                        # Calibration
+                        calib = EvaluationService.calculate_survival_calibration(cph, df_clean, target, event_col, median_t)
+                        metrics_t['calibration'] = calib
+                        
+                        # DCA
+                        dca = EvaluationService.calculate_survival_dca(cph, df_clean, target, event_col, median_t)
+                        metrics_t['dca'] = dca
+                        
+                        # Comparison with Base Model (if idx > 0)
+                        if idx > 0 and results:
+                            # Retrieve Base Model's data at t
+                            base_res = results[0]
+                            # We stored internal _y_eval and _p_eval in base_res for comparison? 
+                            # Or we can't easily access previous local vars.
+                            # We can store them in results for temporary usage, or re-extract.
+                            # Storing in results is cleaner.
+                            
+                            base_metrics = base_res['metrics']['time_dependent'].get(median_t)
+                            if base_metrics and 'p_eval' in base_metrics:
+                                base_p_eval = base_metrics['p_eval'] # Need to ensure we saved this
+                                base_y_eval = base_metrics['y_eval'] # Should be same as current y_eval
+                                
+                                # Delong
+                                delong = EvaluationService.calculate_delong_test(y_eval, base_p_eval, p_eval)
+                                metrics_t['p_delong'] = delong.get('p_delong')
+                                
+                                # NRI / IDI
+                                nri_idi = EvaluationService.calculate_nri_idi(y_eval, base_p_eval, p_eval)
+                                metrics_t.update(nri_idi)
+                                # keys: nri, nri_p, nri_ci, idi, ...
+                        
+                        # Save p_eval/y_eval for subsequent models to compare against
+                        metrics_t['p_eval'] = p_eval.tolist()
+                        metrics_t['y_eval'] = y_eval.tolist()
+
+                    metrics['time_dependent'][median_t] = metrics_t
+                    
+                # Common Plot Generation for Logistic (or simple output)
+                plots = {}
+                if model_type == 'logistic':
+                    # ROC
+                    fpr, tpr, _ = roc_curve(y_true, y_prob)
+                    plots['roc'] = [{'fpr': float(f), 'tpr': float(t)} for f, t in zip(fpr, tpr)]
+                    plots['calibration'] = EvaluationService.calculate_calibration(y_true, y_prob)
+                    plots['dca'] = EvaluationService.calculate_dca(y_true, y_prob)
+                    
+                    metrics['auc_ci'] = f"{metrics['auc_ci_lower']:.3f}-{metrics['auc_ci_upper']:.3f}" if 'auc_ci_lower' in metrics else '-'
                     
                 results.append({
                     'name': name,
                     'features': features,
                     'metrics': metrics,
+                    'plots': plots,  
                     'y_prob': y_prob.tolist() if 'y_prob' in locals() else []
                 })
                 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 results.append({'name': name, 'error': str(e)})
                 
-        # 4. 比较 (相对于模型 1)
-        if len(results) > 1:
+        # 4. 比较 (相对于模型 1) - Logistic handled in loop via results list check or here.
+        # Check standard logistic comparison if needed
+        if len(results) > 1 and model_type == 'logistic':
             base = results[0]
             if 'y_prob' in base and not base.get('error'):
                 for res in results[1:]:
                     if 'y_prob' in res and not res.get('error'):
-                        # Delong (如果是二元变量)
-                        if model_type == 'logistic':
-                            delong = EvaluationService.calculate_delong_test(
-                                df_clean[target], base['y_prob'], res['y_prob']
-                            )
-                            nri_idi = EvaluationService.calculate_nri_idi(
-                                df_clean[target], base['y_prob'], res['y_prob']
-                            )
-                            res['comparison'] = {**delong, **nri_idi}
-                            
+                        delong = EvaluationService.calculate_delong_test(
+                            df_clean[target], base['y_prob'], res['y_prob']
+                        )
+                        nri_idi = EvaluationService.calculate_nri_idi(
+                            df_clean[target], base['y_prob'], res['y_prob']
+                        )
+                        # Add to metrics for table display
+                        res['metrics'].update(delong)
+                        res['metrics'].update(nri_idi)
+                        
         return results
 
     @staticmethod

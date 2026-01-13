@@ -168,6 +168,13 @@ const leftMargin = 150
 const rightMargin = 750
 const usefulWidth = rightMargin - leftMargin
 
+const height = computed(() => {
+    if (!props.spec || !props.spec.axes) return 600
+    const axesH = props.spec.axes.length * 50
+    const survH = (props.spec.survival_scales || []).length * 40
+    return 200 + axesH + survH + 100
+})
+
 // 定义坐标变换工具函数
 const scaleX = (points) => {
     // 将 0-100 的分值映射到 SVG 的 X 坐标轴 (leftMargin -> rightMargin)
@@ -219,17 +226,25 @@ function initInputs() {
  */
 const userPoints = computed(() => {
     const pts = {}
+    if (!props.spec || !props.spec.axes) return pts
+    
     props.spec.axes.forEach(axis => {
         const val = userInputs[axis.name]
         if (val === undefined) return
         
         if (axis.type === 'continuous') {
             // 连续变量：基于线性内插计算得分
-            const pMin = axis.points[String(axis.min)]
-            const pMax = axis.points[String(axis.max)]
+            // Robust access to points dict (handle string/number key mismatch)
+            const pMin = axis.points[String(axis.min)] ?? axis.points[axis.min] ?? 0
+            const pMax = axis.points[String(axis.max)] ?? axis.points[axis.max] ?? 0
             
-            const ratio = (val - axis.min) / (axis.max - axis.min)
-            pts[axis.name] = pMin + ratio * (pMax - pMin)
+            const range = axis.max - axis.min
+            if (range === 0) {
+                pts[axis.name] = pMin
+            } else {
+                const ratio = (val - axis.min) / range
+                pts[axis.name] = pMin + ratio * (pMax - pMin)
+            }
             
         } else {
             // 分类变量：直接查表获取对应得分

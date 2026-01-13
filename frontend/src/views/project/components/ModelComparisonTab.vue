@@ -344,9 +344,8 @@ const runComparison = async () => {
         }
         
         const res = await AdvancedModelingService.compareModels(payload)
-        if (res.error) throw new Error(res.error)
-        
-        results.value = res.comparison_data
+        // Backend returns the list directly
+        results.value = res
         ElMessage.success('模型对比完成！')
         
     } catch (e) {
@@ -376,6 +375,19 @@ const copyText = () => {
     ElMessage.success('方法学段落已复制')
 }
 
+// Helper to get time metrics safely
+const getTimeMetrics = (metrics, t) => {
+    if (!metrics || !metrics.time_dependent) return null
+    // Try multiple key formats
+    if (metrics.time_dependent[t]) return metrics.time_dependent[t]
+    if (metrics.time_dependent[String(t)]) return metrics.time_dependent[String(t)]
+    if (typeof t === 'number') {
+        if (metrics.time_dependent[t.toFixed(1)]) return metrics.time_dependent[t.toFixed(1)]
+        if (metrics.time_dependent[t.toFixed(0)]) return metrics.time_dependent[t.toFixed(0)]
+    }
+    return null
+}
+
 // Table Data (Computed for Display)
 const tableData = computed(() => {
     if (!results.value || !Array.isArray(results.value)) return []
@@ -396,8 +408,9 @@ const tableData = computed(() => {
         
         if (modelType.value === 'cox') {
             const t = selectedTimePoint.value
-            if (t && m.time_dependent && m.time_dependent[t]) {
-                const tm = m.time_dependent[t]
+            const tm = getTimeMetrics(m, t)
+            
+            if (tm) {
                 return {
                     ...base,
                     p_delong: tm.p_delong !== undefined ? tm.p_delong : undefined,
@@ -431,10 +444,7 @@ const tableData = computed(() => {
         }
     })
 })
-
 import { DocumentCopy } from '@element-plus/icons-vue'
-
-// ... existing code ...
 
 /**
  * 以 TSV 格式（Tab 分隔）将统计表格数据复制到剪贴板。
@@ -511,9 +521,8 @@ const renderPlot = () => {
                  titleSuffix = `(AUC=${r.metrics.auc.toFixed(3)})`
             }
         } else if (modelType.value === 'cox' && selectedTimePoint.value) {
-           if (r.metrics && r.metrics.time_dependent) {
-               const t = selectedTimePoint.value
-               const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
+           if (r.metrics) {
+               const tm = getTimeMetrics(r.metrics, selectedTimePoint.value)
                if (tm) {
                    rocData = tm.roc_data
                    titleSuffix = tm.auc ? `(AUC=${tm.auc.toFixed(3)})` : '(AUC=-)'
@@ -568,11 +577,8 @@ const renderCalibration = () => {
         if (modelType.value === 'logistic') {
              calibData = (r.plots) ? r.plots.calibration : null
         } else if (modelType.value === 'cox' && selectedTimePoint.value) {
-             if (r.metrics && r.metrics.time_dependent) {
-                 const t = selectedTimePoint.value
-                 const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
-                 calibData = tm ? tm.calibration : null
-             }
+             const tm = getTimeMetrics(r.metrics, selectedTimePoint.value)
+             calibData = tm ? tm.calibration : null
         }
         
         if (calibData) {
@@ -593,9 +599,9 @@ const renderCalibration = () => {
         name: 'Ideal',
         showlegend: false
     })
-
+    
     const layout = {
-        title: '校准曲线 (Calibration Plot)',
+         title: modelType.value === 'cox' ? `校准曲线 (t=${selectedTimePoint.value})` : '校准曲线 (Calibration Curve)',
         xaxis: { title: '预测概率 (Predicted Probability)', range: [0, 1] },
         yaxis: { title: '实际观察比例 (Observed Fraction)', range: [0, 1] },
         margin: { l: 50, r: 20, t: 40, b: 40 },
@@ -619,11 +625,8 @@ const renderDCA = () => {
         if (modelType.value === 'logistic') {
              dcaData = (r.plots) ? r.plots.dca : null
         } else if (modelType.value === 'cox' && selectedTimePoint.value) {
-             if (r.metrics && r.metrics.time_dependent) {
-                 const t = selectedTimePoint.value
-                 const tm = r.metrics.time_dependent[t] || r.metrics.time_dependent[String(t)]
-                 dcaData = tm ? tm.dca : null
-             }
+             const tm = getTimeMetrics(r.metrics, selectedTimePoint.value)
+             dcaData = tm ? tm.dca : null
         }
         
         if (dcaData) {

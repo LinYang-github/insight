@@ -128,7 +128,7 @@ const creating = ref(false)
 const searchQuery = ref('')
 const newProject = reactive({ name: '', description: '' })
 
-const newProject = reactive({ name: '', description: '' })
+
 
 // 模拟最近活动计数（仅用于演示）
 const recentCount = computed(() => {

@@ -530,6 +530,7 @@ class StatisticsService:
                'ess_treated': 实验组有效样本量 (Effective Sample Size),
                'ess_control': 对照组有效样本量
            }
+        """
         if treatment not in df.columns:
              raise ValueError(f"Treatment '{treatment}' not found.")
              
