@@ -1,13 +1,20 @@
 <template>
     <div class="competing-risks-container">
         <el-row :gutter="20">
-            <!-- 左侧：参数配置 -->
+            <!-- 左侧：参数配置 (Config Panel) -->
             <el-col :span="6">
-                <el-card shadow="never">
-                    <template #header>⚡️ 竞争风险模型</template>
+                <el-card shadow="hover" class="config-card">
+                    <template #header>
+                        <div class="card-header">
+                            <span>⚡️ 竞争风险模型</span>
+                            <el-tooltip content="竞争风险模型适用于存在多个互斥终点事件的情况，如死于心血管疾病与死于其他疾病。" placement="top">
+                                <el-icon><QuestionFilled /></el-icon>
+                            </el-tooltip>
+                        </div>
+                    </template>
                     <el-form label-position="top">
                         <el-form-item label="时间变量 (Time)" required>
-                            <el-select v-model="config.time_col" filterable placeholder="选择时间变量">
+                            <el-select v-model="config.time_col" filterable placeholder="选择生存时间变量">
                                 <el-option v-for="v in numVars" :key="v.name" :label="v.name" :value="v.name" />
                             </el-select>
                         </el-form-item>
@@ -15,111 +22,130 @@
                             <el-select v-model="config.event_col" filterable placeholder="选择事件变量 (0, 1, 2...)">
                                 <el-option v-for="v in numVars" :key="v.name" :label="v.name" :value="v.name" />
                             </el-select>
-                            <div class="help-text">需包含至少2种事件类型 (如: 1=死因A, 2=死因B)。0=Censor。</div>
+                            <div class="help-text">需包含至少2种事件类型 (如: 1=死因A, 2=死因B)。0=删失 (Censor)。</div>
                         </el-form-item>
                         
                         <el-form-item label="协变量 (Covariates)" required>
-                            <el-select v-model="config.covariates" multiple filterable placeholder="选择协变量">
+                            <el-select v-model="config.covariates" multiple filterable collapse-tags placeholder="选择混杂因素/预测变量">
                                 <el-option v-for="v in variables" :key="v.name" :label="v.name" :value="v.name" />
                             </el-select>
                         </el-form-item>
                         
-                        <el-form-item label="分组变量 (分组 - 可选)">
-                             <el-select v-model="config.group_col" filterable clearable placeholder="用于 CIF 绘图">
-                                <el-option v-for="v in catVars" :key="v.name" :label="v.name" :value="v.name" />
-                            </el-select>
+                        <el-form-item label="分组变量 (Group - 可选)">
+                             <el-select v-model="config.group_col" filterable clearable placeholder="用于 CIF 绘图的分组比较">
+                                <el-option v-for="v in variables" :key="v.name" :label="v.name" :value="v.name" />
+                             </el-select>
+                             <div class="help-text">不选则展示全人群的累积发生率曲线。</div>
                         </el-form-item>
                         
-                        <el-button type="primary" style="width: 100%" @click="runAnalysis" :loading="loading" :disabled="!isValid">
-                            运行分析 (Run Analysis)
+                        <el-button type="primary" style="width: 100%; margin-top: 10px;" @click="runAnalysis" :loading="loading" :disabled="!isValid">
+                            运行竞争风险分析
                         </el-button>
                     </el-form>
                 </el-card>
             </el-col>
             
-            <!-- 右侧：结果展示 -->
+            <!-- 右侧：结果展示 (Result Panel) -->
             <el-col :span="18">
                 <div v-if="!hasResults" class="empty-placeholder">
-                    <el-empty description="请配置参数并运行分析以查看原因特异性风险比 (CS-HR) 和累积发生率 (CIF)" />
+                    <el-empty description="请在左侧配置参数并点击运行分析按钮。">
+                        <template #extra>
+                            <div style="font-size: 13px; color: #909399; max-width: 400px; text-align: center;">
+                                本模块提供原因特异性 Cox 模型 (Cause-Specific Cox) 与 Fine-Gray 子分布风险模型。
+                            </div>
+                        </template>
+                    </el-empty>
                 </div>
                 
                 <div v-else class="results-area">
-                    <el-tabs type="border-card">
+                    <el-tabs type="border-card" class="result-tabs">
                         <!-- 标签页 1：CIF 图表 -->
-                        <el-tab-pane label="累积发生率 (CIF 图)">
+                        <el-tab-pane label="累积发生率 (CIF 曲线)">
                              <div class="plot-container">
-                                 <div id="cif-plot" style="width:100%; height:500px;"></div>
+                                 <div id="cif-plot" style="width:100%; height:520px;"></div>
                              </div>
-                             <div class="methodology-box" v-if="cifResults?.methodology">
-                                 <strong>方法学:</strong> {{ cifResults.methodology }}
+                             <div class="interpretation-panel" v-if="cifResults?.methodology">
+                                 <div class="panel-title"><el-icon><InfoFilled /></el-icon> 方法学提示</div>
+                                 <p>{{ cifResults.methodology }}</p>
                              </div>
                         </el-tab-pane>
                         
                         <!-- 标签页 2：原因特异性风险模型 -->
-                        <el-tab-pane label="原因特异性模型 (CS 模型)">
-                            <div v-for="model in modelResults.models" :key="model.event_type" style="margin-bottom: 30px;">
-                                <div class="model-header">
-                                    <h4 style="margin:0;">事件类型: {{ model.event_type }} (原因特异性 Cox 模型)</h4>
+                        <el-tab-pane label="原因特异性模型 (CS-Cox)">
+                            <div class="alert-info" style="margin-bottom: 20px;">
+                                <el-alert title="CS-Cox 适用于由于生物学病因学研究，其将竞争事件视为删失。" type="info" :closable="false" show-icon />
+                            </div>
+                            
+                            <div v-for="model in modelResults.models" :key="model.event_type" class="model-section">
+                                <div class="model-header-alt">
+                                    <span>🎯 结局事件: <b>{{ model.event_type }}</b></span>
+                                    <el-tag size="small" type="primary">Cause-Specific Cox</el-tag>
                                 </div>
-                                <el-table :data="model.summary" stripe border size="small">
-                                    <el-table-column prop="variable" label="变量 (Variable)" />
-                                    <el-table-column prop="hr" label="风险比 (HR)">
+                                <div v-if="model.error" class="error-msg">误差: {{ model.error }}</div>
+                                <el-table v-else :data="model.summary" class="publication-table" size="small">
+                                    <el-table-column prop="variable" label="变量 (Variable)" min-width="150" />
+                                    <el-table-column prop="hr" label="风险比 (HR)" width="100">
                                         <template #default="scope">{{ scope.row.hr.toFixed(3) }}</template>
                                     </el-table-column>
-                                    <el-table-column label="95% CI">
+                                    <el-table-column label="95% CI" width="180" align="center">
                                         <template #default="scope">
-                                            {{ scope.row.ci_lower.toFixed(3) }} - {{ scope.row.ci_upper.toFixed(3) }}
+                                            ({{ scope.row.ci_lower.toFixed(3) }}, {{ scope.row.ci_upper.toFixed(3) }})
                                         </template>
                                     </el-table-column>
-                                    <el-table-column prop="p_value" label="P 值">
+                                    <el-table-column prop="p_value" label="P 值" width="100">
                                         <template #default="scope">
-                                            <span :style="{fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit'}">
+                                            <span :class="{'sig-p': scope.row.p_value < 0.05}">
                                                 {{ scope.row.p_value < 0.001 ? '<0.001' : scope.row.p_value.toFixed(3) }}
                                             </span>
                                         </template>
                                     </el-table-column>
+                                    <el-table-column prop="z" label="Z 值" width="90">
+                                        <template #default="scope">{{ scope.row.z ? scope.row.z.toFixed(2) : '-' }}</template>
+                                    </el-table-column>
                                 </el-table>
+                                <div class="model-footer" v-if="model.aic">AIC: {{ model.aic.toFixed(2) }}</div>
                             </div>
-                            <div class="methodology-box" v-if="modelResults?.methodology">
-                                 <strong>方法学 (Methodology):</strong> {{ modelResults.methodology }}
+                            
+                            <div class="interpretation-panel" v-if="modelResults?.methodology">
+                                 <div class="panel-title"><el-icon><InfoFilled /></el-icon> 方法学提示</div>
+                                 <p>{{ modelResults.methodology }}</p>
                              </div>
                         </el-tab-pane>
 
                         <!-- 标签页 3：Fine-Gray 模型 -->
-                        <el-tab-pane label="Fine-Gray 模型 (预测)">
+                        <el-tab-pane label="Fine-Gray 模型 (SHR)">
+                            <div class="alert-warning" style="margin-bottom: 20px;">
+                                <el-alert title="Fine-Gray 模型计算子分布风险比 (SHR)，直接反映对累积发生率的影响，常用于风险预测。" type="warning" :closable="false" show-icon />
+                            </div>
+                            
                             <div v-if="!modelResults.fine_gray_models || modelResults.fine_gray_models.length === 0">
-                                <el-empty description="无法生成 Fine-Gray 模型 (可能因 lifelines 版本或数据问题)" />
+                                <el-empty description="无法生成 Fine-Gray 模型结果。" />
                             </div>
                             <div v-else>
-                                <div v-for="model in modelResults.fine_gray_models" :key="model.event_type" style="margin-bottom: 30px;">
-                                    <div class="model-header">
-                                        <h4 style="margin:0;">事件类型: {{ model.event_type }} (子分布风险模型)</h4>
+                                <div v-for="model in modelResults.fine_gray_models" :key="model.event_type" class="model-section">
+                                    <div class="model-header-alt">
+                                        <span>🎯 结局事件: <b>{{ model.event_type }}</b></span>
+                                        <el-tag size="small" type="warning">Fine-Gray (SHR)</el-tag>
                                     </div>
-                                    <div v-if="model.error" style="color: red; padding: 10px;">
-                                        Error: {{ model.error }}
-                                    </div>
-                                    <el-table v-else :data="model.summary" stripe border size="small">
-                                        <el-table-column prop="variable" label="变量 (Variable)" />
-                                        <el-table-column prop="hr" label="子分布风险比 (SHR)">
+                                    <div v-if="model.error" class="error-msg">误差: {{ model.error }}</div>
+                                    <el-table v-else :data="model.summary" class="publication-table" size="small">
+                                        <el-table-column prop="variable" label="变量 (Variable)" min-width="150" />
+                                        <el-table-column prop="hr" label="SHR" width="100">
                                             <template #default="scope">{{ scope.row.hr.toFixed(3) }}</template>
                                         </el-table-column>
-                                        <el-table-column label="95% CI">
+                                        <el-table-column label="95% CI" width="180" align="center">
                                             <template #default="scope">
-                                                {{ scope.row.ci_lower.toFixed(3) }} - {{ scope.row.ci_upper.toFixed(3) }}
+                                                ({{ scope.row.ci_lower.toFixed(3) }}, {{ scope.row.ci_upper.toFixed(3) }})
                                             </template>
                                         </el-table-column>
-                                        <el-table-column prop="p_value" label="P 值">
+                                        <el-table-column prop="p_value" label="P 值" width="100">
                                             <template #default="scope">
-                                                <span :style="{fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit'}">
+                                                <span :class="{'sig-p': scope.row.p_value < 0.05}">
                                                     {{ scope.row.p_value < 0.001 ? '<0.001' : scope.row.p_value.toFixed(3) }}
                                                 </span>
                                             </template>
                                         </el-table-column>
                                     </el-table>
-                                </div>
-                                <div class="help-text" style="background: #fdf6ec; padding: 10px; margin-top:10px; color:#e6a23c">
-                                    <strong>结果解读:</strong> SHR 描述了协变量对累积发生率函数（风险）的影响，适用于风险预测。
-                                    原因特异性 HR (CS-HR, 见前一个标签页) 描述了在那些始终处于风险中的人群中，协变量对事件发生率的影响，适用于病因学探索。
                                 </div>
                             </div>
                         </el-tab-pane>
@@ -142,6 +168,7 @@
  */
 import { ref, reactive, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { InfoFilled, QuestionFilled } from '@element-plus/icons-vue'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 
@@ -157,20 +184,19 @@ const config = reactive({
     group_col: ''
 })
 
-const loading = ref(false) // 加载状态
-const hasResults = ref(false) // 是否已有分析结果
-const cifResults = ref(null) // CIF 分析结果 (包含方法学与数据)
-const modelResults = ref(null) // 回归模型结果 (CS 与 Fine-Gray)
+const loading = ref(false)
+const hasResults = ref(false)
+const cifResults = ref(null)
+const modelResults = ref(null)
 
 const variables = computed(() => props.metadata?.variables || [])
-const numVars = computed(() => variables.value.filter(v => v.type === 'numeric' || v.type === 'integer' || true)) // 宽泛筛选
-const catVars = computed(() => variables.value) // 分组通常允许所有类型
+const numVars = computed(() => variables.value.filter(v => v.type === 'numeric' || v.type === 'integer'))
+const catVars = computed(() => variables.value)
 
 const isValid = computed(() => config.time_col && config.event_col && config.covariates.length > 0)
 
 /**
  * 执行全套竞争风险分析。
- * 并行请求回归模型接口与 CIF 可视化接口。
  */
 const runAnalysis = async () => {
     loading.value = true
@@ -196,7 +222,7 @@ const runAnalysis = async () => {
         cifResults.value = res2.data
         hasResults.value = true
         
-        ElMessage.success('病因学研究请参考原因特异性模型，发生率研究请参考 CIF。')
+        ElMessage.success('分析完成。病因学研究请参考 CS-Cox，风险预测请参考 Fine-Gray。')
         
         nextTick(() => {
             renderCIF(res2.data.cif_data)
@@ -211,46 +237,26 @@ const runAnalysis = async () => {
 
 /**
  * 渲染 CIF 曲线图。
- * @param {Array} cifData - 后端返回的曲线数据点数组。
  */
 const renderCIF = (cifData) => {
-    // cifData: [{group: 'A', event_type: 1, cif_data: [{x,y}...]}, ...]
-    // 绘制曲线
-    // X: 时间, Y: CIF 概率
-    
-    // 按事件类型还是按组别进行颜色映射？
-    // 通常：颜色 = 组别，线型 = 事件类型？
-    // 或者：颜色 = 事件类型，线型 = 组别？
-    // 这里采用：如果有多个组别则颜色对应组别，否则颜色对应事件类型。
-    
     const traces = []
-    
-    // 简单调色板
-    const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-    
-    // 组别键
+    const colors = ['#3B71CA', '#E6A23C', '#2E7D32', '#D32F2F', '#9467bd']
     const groups = [...new Set(cifData.map(d => d.group))]
     
     cifData.forEach(item => {
         const x = item.cif_data.map(p => p.x)
         const y = item.cif_data.map(p => p.y)
         
-        // 确定样式
-        // 如果有多个组别：按组别着色
-        // 如果有多个事件：按事件类型设置虚线样式？
-        
         let color = '#333'
         if (groups.length > 1) {
             const gIdx = groups.indexOf(item.group)
             color = colors[gIdx % colors.length]
         } else {
-             const eIdx = item.event_type - 1
+             const eIdx = (item.event_type - 1)
              color = colors[eIdx % colors.length]
         }
         
         let dash = 'solid'
-        // 如果存在多个事件，为不同事件设置不同的虚线样式
-        // item.event_type 理想情况下为 1, 2...
         if (item.event_type === 2) dash = 'dash'
         if (item.event_type === 3) dash = 'dot'
         
@@ -258,20 +264,44 @@ const renderCIF = (cifData) => {
             x: x,
             y: y,
             mode: 'lines',
-            name: `${item.group} (Evt ${item.event_type})`,
-            line: { color: color, dash: dash, width: 2 }
+            name: groups.length > 1 ? `${item.group} (事件 ${item.event_type})` : `事件 ${item.event_type}`,
+            line: { 
+                color: color, 
+                dash: dash, 
+                width: 2.5,
+                shape: 'hv' // Step function for CIF
+            }
         })
     })
     
     const layout = {
-        title: '累积发生率函数 (Aalen-Johansen)',
-        xaxis: { title: '时间 (Time)' },
-        yaxis: { title: '累积发生概率', range: [0, 1] },
-        legend: { x: 1, y: 1 },
-        margin: {l:50, r:50, t:50, b:50}
+        title: {
+            text: '累积发生率函数 (Cumulative Incidence Function)',
+            font: { size: 18, color: '#303133' }
+        },
+        xaxis: { 
+            title: config.time_col || '时间 (Time)',
+            gridcolor: '#f0f0f0'
+        },
+        yaxis: { 
+            title: '累积发生率', 
+            range: [0, Math.min(1, Math.max(...cifData.flatMap(d => d.cif_data.map(p => p.y))) * 1.2 || 1)],
+            gridcolor: '#f0f0f0'
+        },
+        legend: { 
+            x: 0.05, 
+            y: 0.95,
+            bgcolor: 'rgba(255,255,255,0.7)',
+            bordercolor: '#f0f0f0',
+            borderwidth: 1
+        },
+        margin: { l: 60, r: 40, t: 80, b: 60 },
+        plot_bgcolor: '#ffffff',
+        paper_bgcolor: '#ffffff',
+        hovermode: 'closest'
     }
     
-    Plotly.newPlot('cif-plot', traces, layout)
+    Plotly.newPlot('cif-plot', traces, layout, { responsive: true })
 }
 </script>
 
@@ -280,30 +310,80 @@ const renderCIF = (cifData) => {
     height: 100%;
 }
 .empty-placeholder {
-    height: 400px;
+    height: 600px;
     display: flex;
     justify-content: center;
     align-items: center;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px dashed #dcdfe6;
 }
 .help-text {
-    font-size: 11px;
-    color: #909399;
-    line-height: 1.2;
-    margin-top: 5px;
-}
-.methodology-box {
-    margin-top: 20px;
-    padding: 10px;
-    background: #f4f4f5;
-    border-radius: 4px;
     font-size: 12px;
-    color: #606266;
-    line-height: 1.5;
+    color: #909399;
+    line-height: 1.4;
+    margin-top: 6px;
 }
-.model-header {
+.interpretation-panel {
+    margin-top: 24px;
+    padding: 16px;
     background: #ecf5ff;
+    border-radius: 8px;
+    border-left: 4px solid #3B71CA;
+}
+.panel-title {
+    font-weight: bold;
+    color: #3B71CA;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.interpretation-panel p {
+    margin: 0;
+    font-size: 13px;
+    color: #606266;
+    line-height: 1.6;
+}
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+}
+.model-section {
+    margin-bottom: 40px;
+}
+.model-header-alt {
+    padding: 8px 12px;
+    background: #f8f9fb;
+    border-bottom: 2px solid #ebeef5;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.publication-table {
+    border-top: 2px solid #303133;
+    border-bottom: 2px solid #303133;
+}
+:deep(.el-table__header) {
+    border-bottom: 1px solid #303133;
+}
+.sig-p {
+    font-weight: bold;
+    color: #D32F2F;
+}
+.model-footer {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #909399;
+    text-align: right;
+}
+.error-msg {
+    color: #F56C6C;
     padding: 10px;
-    border-left: 4px solid #409EFF;
-    margin-bottom: 10px;
+    background: #fef0f0;
+    border-radius: 4px;
 }
 </style>
