@@ -167,11 +167,28 @@
                     </div>
                 </template>
 
-                 <!-- Smart Interpretation Component -->
-                 <InterpretationPanel
+                  <!-- PH Violation Warning -->
+                  <el-alert
+                    v-if="config.model_type === 'cox' && results.metrics?.ph_global_p !== undefined && results.metrics?.ph_global_p !== null && results.metrics?.ph_global_p < 0.05"
+                    title="违反比例风险 (PH) 假定"
+                    type="error"
+                    show-icon
+                    :closable="false"
+                    style="margin-bottom: 20px"
+                  >
+                    <template #default>
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            当前模型的全局 PH 检验 P 值为 <b>{{ typeof results.metrics.ph_global_p === 'number' ? results.metrics.ph_global_p.toFixed(4) : results.metrics.ph_global_p }}</b>，提示可能违反了 Cox 模型的比例风险假定。
+                            建议在下方“假设检验”标签页中检查各变量的具体表现。
+                        </div>
+                    </template>
+                  </el-alert>
+                  
+                  <!-- Smart Interpretation Component -->
+                  <InterpretationPanel
                     v-if="results.interpretation"
                     :interpretation="results.interpretation"
-                 />
+                  />
                  
                  <!-- Fallback or Additional Diagnostics -->
 
@@ -181,13 +198,15 @@
                     <el-descriptions-item v-for="(val, key) in results.metrics" :key="key">
                         <template #label>
                             <div style="display: flex; align-items: center;">
-                                <span>{{ key }}</span>
+                                <span>{{ key === 'ph_global_p' ? '全局 PH 检验 P 值' : key }}</span>
                                 <el-tooltip v-if="metricTooltips[key]" :content="metricTooltips[key]" placement="top">
                                     <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                 </el-tooltip>
                             </div>
                         </template>
-                        {{ typeof val === 'number' ? val.toFixed(4) : val }}
+                        <span :style="{ color: key === 'ph_global_p' && val < 0.05 ? 'red' : 'inherit', fontWeight: key === 'ph_global_p' && val < 0.05 ? 'bold' : 'normal' }">
+                            {{ typeof val === 'number' ? val.toFixed(4) : val }}
+                        </span>
                     </el-descriptions-item>
                 </el-descriptions>
 
@@ -612,7 +631,8 @@ const metricTooltips = {
     'bic': '贝叶斯信息量：类似 AIC，但对参数数量惩罚更重，常用于模型筛选，越小越好。',
     'c_index': '一致性指数：生存分析核心指标，衡量模型预测风险等级的准确性，越接近 1 越好。',
     'log_likelihood': '对数似然 (Log-Likelihood)：越高越好，表示模型对数据的解释程度。',
-    'n_events': '事件数 (Events)：分析中观察到的终点事件总数。'
+    'n_events': '事件数 (Events)：分析中观察到的终点事件总数。',
+    'ph_global_p': '全局等比例风险检验 P 值：用于评估整个模型是否满足 Cox 模型的比例风险假定。P < 0.05 提示违反假定。'
 }
 
 const modelOptions = [

@@ -268,7 +268,8 @@ class CoxStrategy(BaseModelStrategy):
             'aic': ResultFormatter.format_float(cph.AIC_partial_, 2),
             'bic': ResultFormatter.format_float(bic, 2),
             'log_likelihood': ResultFormatter.format_float(ll, 2),
-            'n_events': int(n_events)
+            'n_events': int(n_events),
+            'ph_global_p': float(ph_table.loc['GLOBAL', 'p']) if ph_table is not None and 'GLOBAL' in ph_table.index else None
         }
         
         plots = {}
