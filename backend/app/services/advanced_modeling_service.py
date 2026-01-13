@@ -777,6 +777,7 @@ class AdvancedModelingService:
         from app.services.modeling_service import ModelingService
         from lifelines import CoxPHFitter
         from sklearn.metrics import roc_curve, auc as calc_auc
+        from app.services.evaluation_service import EvaluationService
         
         # 1. 识别有效列 (交集)
         all_features = set()
@@ -844,91 +845,84 @@ class AdvancedModelingService:
                     f = " + ".join(features)
                     cph.fit(df_clean, duration_col=target, event_col=event_col, formula=f)
                     
-                    # 预测值 (Partial Hazard for consistency in simple comparison)
-                    # Note: For time-dependent ROC/DCA, we need specific time points.
-                    # Current implementation uses simple partial hazard for "overall" comparison if t not specified of
-                    # uses a default method (e.g. Harrels C)
-                    # But for plots, we usually need a specific time t.
-                    # As a default, let's use the median time.
-                    median_t = df_clean[target].median()
-                    
+                    # 预测值 (Partial Hazard)
                     y_prob = cph.predict_partial_hazard(df_clean)
-                    y_true = df_clean[event_col] 
                     
                     metrics = {
                         'c_index': cph.concordance_index_,
                         'aic': cph.AIC_partial_,
                         'log_likelihood': cph.log_likelihood_,
-                        'available_time_points': [float(median_t)], # MVP default
-                        'time_unit': 'months' # Logic to detect unit?
+                        'available_time_points': [],
+                        'time_dependent': {},
+                        'time_unit': 'months'
                     }
                     
-                    # Time-dependent metrics for Plot
-                    # We calc metrics at median time for the "Default" view
-                    # But actually frontend expects time_dependent dict
-                    from app.services.evaluation_service import EvaluationService
+                    # 1. Determine evaluation time points (Quartiles)
+                    times = df_clean[target]
+                    t_25 = round(times.quantile(0.25), 1)
+                    t_50 = round(times.quantile(0.50), 1)
+                    t_75 = round(times.quantile(0.75), 1)
                     
-                    # Calculate at median time
-                    metrics_t = EvaluationService.calculate_survival_metrics_at_t(cph, df_clean, target, event_col, median_t)
+                    eval_times = sorted(list(set([t_25, t_50, t_75])))
+                    metrics['available_time_points'] = [float(t) for t in eval_times]
                     
-                    # Store in time_dependent
-                    metrics['time_dependent'] = {}
-                    metrics['time_dependent'][median_t] = metrics_t
-                    
-                    # Generate Plots Data (Time-Dependent at Median T by default)
-                    # ROC
-                    surv_df = cph.predict_survival_function(df_clean, times=[median_t])
-                    prob_evt = 1 - surv_df.iloc[0].values
-                    # Mask for evaluation (exclude censored before t)
-                    mask = (df_clean[target] > median_t) | ((df_clean[target] <= median_t) & (df_clean[event_col] == 1))
-                    y_eval = (df_clean[target] <= median_t).astype(int)[mask]
-                    p_eval = prob_evt[mask]
-                    
-                    if len(y_eval) > 0:
-                        fpr, tpr, _ = roc_curve(y_eval, p_eval)
-                        metrics_t['roc_data'] = [{'fpr': float(f), 'tpr': float(t)} for f, t in zip(fpr, tpr)]
-                        metrics_t['auc'] = calc_auc(fpr, tpr) # overwrite with time-dependent AUC
+                    # 2. Loop over time points
+                    for t in eval_times:
+                        # Calculate Metrics at t
+                        metrics_t = EvaluationService.calculate_survival_metrics_at_t(cph, df_clean, target, event_col, t)
                         
-                        # Format CI from separate lower/upper keys
-                        if 'auc_ci_lower' in metrics_t:
-                            metrics_t['auc_ci'] = f"{metrics_t['auc_ci_lower']:.3f}-{metrics_t['auc_ci_upper']:.3f}"
-                        
-                        # Calibration
-                        calib = EvaluationService.calculate_survival_calibration(cph, df_clean, target, event_col, median_t)
-                        metrics_t['calibration'] = calib
-                        
-                        # DCA
-                        dca = EvaluationService.calculate_survival_dca(cph, df_clean, target, event_col, median_t)
-                        metrics_t['dca'] = dca
-                        
-                        # Comparison with Base Model (if idx > 0)
-                        if idx > 0 and results:
-                            # Retrieve Base Model's data at t
-                            base_res = results[0]
-                            # We stored internal _y_eval and _p_eval in base_res for comparison? 
-                            # Or we can't easily access previous local vars.
-                            # We can store them in results for temporary usage, or re-extract.
-                            # Storing in results is cleaner.
+                        # Generate Plots Data at t
+                        surv_df = cph.predict_survival_function(df_clean, times=[t])
+                        # S(t) -> Risk(t) = 1 - S(t)
+                        # Note: dataframe indexing by float t might require exact match or .loc
+                        try:
+                            # Try direct access
+                            prob_evt = 1 - surv_df.loc[t].values
+                        except KeyError:
+                            # Fallback if rounding causes mismatch, though we passed [t]
+                            prob_evt = 1 - surv_df.iloc[0].values
                             
-                            base_metrics = base_res['metrics']['time_dependent'].get(median_t)
-                            if base_metrics and 'p_eval' in base_metrics:
-                                base_p_eval = base_metrics['p_eval'] # Need to ensure we saved this
-                                base_y_eval = base_metrics['y_eval'] # Should be same as current y_eval
-                                
-                                # Delong
-                                delong = EvaluationService.calculate_delong_test(y_eval, base_p_eval, p_eval)
-                                metrics_t['p_delong'] = delong.get('p_delong')
-                                
-                                # NRI / IDI
-                                nri_idi = EvaluationService.calculate_nri_idi(y_eval, base_p_eval, p_eval)
-                                metrics_t.update(nri_idi)
-                                # keys: nri, nri_p, nri_ci, idi, ...
+                        # Filter Mask
+                        mask = (df_clean[target] > t) | ((df_clean[target] <= t) & (df_clean[event_col] == 1))
+                        y_eval = (df_clean[target] <= t).astype(int)[mask]
+                        p_eval = prob_evt[mask]
                         
-                        # Save p_eval/y_eval for subsequent models to compare against
-                        metrics_t['p_eval'] = p_eval.tolist()
-                        metrics_t['y_eval'] = y_eval.tolist()
-
-                    metrics['time_dependent'][median_t] = metrics_t
+                        if len(y_eval) > 0:
+                            fpr, tpr, _ = roc_curve(y_eval, p_eval)
+                            metrics_t['roc_data'] = [{'fpr': float(f), 'tpr': float(t)} for f, t in zip(fpr, tpr)]
+                            metrics_t['auc'] = calc_auc(fpr, tpr) 
+                            
+                            if 'auc_ci_lower' in metrics_t:
+                                metrics_t['auc_ci'] = f"{metrics_t['auc_ci_lower']:.3f}-{metrics_t['auc_ci_upper']:.3f}"
+                            
+                            metrics_t['calibration'] = EvaluationService.calculate_survival_calibration(cph, df_clean, target, event_col, t)
+                            metrics_t['dca'] = EvaluationService.calculate_survival_dca(cph, df_clean, target, event_col, t)
+                            
+                            # Comparison with Base Model
+                            if idx > 0 and results:
+                                base_res = results[0]
+                                # Try float key first as we store as float
+                                base_metrics = base_res['metrics']['time_dependent'].get(t)
+                                
+                                if base_metrics and 'p_eval' in base_metrics:
+                                    base_p_eval = base_metrics['p_eval'] # list
+                                    
+                                    # Delong & NRI/IDI
+                                    try:
+                                        delong = EvaluationService.calculate_delong_test(y_eval, base_p_eval, p_eval)
+                                        metrics_t.update(delong)
+                                        
+                                        nri_idi = EvaluationService.calculate_nri_idi(y_eval, base_p_eval, p_eval)
+                                        metrics_t.update(nri_idi)
+                                    except Exception as e:
+                                        print(f"Comparison failed at {t}: {e}")
+                            
+                            # Save for subsequent models (as list)
+                            metrics_t['p_eval'] = p_eval.tolist()
+                            metrics_t['y_eval'] = y_eval.tolist()
+                            
+                        # Store result
+                        metrics['time_dependent'][t] = metrics_t
                     
                 # Common Plot Generation for Logistic (or simple output)
                 plots = {}
