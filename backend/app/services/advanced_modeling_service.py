@@ -857,14 +857,32 @@ class AdvancedModelingService:
                         'time_unit': 'months'
                     }
                     
-                    # 1. Determine evaluation time points (Quartiles)
-                    times = df_clean[target]
-                    t_25 = round(times.quantile(0.25), 1)
-                    t_50 = round(times.quantile(0.50), 1)
-                    t_75 = round(times.quantile(0.75), 1)
+                    # 1. Determine evaluation time points (Clinical + Quartiles)
+                    max_dur = df_clean[target].max()
+                    points = []
+                    time_unit = 'months'
+                    if max_dur > 730: # > 2 years
+                        time_unit = 'days'
+                        candidates = [365, 730, 1095, 1460, 1825] # 1, 2, 3, 4, 5 years
+                    else:
+                        time_unit = 'months'
+                        candidates = [12, 24, 36, 48, 60] # 1, 2, 3, 4, 5 years
                     
-                    eval_times = sorted(list(set([t_25, t_50, t_75])))
+                    for c in candidates:
+                        if max_dur > c:
+                            points.append(c)
+                    
+                    # Fallback to quartiles if no clinical points or too few
+                    if len(points) < 2:
+                        times_s = df_clean[target]
+                        q25 = round(times_s.quantile(0.25), 1)
+                        q50 = round(times_s.quantile(0.50), 1)
+                        q75 = round(times_s.quantile(0.75), 1)
+                        points = [q25, q50, q75]
+                    
+                    eval_times = sorted(list(set(points)))
                     metrics['available_time_points'] = [float(t) for t in eval_times]
+                    metrics['time_unit'] = time_unit
                     
                     # 2. Loop over time points
                     for t in eval_times:
@@ -982,29 +1000,26 @@ class AdvancedModelingService:
         返回:
             dict: SHR (子分布风险比) 的汇总表。
         """
-        # Try importing FineGrayFitter
         try:
             from lifelines import FineGrayFitter
         except ImportError:
-            # Fallback or Error
-            # Recent lifelines might need specific import or it's missing.
-            # If missing, we can implement manual weighting logic, but it's complex.
-            # Let's hope it's available or we find it.
             raise ImportError("FineGrayFitter not found in lifelines. Please upgrade lifelines >= 0.26.0.")
             
-        # 尝试导入 FineGrayFitter
         try:
-            from lifelines import FineGrayFitter
-        except ImportError:
-            # 回退或报错
-            # 最近版本的 lifelines 可能需要特定的导入方式，或者已缺失。
-            # 如果缺失，我们可以手动实现加权逻辑，但这很复杂。
-            # 让我们希望它是可用的，或者我们能找到它。
+            fgf = FineGrayFitter()
+            # 数据预处理
+            cols = [duration_col, event_col] + covariates
+            df_clean = df[cols].dropna()
+            df_clean = DataService.preprocess_for_formula(df_clean)
+            
+            # 拟合模型
+            fgf.fit(df_clean, duration_col, event_col, event_of_interest=event_of_interest, formula=" + ".join(covariates))
+            summary = fgf.summary
             
             res_list = []
             for idx, row in summary.iterrows():
                 res_list.append({
-                    'variable': idx,
+                    'variable': str(idx),
                     'hr': float(row['exp(coef)']),
                     'coef': float(row['coef']),
                     'se': float(row['se(coef)']),
@@ -1024,372 +1039,11 @@ class AdvancedModelingService:
         except Exception as e:
             raise ValueError(f"Fine-Gray Fit Failed: {str(e)}")
 
-        
-        # Cox ROC 代理逻辑
-        median_time = None
-        if model_type == 'cox':
-            if not event_col:
-                raise ValueError("Cox 模型必需提供事件列。")
-            median_time = df_clean[target].median()
-            # 我们将计算中位随访时间的时变累积 ROC。
-            # 简化处理：保留 (Event=1 & Time<=Median) 作为 Case=1
-            # 保留 (Time > Median) 作为 Control=0
-            # 剔除 (Event=0 & Time <= Median) (在中位时间点状态未知)
-        
-        results = []
-        
-        # 3. 遍历模型
-        for config in model_configs:
-            def calc_auc_stats(auc, n1, n2):
-                from scipy.stats import norm
-                if n1 <= 0 or n2 <= 0: return ("-", 1.0)
-                q1 = auc / (2 - auc)
-                q2 = 2 * auc**2 / (1 + auc)
-                se = np.sqrt((auc*(1-auc) + (n1-1)*(q1-auc**2) + (n2-1)*(q2-auc**2)) / (n1*n2))
-                lower = max(0, auc - 1.96*se)
-                upper = min(1, auc + 1.96*se)
-                
-                # P 值 (H0: AUC=0.5)
-                # Z = (AUC - 0.5) / SE
-                z = (auc - 0.5) / se if se > 0 else 0
-                p = 2 * (1 - norm.cdf(abs(z)))
-                
-                return (f"{lower:.3f}-{upper:.3f}", float(p))
-
-            name = config['name']
-            feats = config['features']
-            
-            try:
-                metrics = {}
-                roc_data = []
-
-                # 存储原始输出以供比较
-                raw_pred = None
-                raw_y = None
-                
-                if model_type == 'logistic':
-                    # 本地拟合以实现完全控制 (与 Cox 代码块保持一致)
-                    # 准备公式
-                    formula = f"{target} ~ {' + '.join(feats)}"
-                    if not feats: formula = f"{target} ~ 1"
-                    
-                    try:
-                        # Statsmodels Logit
-                        # statsmodels 要求数据必须是数值型？DataService.preprocess 已经处理过了？
-                        # df_clean 是严格的全病例数据
-                        # 如果需要，转换为哑变量？
-                        # 如果是字符串/类别类型，smf 的 formula 会自动处理（定性变量）。
-                        model = smf.logit(formula=formula, data=df_clean).fit(disp=0)
-                        
-                        # 指标
-                        metrics['aic'] = model.aic
-                        metrics['bic'] = model.bic
-                        metrics['ll'] = model.llf
-                        metrics['n'] = len(df_clean)  # 添加样本量
-                        metrics['r2'] = model.prsquared # 伪 R2
-                        metrics['k'] = len(model.params)
- 
-                        # 预测值 (概率)
-                        y_prob = model.predict(df_clean)
-                        y_true = df_clean[target]
-                        
-                        # ROC
-                        fpr, tpr, _ = roc_curve(y_true, y_prob)
-                        metrics['auc'] = calc_auc(fpr, tpr)
-                        ci_str, p_val = calc_auc_stats(metrics['auc'], sum(y_true), len(y_true)-sum(y_true))
-                        metrics['auc_ci'] = ci_str
-                        metrics['auc_p'] = p_val
-                        
-                        roc_data = [{'fpr': f, 'tpr': t} for f, t in zip(fpr, tpr)]
-                        
-                        raw_pred = y_prob.values
-                        raw_y = y_true.values
- 
-                        # 高级图表 (校准曲线 & DCA)
-                        from app.services.evaluation_service import EvaluationService
-                        calib_data = EvaluationService.calculate_calibration(raw_y, raw_pred)
-                        dca_data = EvaluationService.calculate_dca(raw_y, raw_pred)
-                        
-                    except Exception as e:
-                        print(e)
-                        # 如果 statsmodels 失败（例如完全分离），则回退到简单运行
-                        model_res = ModelingService.run_model(df_clean, 'logistic', target, feats)
-                        metrics = model_res.get('metrics', {})
-                        # 即使在回退时也要确保 n 存在
-                        metrics['n'] = len(df_clean)
-                        if 'plots' in model_res and 'roc' in model_res['plots']:
-                             roc_data = model_res['plots']['roc']
-            
-
-
-                elif model_type == 'cox':
-                    # Cox ROC 的自定义实现
-                    # 数据预处理
-                    temp_df = df_clean[[target, event_col] + feats].copy()
-                    temp_df = DataService.preprocess_for_formula(temp_df)
-                    
-                    # 拟合
-                    cph = CoxPHFitter()
-                    cph.fit(temp_df, duration_col=target, event_col=event_col, formula=" + ".join(feats))
-                    
-                    # 拟合统计指标 (全局)
-                    metrics['c_index'] = cph.concordance_index_
-                    metrics['auc'] = metrics['c_index'] 
-                    metrics['aic'] = cph.AIC_partial_
-                    metrics['ll'] = cph.log_likelihood_
-                    n_events = cph.event_observed.sum()
-                    metrics['n'] = len(temp_df) # 添加样本量
-                    k = len(cph.params_)
-                    metrics['k'] = k
-                    metrics['bic'] = -2 * metrics['ll'] + k * np.log(n_events)
-                    
-                    # 时变指标循环
-                    # 确定时间点 (复用逻辑或简单的启发式方法)
-                    max_dur = temp_df[target].max()
-                    points = []
-                    time_unit = 'months'
-                    if max_dur > 730: # 大约 2 年
-                        time_unit = 'days'
-                        candidates = [365, 730, 1095, 1460, 1825] # 1, 2, 3, 4, 5 年
-                        for c in candidates:
-                             if max_dur > c: points.append(c)
-                    else: # 如果最大随访时间小于 2 年，默认为月
-                        time_unit = 'months'
-                        candidates = [12, 24, 36, 48, 60] # 1, 2, 3, 4, 5 年
-                        for c in candidates:
-                             if max_dur > c: points.append(c)
-                    
-                    # 如果没有指定时间点，或者作为默认值，始终包含中位时间
-                    median_time = int(temp_df[target].median())
-                    if not points: points = [median_time]
-                    
-                    metrics['time_dependent'] = {}
-                    metrics['time_unit'] = time_unit
-                    metrics['available_time_points'] = points
-                    
-                    raw_preds_dict = {} # t -> prob
-                    
-                    for t in points:
-                        # S(t) -> Prob(Event <= t) = 1 - S(t)
-                        surv_df = cph.predict_survival_function(temp_df, times=[t])
-                        y_prob = 1 - surv_df.iloc[0].values
-                        
-                        # 在 T 时刻的验证掩码
-                        mask_case = (temp_df[event_col] == 1) & (temp_df[target] <= t)
-                        mask_control = (temp_df[target] > t)
-                        valid_mask = mask_case | mask_control
-                        
-                        y_binary = mask_case[valid_mask].astype(int)
-                        y_score_valid = y_prob[valid_mask]
-                        
-                        t_metrics = {}
-                        if len(y_binary.unique()) > 1:
-                            fpr, tpr, _ = roc_curve(y_binary, y_score_valid)
-                            t_auc = calc_auc(fpr, tpr)
-                            t_metrics['auc'] = t_auc
-                            ci_str, p_val = calc_auc_stats(t_auc, sum(y_binary), len(y_binary)-sum(y_binary))
-                            t_metrics['auc_ci'] = ci_str
-                            t_metrics['auc_p'] = p_val
-                            t_metrics['roc_data'] = [{'fpr': f, 'tpr': v} for f, v in zip(fpr, tpr)]
-                        else:
-                            t_metrics['auc'] = 0.5
-                            t_metrics['auc_ci'] = "-"
-                            
-                            t_metrics['auc'] = 0.5
-                            t_metrics['auc_ci'] = "-"
-                        
-                        # Calibration & DCA for Cox at T (using binary approx)
-                        if len(y_binary.unique()) > 1:
-                             from app.services.evaluation_service import EvaluationService
-                             t_metrics['calibration'] = EvaluationService.calculate_calibration(y_binary, y_score_valid)
-                             t_metrics['dca'] = EvaluationService.calculate_dca(y_binary, y_score_valid)
-                            
-                        metrics['time_dependent'][t] = t_metrics
-                        
-                        # 存储原始预测值以供后续 NRI 计算
-                        # 我们需要 NRI 的索引保持一致
-                        # 存储完整数组 (y_prob)，并让 NRI 函数处理掩码
-                        raw_preds_dict[t] = y_prob
-                    
-                    # 存储原始输出以供 NRI (比较步骤)
-                    # 对于 Cox 模型，raw_pred 现在是 {t: y_prob} 的字典
-                    raw_pred = raw_preds_dict
-                    raw_y = {
-                        'time': temp_df[target].values,
-                        'event': temp_df[event_col].values
-                    }
-
-                model_res = {
-                    'name': name,
-                    'features': feats,
-                    'metrics': metrics
-                }
-                
-                # 将绘图数据附加到模型结果中
-                if model_type == 'logistic':
-                    model_res['plots'] = {
-                        'roc': roc_data,
-                        'calibration': calib_data,
-                        'dca': dca_data
-                    }
-                
-                results.append({
-                    'model_res': model_res,
-                    'raw_pred': raw_pred,
-                    'raw_y': raw_y
-                })
-                
-            except Exception as e:
-                print(f"Model {name} failed: {e}")
-                import traceback
-                traceback.print_exc()
-                results.append({
-                    'model_res': {'name': name, 'error': str(e)},
-                    'raw_pred': None,
-                    'raw_y': None
-                })
-
-        # 2. 如果基准模型存在，则计算 NRI/IDI (模型 0 = 基准)
-        # 仅在模型共享相同行时可行。我们上面已经假设了严格的全病例分析。
-        if len(results) >= 2 and results[0]['raw_pred'] is not None:
-            from app.services.evaluation_service import EvaluationService
-            from scipy.stats import chi2
-            base = results[0]
-            
-            for i in range(1, len(results)):
-                curr = results[i]
-                if curr['raw_pred'] is None: continue
-                
-                # 检查模型类型
-                if model_type == 'logistic':
-                    # 标准 NRI
-                    try:
-                        nri_res = EvaluationService.calculate_nri_idi(
-                            base['raw_y'],
-                            base['raw_pred'],
-                            curr['raw_pred']
-                        )
-                        # Add to current model metrics
-                        curr['model_res']['metrics'].update(nri_res)
-                    except Exception as e:
-                        print(f"Logistic 模型 {curr['model_res']['name']} 的 NRI 计算失败: {e}")
-                        
-                elif model_type == 'cox':
-                    # 每个 T 点的时变 NRI
-                    # base['raw_pred'] 是 {t: prob}，curr['raw_pred'] 也是 {t: prob}
-                    # raw_y 是 {'time', 'event'}
-                    
-                    base_preds = base['raw_pred']
-                    curr_preds = curr['raw_pred']
-                    time_points = curr['model_res']['metrics'].get('available_time_points', [])
-                    
-                    for t in time_points:
-                        if t not in base_preds or t not in curr_preds: continue
-                        
-                        p_base = base_preds[t]
-                        p_curr = curr_preds[t]
-                        
-                        # 构造 T 时刻的二元目标
-                        times = base['raw_y']['time']
-                        events = base['raw_y']['event']
-                        
-                        # 掩码：排除在 T 之前删失的病例
-                        mask_case = (events == 1) & (times <= t)
-                        mask_control = (times > t)
-                        valid = mask_case | mask_control
-                        
-                        y_true = mask_case[valid].astype(int)
-                        y_prob_base = p_base[valid]
-                        y_prob_curr = p_curr[valid]
-                        
-                        try:
-                            nri_res = EvaluationService.calculate_nri_idi(
-                                y_true,
-                                y_prob_base,
-                                y_prob_curr
-                            )
-                            # 添加到时变指标中
-                            # 例如 metrics['time_dependent'][t]['nri'] = ...
-                            if t in curr['model_res']['metrics']['time_dependent']:
-                                curr['model_res']['metrics']['time_dependent'][t].update(nri_res)
-                                
-                        except Exception as e:
-                            print(f"Cox 模型 {curr['model_res']['name']} 在 t={t} 的 NRI 计算失败: {e}")
- 
-                        # 计算 t 时刻的 Delong 检验 (时变 AUC 比较)
-                        try:
-                             delong_res = EvaluationService.calculate_delong_test(
-                                 y_true,
-                                 y_prob_base,
-                                 y_prob_curr
-                             )
-                             if t in curr['model_res']['metrics']['time_dependent']:
-                                 curr['model_res']['metrics']['time_dependent'][t]['p_delong'] = delong_res.get('p_delong')
-                        except Exception as e:
-                             print(f"Delong at t={t} failed: {e}")
-
-        # 2b. Logistic 模型的全局 Delong 检验
-        if len(results) >= 2 and results[0]['raw_pred'] is not None and not isinstance(results[0]['raw_pred'], dict):
-             base = results[0]
-             for i in range(1, len(results)):
-                 curr = results[i]
-                 if curr['raw_pred'] is not None:
-                      try:
-                          delong_res = EvaluationService.calculate_delong_test(
-                              base['raw_y'],
-                              base['raw_pred'],
-                              curr['raw_pred']
-                          )
-                          curr['model_res']['metrics']['p_delong'] = delong_res.get('p_delong')
-                      except Exception as e:
-                          print(f"Delong failed for logistic: {e}")
-
-        # 3. 似然比检验 (LRT) 和 AIC/BIC 比较 (全局)
-        if len(results) > 0:
-            base = results[0]
-            base_model_metrics = base['model_res']['metrics']
-            for i in range(1, len(results)):
-                curr = results[i]
-                if curr['raw_pred'] is None: continue # 如果模型失败则跳过
-                curr_model_metrics = curr['model_res']['metrics']
-
-                if 'aic' in base_model_metrics and 'aic' in curr_model_metrics:
-                    curr_model_metrics['delta_aic'] = curr_model_metrics['aic'] - base_model_metrics['aic']
-                
-                if 'bic' in base_model_metrics and 'bic' in curr_model_metrics:
-                    curr_model_metrics['delta_bic'] = curr_model_metrics['bic'] - base_model_metrics['bic']
-                    
-                # 似然比检验 (LRT) P 值
-                # 2 * (LL_new - LL_old) ~ Chi2(df)
-                if 'll' in base_model_metrics and 'll' in curr_model_metrics:
-                     ll_base = base_model_metrics['ll']
-                     ll_curr = curr_model_metrics['ll']
-                     k_base = base_model_metrics.get('k', 0)
-                     k_curr = curr_model_metrics.get('k', 0)
-                     
-                     if k_curr > k_base: # 嵌套模型假设 (添加变量)
-                         lrt_stat = 2 * (ll_curr - ll_base)
-                         df_diff = k_curr - k_base
-                         if lrt_stat > 0:
-                             p_val = chi2.sf(lrt_stat, df_diff)
-                             curr['model_res']['metrics']['p_lrt'] = float(p_val)
-                             curr['model_res']['metrics']['lrt_stat'] = float(lrt_stat)
-
-                             
-        # 清理庞大的原始数组
-        for r in results:
-            if 'raw_pred' in r: del r['raw_pred']
-            if 'raw_y' in r: del r['raw_y']
-            
-        return {
-            'comparison_data': [r['model_res'] for r in results],
-            'methodology': AdvancedModelingService._generate_comparison_methodology()
-        }
-
     @staticmethod
     def _generate_comparison_methodology():
         return ("使用受试者工作特征曲线 (ROC) 下面积 (AUC) 或 Harrell's C-index 来评估模型的区分度。"
                 "基于相同的全病例数据集，对模型的预测性能进行了比较分析。")
+
 
     @staticmethod
     def _generate_nomogram_methodology(model_type):
