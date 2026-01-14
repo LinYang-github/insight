@@ -57,6 +57,10 @@ class PreprocessingService:
                 # 延迟处理 MICE
                 if pd.api.types.is_numeric_dtype(df[col]):
                     mice_cols.append(col)
+            elif method == 'random_forest':
+                # 延迟处理 Random Forest
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    mice_cols.append(col) # Reuse logic, but will use different estimator
         
         # 2. 处理 MICE 填补
         if mice_cols:
@@ -74,18 +78,31 @@ class PreprocessingService:
                     # (由于 strategies[col]=='mice'，意味我们要修复它)
                     cols_to_impute = [c for c in mice_cols if df[c].isnull().any()]
                     
-                    if cols_to_impute:
-                        imputer = IterativeImputer(max_iter=10, random_state=0)
-                        # 在所有数值列上进行拟合和转换（实际上会填补所有缺失的数值列）
-                        imputed_matrix = imputer.fit_transform(numeric_df)
-                        
-                        # 转回 DataFrame
-                        imputed_df = pd.DataFrame(imputed_matrix, columns=numeric_df.columns, index=numeric_df.index)
-                        
-                        # 用请求列的填补值更新原始数据框
-                        for col in mice_cols:
-                            if col in imputed_df.columns:
-                                df[col] = imputed_df[col]
+                # 区分 MICE (BayesianRidge) 和 Random Forest
+                # 检查是否有任意列使用了 RF
+                use_rf = any(strategies.get(c) == 'random_forest' for c in mice_cols)
+                
+                if cols_to_impute:
+                    estimator = None
+                    if use_rf:
+                        from sklearn.ensemble import RandomForestRegressor
+                        # n_jobs=-1 to use all cores
+                        estimator = RandomForestRegressor(n_jobs=-1, random_state=0)
+                    
+                    # IterativeImputer 默认使用 BayesianRidge
+                    # 如果指定 estimator，则使用它 (如 RF)
+                    imputer = IterativeImputer(estimator=estimator, max_iter=10, random_state=0)
+                    
+                    # 在所有数值列上进行拟合和转换（实际上会填补所有缺失的数值列）
+                    imputed_matrix = imputer.fit_transform(numeric_df)
+                    
+                    # 转回 DataFrame
+                    imputed_df = pd.DataFrame(imputed_matrix, columns=numeric_df.columns, index=numeric_df.index)
+                    
+                    # 用请求列的填补值更新原始数据框
+                    for col in mice_cols:
+                        if col in imputed_df.columns:
+                            df[col] = imputed_df[col]
             except ImportError:
                  # sklearn 版本问题或未安装时的回退方案
                  print("警告: MICE 需要 sklearn>=0.21。回退至基本的均值填补。")

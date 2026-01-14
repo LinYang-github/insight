@@ -68,6 +68,7 @@
                              <el-option v-if="isNumeric(scope.row.type)" label="均值填补 (Mean)" value="mean" />
                              <el-option v-if="isNumeric(scope.row.type)" label="中位数填补 (Median)" value="median" />
                              <el-option v-if="isNumeric(scope.row.type)" label="多重插补 (MICE)" value="mice" />
+                             <el-option v-if="isNumeric(scope.row.type)" label="随机森林 (Random Forest)" value="random_forest" />
                              <el-option label="众数填补 (Mode)" value="mode" />
                          </el-select>
                      </template>
