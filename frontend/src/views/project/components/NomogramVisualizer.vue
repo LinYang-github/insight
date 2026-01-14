@@ -6,8 +6,8 @@
          <el-col :span="16">
              <div class="canvas-wrapper" ref="canvasWrapper">
                  <div class="canvas-toolbar">
-                     <span>交互式列线图 (Interactive Nomogram)</span>
-                     <el-button size="small" type="primary" link @click="exportImage">下载图片</el-button>
+                     <span>交互式列线图 (Interactive Nomogram)</span><div><el-button size="small" type="success" link @click="$emit('view-calibration')">查看校准曲线</el-button>
+                     <el-button size="small" type="primary" link @click="exportImage">下载图片</el-button></div>
                  </div>
                  
                  <svg ref="svgRef" :width="width" :height="height" class="nomogram-svg">

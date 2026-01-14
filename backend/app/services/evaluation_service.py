@@ -89,10 +89,14 @@ class EvaluationService:
             prob_event = 1 - surv_df.iloc[0].values 
             
             # 2. Binning based on predicted risk
-            # Create quantiles
             df_temp = df.copy()
             df_temp['prob_event'] = prob_event
-            df_temp['bin'] = pd.qcut(df_temp['prob_event'], n_bins, duplicates='drop', labels=False)
+            
+            # Use cut if qcut fails due to few unique values, or just more robust binning
+            try:
+                df_temp['bin'] = pd.qcut(df_temp['prob_event'], n_bins, duplicates='drop', labels=False)
+            except ValueError:
+                df_temp['bin'] = pd.cut(df_temp['prob_event'], n_bins, labels=False)
             
             calibration_data = {
                 'prob_pred': [],
@@ -106,26 +110,31 @@ class EvaluationService:
             
             for b in valid_bins:
                 bin_data = df_temp[df_temp['bin'] == b]
-                if len(bin_data) == 0:
+                if len(bin_data) < 2: # Too few samples to estimate KM reliably
                     continue
                 
                 # Mean predicted probability in this bin
                 mean_pred = bin_data['prob_event'].mean()
                 
                 # Observed probability: 1 - KM(time_point)
-                kmf.fit(bin_data[duration_col], bin_data[event_col])
-                # Ensure time_point is within range or take last
-                if time_point > kmf.survival_function_.index.max():
-                     obs_surv = kmf.survival_function_.iloc[-1, 0]
-                else:
-                     # Get closest index
-                     idx = kmf.survival_function_.index.get_indexer([time_point], method='nearest')[0]
-                     obs_surv = kmf.survival_function_.iloc[idx, 0]
-                
-                obs_event = 1 - obs_surv
-                
-                calibration_data['prob_pred'].append(mean_pred)
-                calibration_data['prob_true'].append(obs_event)
+                try:
+                    kmf.fit(bin_data[duration_col], bin_data[event_col])
+                    # Ensure time_point is within range or take last
+                    if time_point > kmf.survival_function_.index.max():
+                         obs_surv = kmf.survival_function_.iloc[-1, 0]
+                    elif time_point < kmf.survival_function_.index.min():
+                         obs_surv = 1.0
+                    else:
+                         # Get closest index
+                         idx = kmf.survival_function_.index.get_indexer([time_point], method='nearest')[0]
+                         obs_surv = kmf.survival_function_.iloc[idx, 0]
+                    
+                    obs_event = 1 - obs_surv
+                    
+                    calibration_data['prob_pred'].append(float(mean_pred))
+                    calibration_data['prob_true'].append(float(obs_event))
+                except:
+                    continue
                 
             return calibration_data
             

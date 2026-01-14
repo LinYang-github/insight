@@ -116,3 +116,63 @@ def export_model(current_user):
         'message': 'Export successful',
         'download_url': f"/api/data/download/{filename}" # Need a download endpoint
     }), 200
+
+@modeling_bp.route('/select-variables', methods=['POST'])
+@token_required
+def select_variables(current_user):
+    """
+    执行自动化变量筛选。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    model_type = data.get('model_type', 'linear')
+    target = data.get('target')
+    features = data.get('features', [])
+    method = data.get('method', 'stepwise') # stepwise, lasso
+    params = data.get('params', {})
+    
+    if not all([dataset_id, model_type, target, features]):
+        return jsonify({'message': 'Missing required parameters'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    
+    # 过滤特征名
+    feature_names = []
+    for f in features:
+        if isinstance(f, dict):
+            feature_names.append(f.get('name') or f.get('value'))
+        else:
+            feature_names.append(str(f))
+    
+    # 加载必要数据
+    required_cols = list(feature_names)
+    if isinstance(target, dict):
+        required_cols.extend(target.values())
+    else:
+        required_cols.append(target)
+    
+    required = list(set(required_cols))
+    df = DataService.load_data_optimized(dataset.filepath, columns=required)
+    
+    # 执行筛选
+    from app.services.model_selection_service import ModelSelectionService
+    
+    try:
+        if method == 'stepwise':
+            direction = params.get('direction', 'both')
+            criterion = params.get('criterion', 'aic')
+            results = ModelSelectionService.run_stepwise_selection(
+                df, target, feature_names, model_type, direction, criterion
+            )
+        elif method == 'lasso':
+            results = ModelSelectionService.run_lasso_selection(
+                df, target, feature_names, model_type
+            )
+        else:
+            return jsonify({'message': f'Unknown selection method: {method}'}), 400
+            
+        return jsonify(results), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'message': str(e)}), 500

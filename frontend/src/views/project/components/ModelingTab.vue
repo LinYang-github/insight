@@ -78,6 +78,20 @@
                            </el-option>
                        </el-select>
                        
+                       <!-- Variable Selection Tool -->
+                       <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                           <el-button 
+                               type="primary" 
+                               plain 
+                               size="small" 
+                               :icon="Filter"
+                               @click="showSelectionDialog = true"
+                               :disabled="!config.target || config.features.length < 2"
+                           >
+                               变量筛选 (Stepwise/LASSO)
+                           </el-button>
+                       </div>
+                       
                        <!-- VIF Alert -->
                         <el-alert
                             v-if="collinearityWarning"
@@ -211,8 +225,8 @@
                 </el-descriptions>
 
                 <!-- Result Tabs -->
-                <el-tabs type="border-card">
-                    <el-tab-pane label="模型详情 (Details)">
+                <el-tabs v-model="activeResultTab" type="border-card">
+                    <el-tab-pane label="模型详情 (Details)" name="details">
                         <!-- ML Results (Importance) -->
                         <div v-if="results.importance">
                              <h3>特征重要性 (Feature Importance - SHAP)</h3>
@@ -301,7 +315,7 @@
                         </el-table>
                     </el-tab-pane>
 
-                    <el-tab-pane label="评估图表 (Clinical Eval)" v-if="config.model_type !== 'linear'">
+                    <el-tab-pane label="评估图表 (Clinical Eval)" name="clinical" v-if="config.model_type !== 'linear'">
                         
                         <!-- Time Selector for Survivor -->
                         <div v-if="availableTimePoints.length > 0" style="margin-bottom: 20px;">
@@ -429,7 +443,7 @@
                         </el-row>
                     </el-tab-pane>
 
-                    <el-tab-pane label="列线图 (Nomogram)" v-if="nomogramData">
+                    <el-tab-pane label="列线图 (Nomogram)" name="nomogram" v-if="nomogramData">
                          <el-alert title="简易列线图评分表 (Scorekeeper)" type="info" :closable="false" style="margin-bottom: 15px">
                              <div>
                                  列线图的本质是基于回归系数的线性加权求和。此处提供变量系数表，可用于构建个体化评分工具。
@@ -440,7 +454,7 @@
                          
                          <!-- New Interactive Nomogram (Cox) -->
                          <div v-if="nomogramData.axes">
-                              <NomogramVisualizer :spec="nomogramData" />
+                              <NomogramVisualizer :spec="nomogramData" @view-calibration="activeResultTab = 'clinical'" />
                          </div>
                          
                          <!-- Legacy/Simple Table (Logistic & Fallback) -->
@@ -472,7 +486,7 @@
                          </div>
                     </el-tab-pane>
 
-                    <el-tab-pane label="假设检验 (Assumptions)">
+                    <el-tab-pane label="假设检验 (Assumptions)" name="assumptions">
                          <!-- Multicollinearity (Linear/Logistic) -->
                          <div v-if="['linear', 'logistic'].includes(config.model_type)">
                             <h3>多重共线性 (Multicollinearity) - VIF</h3>
@@ -576,6 +590,87 @@
             </div>
         </div>
     </el-dialog>
+
+    <!-- Variable Selection Dialog -->
+    <el-dialog v-model="showSelectionDialog" title="自动变量筛选 (Automated Variable Selection)" width="600px" destroy-on-close>
+        <div class="selection-config">
+            <el-form label-position="top" size="small">
+                <el-form-item label="筛选方法 (Selection Method)">
+                    <el-radio-group v-model="selectionParams.method">
+                        <el-radio label="stepwise">逐步回归 (Stepwise)</el-radio>
+                        <el-radio label="lasso">LASSO 压缩</el-radio>
+                    </el-radio-group>
+                </el-form-item>
+                
+                <el-row :gutter="20" v-if="selectionParams.method === 'stepwise'">
+                    <el-col :span="12">
+                        <el-form-item label="筛选方向">
+                            <el-select v-model="selectionParams.direction" style="width: 100%">
+                                <el-option label="双向 (Both)" value="both" />
+                                <el-option label="向前 (Forward)" value="forward" />
+                                <el-option label="向后 (Backward)" value="backward" />
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="筛选准则">
+                            <el-select v-model="selectionParams.criterion" style="width: 100%">
+                                <el-option label="AIC (赤池信息准则)" value="aic" />
+                                <el-option label="BIC (贝叶斯信息准则)" value="bic" />
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+                
+                <el-alert v-if="selectionParams.method === 'lasso'" title="LASSO 说明" type="info" :closable="false" style="margin-bottom: 20px">
+                    LASSO 通过 L1 正则化将不重要的变量系数压缩至零，从而实现自动变量选择和降维。
+                </el-alert>
+                
+                <div style="text-align: right; margin-top: 10px;">
+                    <el-button type="primary" @click="runVariableSelection" :loading="selectionLoading">开始筛选</el-button>
+                </div>
+            </el-form>
+        </div>
+        
+        <el-divider v-if="selectionResults" />
+        
+        <div v-if="selectionResults" class="selection-results">
+            <div style="margin-bottom: 15px;">
+                <span style="font-weight: bold; color: #606266;">筛选结果：</span>
+                <el-tag 
+                    v-for="feat in selectionResults.selected_features" 
+                    :key="feat" 
+                    type="success" 
+                    size="small" 
+                    style="margin-right: 5px; margin-top: 5px;"
+                >
+                    {{ feat }}
+                </el-tag>
+                <el-empty v-if="selectionResults.selected_features.length === 0" description="未筛选出显著特征" :image-size="60" />
+            </div>
+            
+            <div v-if="selectionResults.eliminated_features.length > 0" style="margin-bottom: 15px;">
+                <span style="font-size: 13px; color: #909399;">已剔除：</span>
+                <el-tag 
+                    v-for="feat in selectionResults.eliminated_features" 
+                    :key="feat" 
+                    type="info" 
+                    size="small" 
+                    style="margin-right: 5px; margin-top: 5px; text-decoration: line-through;"
+                >
+                    {{ feat }}
+                </el-tag>
+            </div>
+
+            <div v-if="selectionResults.steps" style="max-height: 150px; overflow-y: auto; background: #f8f9fb; padding: 10px; font-size: 12px; color: #606266; border-radius: 4px;">
+                <div v-for="(step, idx) in selectionResults.steps" :key="idx">Step {{ idx+1 }}: {{ step }}</div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center;">
+                <el-button type="success" :disabled="selectionResults.selected_features.length === 0" @click="applySelection">应用筛选结果至模型</el-button>
+            </div>
+        </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -595,12 +690,9 @@ import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import InterpretationPanel from './InterpretationPanel.vue'
-
-
 import InsightChart from './InsightChart.vue'
 import NomogramVisualizer from './NomogramVisualizer.vue'
-
-import { QuestionFilled, ArrowDown, Setting, CopyDocument, MagicStick } from '@element-plus/icons-vue'
+import { MagicStick, QuestionFilled, Setting, CopyDocument, Filter, Search, ArrowDown } from '@element-plus/icons-vue'
 
 const props = defineProps({
     projectId: { type: String, required: true },
@@ -610,6 +702,7 @@ const props = defineProps({
 
 const loading = ref(false)
 const results = ref(null)
+const activeResultTab = ref('details')
 
 
 
@@ -654,6 +747,54 @@ const config = reactive({
         learning_rate: 0.1
     }
 })
+
+// --- 变量筛选 (Variable Selection) ---
+const showSelectionDialog = ref(false)
+const selectionLoading = ref(false)
+const selectionResults = ref(null)
+const selectionParams = reactive({
+    method: 'stepwise',
+    direction: 'both',
+    criterion: 'aic'
+})
+
+const runVariableSelection = async () => {
+    selectionLoading.value = true
+    selectionResults.value = null
+    try {
+        const { data } = await api.post('/modeling/select-variables', {
+            dataset_id: props.datasetId,
+            model_type: config.model_type,
+            target: config.target,
+            features: config.features,
+            method: selectionParams.method,
+            params: {
+                direction: selectionParams.direction,
+                criterion: selectionParams.criterion
+            }
+        })
+        selectionResults.value = data
+        ElMessage.success('筛选完成')
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || '筛选失败')
+    } finally {
+        selectionLoading.value = false
+    }
+}
+
+const applySelection = () => {
+    if (selectionResults.value && selectionResults.value.selected_features) {
+        config.features = [...selectionResults.value.selected_features]
+        showSelectionDialog.value = false
+        ElMessage({
+            message: `已应用 ${config.features.length} 个筛选后的特征。`,
+            type: 'success'
+        })
+        // 自动运行一次模型
+        runModel()
+    }
+}
+// ------------------------------------
 
 
 
@@ -898,10 +1039,16 @@ const activePlots = computed(() => {
     if (config.model_type === 'cox' && results.value.clinical_eval) {
         const t = evaluationTimePoint.value
         if (!t) return {}
+        
+        // 校准曲线展示所有可用的时间点，以便于对比
+        const allCalibrations = results.value.clinical_eval.calibration || {}
+        
         return {
             roc: results.value.clinical_eval.roc[t],
             dca: results.value.clinical_eval.dca[t],
-            calibration: results.value.clinical_eval.calibration[t]
+            calibration: allCalibrations, // 传递全量校准数据
+            is_cox: true,
+            current_t: t
         }
     }
     
@@ -987,24 +1134,52 @@ const renderEvaluationPlots = (plots) => {
 
     // Calibration Curve
     if (plots.calibration) {
-        chartData.calibration.data = [
-            {
+        const calData = []
+        const colors = ['#3B71CA', '#D32F2F', '#2E7D32', '#E6A23C', '#9C27B0']
+        const unit = results.value?.clinical_eval?.time_unit === 'days' ? '天' : '月'
+
+        if (plots.is_cox) {
+            // Cox 模型：绘制多个时间点的曲线
+            const timePoints = Object.keys(plots.calibration).map(Number).sort((a, b) => a - b)
+            timePoints.forEach((t, idx) => {
+                const cal = plots.calibration[t]
+                if (cal && cal.prob_pred) {
+                    calData.push({
+                        x: cal.prob_pred,
+                        y: cal.prob_true,
+                        mode: 'lines+markers',
+                        name: `${t}${unit}`,
+                        line: { color: colors[idx % colors.length], width: t === plots.current_t ? 3 : 2 },
+                        marker: { size: t === plots.current_t ? 8 : 6 },
+                        opacity: t === plots.current_t ? 1 : 0.6
+                    })
+                }
+            })
+        } else {
+            // 普通二分类模型
+            calData.push({
                 x: plots.calibration.prob_pred,
                 y: plots.calibration.prob_true,
                 mode: 'lines+markers',
-                name: 'Model',
-                line: { color: 'red' }
-            },
-            {
-                x: [0, 1], y: [0, 1],
-                mode: 'lines',
-                name: '完美校准 (Perfectly Calibrated)',
-                line: { dash: 'dash', color: 'gray' }
-            }
-        ]
+                name: '模型 (Model)',
+                line: { color: '#D32F2F' }
+            })
+        }
+
+        // 添加完美校准参考线
+        calData.push({
+            x: [0, 1], y: [0, 1],
+            mode: 'lines',
+            name: '完美校准 (Ideal)',
+            line: { dash: 'dash', color: 'gray' },
+            showlegend: true
+        })
+
+        chartData.calibration.data = calData
         chartData.calibration.layout = {
             xaxis: { title: '预测概率均值 (Mean Predicted Probability)', range: [0, 1] },
-            yaxis: { title: '实际阳性比例 (Fraction of Positives)', range: [0, 1] }
+            yaxis: { title: '实际事件发生率 (Fraction of Events)', range: [0, 1] },
+            legend: { orientation: 'h', y: -0.2 }
         }
     }
 
