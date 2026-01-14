@@ -354,32 +354,33 @@ class AdvancedModelingService:
                 cov_part = " + ".join(covariates)
                 if cov_part: cov_part = " + " + cov_part
                 
-                # 在公式中注意定性变量的编码
-                formula = f"{target} ~ {exposure} * C({grp_col}){cov_part}"
+                # 确保列名合法
+                # 公式: Target ~ Exposure * C(Group) + Covs
+                # 注意 Lifelines 的 fit() 不支持 'Target ~ ...' 形式的 formula (LHS)
+                # 必须分别传递 df 和 formula (RHS only)
+                
+                formula_rhs = f"{exposure} * C({grp_col}){cov_part}"
                 
                 if model_type == 'cox':
                      cph = CoxPHFitter()
-                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=formula)
-                     # 寻找交互项
-                     # 它们通常形如 'Exposure:C(Grp)[T.Level]'
-                     # 我们可能需要进行 ANOVA 测试或仅检查最小 P 值。
-                     # 最简单的方法：在 (Exp + Grp) 和 (Exp * Grp) 之间进行似然比检验 (LRT)
-                     # 但 lifelines 很难进行 ANOVA。
-                     # 取交互项的 P 值。如果有多个交互项，情况会比较复杂。
-                     # 对于二元亚组，只有一个交互项。
+                     # fit(df, duration_col=..., event_col=..., formula=...)
+                     cph.fit(temp_df, duration_col=target, event_col=event_col, formula=formula_rhs)
                      summary = cph.summary
                      interaction_rows = [idx for idx in summary.index if ':' in idx]
                      if interaction_rows:
-                         p_interaction = summary.loc[interaction_rows, 'p'].min() # 粗略近似
+                         p_interaction = summary.loc[interaction_rows, 'p'].min()
                       
                 elif model_type == 'logistic':
-                    model = smf.logit(formula, data=temp_df).fit(disp=0)
+                    # Logit 需要 LHS
+                    full_formula = f"{target} ~ {formula_rhs}"
+                    model = smf.logit(full_formula, data=temp_df).fit(disp=0)
                     interaction_rows = [idx for idx in model.pvalues.index if ':' in idx]
                     if interaction_rows:
                          p_interaction = model.pvalues[interaction_rows].min()
 
             except Exception as e:
-                print(f"Interaction failed: {e}")
+                # print(f"Interaction failed: {e}")
+                pass
             
             group_res['p_interaction'] = p_interaction
 
@@ -438,8 +439,17 @@ class AdvancedModelingService:
                 if exposure in cph.summary.index:
                     row = cph.summary.loc[exposure]
                 else:
-                    # Try finding it
-                    return None, None, None, None
+                    # 尝试查找包含 exposure 及其 T.Level 的项（除了 reference）
+                    # 例如 "TreatmentStr[T.Drug]"
+                    candidates = [idx for idx in cph.summary.index if exposure in idx]
+                    if candidates:
+                        # 对于亚组分析，如果有多个 level (例如 A vs C, B vs C)，我们应该返回哪个？
+                        # 对于森林图，通常我们想要主要暴露组的效应。
+                        # 这里简单取第一个非 reference 的 level。
+                        # 或者，我们可以假设暴露是二分类的。
+                        row = cph.summary.loc[candidates[0]]
+                    else:
+                        return None, None, None, None
                 
                 return row['exp(coef)'], row['exp(coef) lower 95%'], row['exp(coef) upper 95%'], row['p']
                 
@@ -447,12 +457,23 @@ class AdvancedModelingService:
                 f = f"{target} ~ {formula}"
                 model = smf.logit(f, data=df).fit(disp=0)
                 if exposure in model.params.index:
-                    est = np.exp(model.params[exposure])
-                    conf = model.conf_int()
-                    lower = np.exp(conf.loc[exposure][0])
-                    upper = np.exp(conf.loc[exposure][1])
-                    p = model.pvalues[exposure]
-                    return est, lower, upper, p
+                     est = np.exp(model.params[exposure])
+                     conf = model.conf_int()
+                     lower = np.exp(conf.loc[exposure][0])
+                     upper = np.exp(conf.loc[exposure][1])
+                     p = model.pvalues[exposure]
+                     return est, lower, upper, p
+                else:
+                     # 查找 Categorical 形式
+                     candidates = [idx for idx in model.params.index if exposure in idx]
+                     if candidates:
+                         target_param = candidates[0]
+                         est = np.exp(model.params[target_param])
+                         conf = model.conf_int()
+                         lower = np.exp(conf.loc[target_param][0])
+                         upper = np.exp(conf.loc[target_param][1])
+                         p = model.pvalues[target_param]
+                         return est, lower, upper, p
         except:
             return None, None, None, None
         return None, None, None, None
