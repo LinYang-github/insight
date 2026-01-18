@@ -1,7 +1,10 @@
 
 import sys
 import os
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+
 from app.services.validation_service import ValidationService
 
 def verify_robustness():
@@ -49,7 +52,7 @@ if __name__ == "__main__":
     try:
         verify_robustness()
         verify_stress_test()
-        print("\nPHASE 3 VERIFICATION SUCCESSFUL")
+        print("\nROBUSTNESS & STRESS VERIFICATION SUCCESSFUL")
     except Exception as e:
         print(f"\nFAIL: Exception: {e}")
         import traceback

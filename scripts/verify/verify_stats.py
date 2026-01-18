@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+
 import pandas as pd
 import numpy as np
 from app.services.statistics_service import StatisticsService

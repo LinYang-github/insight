@@ -1,19 +1,24 @@
-# General
+# ==========================================
+# General / OS
+# ==========================================
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
+Thumbs.db
+desktop.ini
 
-# Python / Flask
+# ==========================================
+# Python / Backend
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
+develop-eggs/
 eggs/
 .eggs/
 lib/
@@ -28,8 +33,8 @@ wheels/
 MANIFEST
 
 # Virtual Environment
-venv/
 .venv/
+venv/
 env/
 ENV/
 
@@ -41,23 +46,46 @@ instance/
 !.env.example
 flask_session/
 
+# ==========================================
 # Database
+# ==========================================
 *.sqlite3
 *.db
 *.db-journal
 *.mdb
 *.ldb
 *.sl3
+# Root backup folder
+data/backups/
 
-# Backend Data / Uploads
-data/
-backend/data/
-backend/uploads/
-# Keep gitkeep if present to maintain folder structure
+# ==========================================
+# Project Specific: Data, Logs, Reports
+# ==========================================
+# Ignore all logs
+logs/
+*.log
+
+# Ignore all reports
+reports/
+*.pdf
+*.xlsx
+*.docx
+
+# Data Directory Management
+# We ignore general data/ and backend/data/ but want to keep samples
+data/*
+!data/samples/
+!data/.gitkeep
+
+backend/data/*
 !backend/data/.gitkeep
+
+backend/uploads/*
 !backend/uploads/.gitkeep
 
+# ==========================================
 # Node.js / Frontend
+# ==========================================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -69,10 +97,13 @@ frontend/dist/
 frontend/dist-ssr/
 frontend/coverage/
 
-# IDEs
+# ==========================================
+# IDEs / Tools
+# ==========================================
 .idea/
 .vscode/*
 !.vscode/tasks.json
+!.vscode/launch.json
 *.swp
 *.swo
 *~
@@ -81,3 +112,4 @@ frontend/coverage/
 .coverage
 htmlcov/
 .pytest_cache/
+.pytest_cache

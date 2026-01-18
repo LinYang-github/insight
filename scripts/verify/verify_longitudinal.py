@@ -1,5 +1,9 @@
 
 import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+
+import sys
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock
@@ -114,4 +118,3 @@ if __name__ == "__main__":
         verify_clustering(Service)
     except Exception as e:
         print(f"Setup failed: {e}")
-

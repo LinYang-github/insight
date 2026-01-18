@@ -1,7 +1,10 @@
 
 import sys
 import os
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+
 from app.services.validation_service import ValidationService
 
 def test_generate_pdf():

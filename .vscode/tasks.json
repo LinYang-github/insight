@@ -238,7 +238,7 @@
         {
             "label": "🎁 Insight: Package to Executable (PyInstaller)",
             "type": "shell",
-            "command": "python3 package.py",
+            "command": "python3 scripts/package.py",
             "group": "build",
             "presentation": {
                 "reveal": "always",

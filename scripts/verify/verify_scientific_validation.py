@@ -2,7 +2,10 @@
 import sys
 import os
 import json
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+
 from app.services.validation_service import ValidationService
 
 def verify():
@@ -51,7 +54,7 @@ def verify():
         print(f"Allowed: {allowed}")
         sys.exit(1)
 
-    print("\nVERIFICATION SUCCESSFUL")
+    print("\nSCIENTIFIC VALIDATION SUCCESSFUL")
 
 if __name__ == "__main__":
     verify()
