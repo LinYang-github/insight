@@ -41,12 +41,12 @@
                            <el-row :gutter="10">
                                <el-col :span="12">
                                    <el-select v-model="coxTarget.time" placeholder="时间变量 (Time)" filterable @change="syncCoxTarget">
-                                       <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                                       <el-option v-for="opt in timeOptions" :disabled="opt.disabled" :key="opt.value" :label="opt.label" :value="opt.value" />
                                    </el-select>
                                </el-col>
                                <el-col :span="12">
                                    <el-select v-model="coxTarget.event" placeholder="事件变量 (Event)" filterable @change="syncCoxTarget">
-                                       <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+                                       <el-option v-for="opt in eventOptions" :disabled="opt.disabled" :key="opt.value" :label="opt.label" :value="opt.value" />
                                    </el-select>
                                </el-col>
                            </el-row>
@@ -61,7 +61,7 @@
                             </el-tooltip>
                        </template>
                        <el-select v-model="config.features" multiple placeholder="选择特征变量" filterable style="width: 100%">
-                           <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value">
+                           <el-option v-for="opt in featureOptions" :key="opt.value" :label="opt.label" :value="opt.value" :disabled="opt.disabled">
                                <div style="display: flex; justify-content: space-between; align-items: center;">
                                    <span>{{ opt.label }}<el-tag v-if="aiSuggestedFeatures.includes(opt.value)" size="small" type="success" effect="plain" style="margin-left: 5px; transform: scale(0.7); vertical-align: middle;">AI</el-tag></span>
                                    <el-tooltip v-if="opt.status !== 'unknown'" :content="opt.msg" placement="right">
@@ -935,14 +935,46 @@ const variableOptions = computed(() => {
 })
 
 const targetOptions = computed(() => {
-    // For Linear Regression, Target must be numeric (continuous)
-    if (config.model_type === 'linear') {
-        return variableOptions.value.map(v => ({
-            ...v,
-            disabled: !['continuous', 'float', 'int'].includes(v.type)
-        }))
-    }
-    return variableOptions.value
+    return variableOptions.value.map(v => {
+        let disabled = false
+        // 1. 如果变量已被作为特征，禁用之
+        if (config.features.includes(v.value)) disabled = true
+        
+        // 2. 对于线性回归，目标必须是连续型/数值型
+        if (config.model_type === 'linear') {
+            if (!['continuous', 'float', 'int'].includes(v.type)) disabled = true
+        }
+        
+        return { ...v, disabled }
+    })
+})
+
+const timeOptions = computed(() => {
+    return variableOptions.value.map(v => ({
+        ...v,
+        disabled: config.features.includes(v.value) || coxTarget.event === v.value
+    }))
+})
+
+const eventOptions = computed(() => {
+    return variableOptions.value.map(v => ({
+        ...v,
+        disabled: config.features.includes(v.value) || coxTarget.time === v.value
+    }))
+})
+
+const featureOptions = computed(() => {
+    return variableOptions.value.map(v => {
+        let disabled = false
+        // 1. 如果是普通结局变量，禁用之
+        if (config.model_type !== 'cox') {
+            if (config.target === v.value) disabled = true
+        } else {
+            // 2. 如果是 Cox 的时间或事件，禁用之
+            if (coxTarget.time === v.value || coxTarget.event === v.value) disabled = true
+        }
+        return { ...v, disabled }
+    })
 })
 
 const varHealthMap = ref({})
