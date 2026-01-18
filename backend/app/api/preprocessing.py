@@ -66,3 +66,41 @@ def encode(current_user):
         log={'columns': columns}
     )
     return jsonify({'message': 'Encoding successful', 'new_dataset_id': new_dataset.id}), 200
+
+@preprocessing_bp.route('/ai-suggest-strategies', methods=['POST'])
+@token_required
+def ai_suggest_strategies(current_user):
+    """
+    使用 AI 推荐缺失值处理策略。
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    
+    if not dataset_id:
+        return jsonify({'message': 'Missing dataset_id'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    metadata = dataset.meta_data
+    if not metadata:
+        return jsonify({'message': 'No metadata found for dataset'}), 400
+        
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key，请前往“系统设置 -> AI 配置”中配置。'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        recommendation = AIService.suggest_cleaning_strategies(
+            metadata['variables'], 
+            metadata['row_count'], 
+            api_key, 
+            api_base, 
+            model=api_model
+        )
+        return jsonify(recommendation), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500

@@ -316,3 +316,67 @@ def recommend_model(current_user):
     
     recommendation = StatisticsService.recommend_modeling_strategy(df)
     return jsonify({'recommendation': recommendation}), 200
+
+@statistics_bp.route('/ai-analyze-table1', methods=['POST'])
+@token_required
+def ai_analyze_table1(current_user):
+    """
+    使用 AI 对 Table 1 进行全局均衡性分析。
+    """
+    data = request.get_json()
+    table_data = data.get('table_data')
+    group_by = data.get('group_by')
+    
+    if not table_data:
+        return jsonify({'message': 'Missing table data'}), 400
+        
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key，请前往“系统设置 -> AI 配置”中配置。'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.suggest_table1_analysis(
+            table_data, group_by, api_key, api_base, model=api_model
+        )
+        return jsonify({
+            'analysis': report
+        }), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@statistics_bp.route('/ai-interpret-km', methods=['POST'])
+@token_required
+def ai_interpret_km(current_user):
+    """
+    使用 AI 对 Kaplan-Meier 生存分析结果进行解读。
+    """
+    data = request.get_json()
+    plot_data = data.get('plot_data')
+    p_value = data.get('p_value')
+    
+    if not plot_data:
+        return jsonify({'message': 'Missing plot data'}), 400
+        
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key，请前往“系统设置 -> AI 配置”中配置。'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.interpret_survival_analysis(
+            plot_data, p_value, api_key, api_base, model=api_model
+        )
+        return jsonify({
+            'analysis': report
+        }), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500

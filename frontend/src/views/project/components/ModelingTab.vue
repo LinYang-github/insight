@@ -10,13 +10,8 @@
                    <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-weight: bold; border-left: 4px solid #3b71ca; padding-left: 10px;">模型配置</span><el-button type="primary" size="small" class="ai-suggest-btn" :loading="isSuggesting" @click="autoSuggestRoles" :icon="MagicStick">{{ isSuggesting ? 'AI 正在分析变量...' : 'AI 智能角色推荐' }}</el-button></div>
                </template>
                <el-form label-position="top">
-                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                       <div v-if="isSuggesting" style="margin-bottom: 15px;"><el-alert title="AI 助手正在分析变量..." type="info" show-icon :closable="false" /></div><span v-show="false" style="font-size: 14px; color: #606266; font-weight: 500;">变量配置 (Configuration)</span>
-                       <el-tooltip content="智能推荐变量角色 (Auto-Suggest Roles)" placement="top">
-                           <el-button v-show="false" type="primary" link @click="autoSuggestRoles" :icon="MagicStick">自动推荐</el-button>
-                       </el-tooltip>
-                   </div>
-                   <el-form-item label="模型类型">
+                    <div v-if="isSuggesting" style="margin-bottom: 20px;"><el-alert title="AI 助手正在分析变量..." type="info" show-icon :closable="false" /></div>
+                    <el-form-item label="模型类型">
                        <el-select v-model="config.model_type" placeholder="选择模型" style="width: 100%">
                            <el-option v-for="opt in modelOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                        </el-select>
@@ -258,7 +253,7 @@
                             <el-table-column prop="coef" label="系数 (Coef)">
                                 <template #header>
                                      <span>系数 (Coef)</span>
-                                     <el-tooltip content="正值代表正相关（风险增加），负值代表负相关（风险降低）" placement="top">
+                                     <el-tooltip content="回归系数 (Regression Coefficient)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -267,7 +262,7 @@
                             <el-table-column prop="p_value" label="P值">
                                 <template #header>
                                      <span>P值</span>
-                                     <el-tooltip content="P < 0.05 通常认为具有统计学显著意义" placement="top">
+                                     <el-tooltip content="显著性检验 P 值 (Significance Level)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -280,7 +275,7 @@
                             <el-table-column v-if="config.model_type === 'logistic'" label="OR (95% CI)">
                                 <template #header>
                                      <span>OR (95% CI)</span>
-                                     <el-tooltip content="优势比 (Odds Ratio)。OR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
+                                     <el-tooltip content="优势比 (Odds Ratio)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -291,7 +286,7 @@
                             <el-table-column v-if="config.model_type === 'cox'" label="HR (95% CI)">
                                 <template #header>
                                      <span>HR (95% CI)</span>
-                                     <el-tooltip content="风险比 (Hazard Ratio)。HR > 1 代表风险增加，CI 不包含 1 代表显著。" placement="top">
+                                     <el-tooltip content="风险比 (Hazard Ratio)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -304,7 +299,7 @@
                             <el-table-column v-if="['linear', 'logistic'].includes(config.model_type)" prop="vif" label="VIF" width="80">
                                 <template #header>
                                      <span>VIF</span>
-                                     <el-tooltip content="方差膨胀因子。VIF > 5 提示可能存在多重共线性。" placement="top">
+                                     <el-tooltip content="方差膨胀因子 (Variance Inflation Factor)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
@@ -313,7 +308,7 @@
                              <el-table-column v-if="config.model_type === 'cox'" prop="ph_test_p" label="PH Test P" width="100">
                                 <template #header>
                                      <span>PH Test P</span>
-                                     <el-tooltip content="PH 假定校验 P 值。P < 0.05 提示违反比例风险假定" placement="top">
+                                     <el-tooltip content="比例风险假定检验 P 值 (Schoenfeld Residuals Test)" placement="top">
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>

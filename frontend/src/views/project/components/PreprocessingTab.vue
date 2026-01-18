@@ -30,13 +30,38 @@
                             </el-radio-group>
                         </el-popover>
                         <el-divider direction="vertical" />
-                        <el-button type="warning" size="small" @click="handleSmartFix" :loading="processing" icon="MagicStick">一键智能修复 (Smart Fix)</el-button>
-                        <el-button type="primary" size="small" @click="handleImpute" :loading="processing">应用自定义策略</el-button>
+                        <el-button 
+                            type="primary" 
+                            size="small" 
+                            @click="handleSmartFix" 
+                            :loading="isSuggesting" 
+                            icon="MagicStick"
+                            class="ai-btn"
+                        >
+                            {{ isSuggesting ? 'AI 正在分析...' : 'AI 一键智修' }}
+                        </el-button>
+                        <el-button type="success" size="small" @click="handleImpute" :loading="processing">应用自定义策略</el-button>
                     </div>
                 </div>
             </template>
             <!-- Guidance Alert -->
             <el-alert
+                v-if="aiReasons.length > 0"
+                title="AI 修复建议理由"
+                type="success"
+                show-icon
+                class="mb-4"
+                :closable="true"
+            >
+                 <template #default>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #606266;">
+                        <li v-for="(r, idx) in aiReasons" :key="idx">{{ r }}</li>
+                    </ul>
+                 </template>
+            </el-alert>
+            
+            <el-alert
+                v-else
                 title="操作说明"
                 type="info"
                 show-icon
@@ -45,7 +70,7 @@
             >
                 <template #default>
                     <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #606266;">
-                        <li><b>一键智能修复</b>：自动为所有缺失变量选择最优策略（数值型用“均值”，分类/文本用“众数”）。</li>
+                        <li><b>AI 一键智修</b>：利用 LLM 根据变量语义和缺失率自动推荐填补策略。</li>
                         <li><b>应用策略</b>：任何提交的操作都将生成一个<b>新版本的数据集</b>，系统会自动切换至该版本。</li>
                     </ul>
                 </template>
@@ -138,6 +163,8 @@ const emit = defineEmits(['dataset-created'])
 
 const loading = ref(false)
 const processing = ref(false)
+const isSuggesting = ref(false)
+const aiReasons = ref([])
 const imputeStrategies = ref({})
 const selectedEncodeCols = ref([])
 const saveMode = ref('new') // 'new' or 'overwrite'
@@ -172,47 +199,38 @@ watch(() => props.metadata, (meta) => {
 
 const handleSmartFix = async () => {
     /**
-     * 智能修复逻辑：
-     * 1. 遍历变量元数据，识别缺失值大于 0 的项。
-     * 2. 根据变量统计学类型推断策略：
-     *    - 连续型 (Continuous): 使用均值填补 (Mean)。
-     *    - 分类型 (Categorical): 使用众数填补 (Mode)。
+     * AI 智能修复逻辑：
+     * 1. 调用 AI 接口获取推荐策略。
+     * 2. 更新界面上的策略选择。
+     * 3. 提示用户查看理由并手动决定是否立即“应用”。
      */
-    const autoStrategies = {}
-    let imputeCount = 0
-    props.metadata.variables.forEach(v => {
-        // 兼容后端元数据字段名
-        const missing = v.missing !== undefined ? v.missing : v.missing_count
-        if (missing > 0) {
-            autoStrategies[v.name] = isNumeric(v.type) ? 'mean' : 'mode'
-            imputeCount++
-        }
-    })
-
-    if (imputeCount === 0) {
-        ElMessage.info('没有发现缺失值，无需修复。')
-        return
-    }
-
-    // 2. 调用后端执行填补
-    processing.value = true
+    isSuggesting.value = true
+    aiReasons.value = []
     try {
-        const { data } = await api.post('/preprocessing/impute', {
-            dataset_id: props.datasetId,
-            strategies: autoStrategies,
-            save_mode: saveMode.value
-        })
-        ElMessage.success({
-            message: `智能修复完成：已自动填补 ${imputeCount} 个变量。系统已为您切换至新生成的数据集版本。`,
-            duration: 5000
+        const { data } = await api.post('/preprocessing/ai-suggest-strategies', {
+            dataset_id: props.datasetId
         })
         
-        emit('dataset-created', data.new_dataset_id)
+        const recs = data.strategies || {}
+        aiReasons.value = data.reasons || []
         
-    } catch (error) {
-         ElMessage.error(error.response?.data?.message || '智能修复失败')
+        // Update local strategies
+        for (const [col, method] of Object.entries(recs)) {
+            if (imputeStrategies.value.hasOwnProperty(col)) {
+                imputeStrategies.value[col] = method
+            }
+        }
+        
+        ElMessage({
+            message: 'AI 策略生成成功，已更新下方表格。请核选后点击“应用自定义策略”执行。',
+            type: 'success',
+            duration: 6000
+        })
+    } catch (e) {
+        console.error("AI Suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || 'AI 建议生成失败')
     } finally {
-        processing.value = false
+        isSuggesting.value = false
     }
 }
 
@@ -294,5 +312,14 @@ const handleEncode = async () => {
     font-size: 14px;
     padding: 20px;
     text-align: center;
+}
+.ai-btn {
+    background: linear-gradient(45deg, #a855f7, #6366f1);
+    border: none;
+    transition: all 0.3s;
+}
+.ai-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4);
 }
 </style>

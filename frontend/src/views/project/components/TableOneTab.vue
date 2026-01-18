@@ -50,8 +50,21 @@
                 <template #header>
                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>基线特征表 (Table 1: Baseline Characteristics)</span>
-                        <el-button v-if="methodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
-                        <el-button v-if="results.length > 0" type="success" size="small" @click="exportExcel">导出 Excel</el-button>
+                        <div v-if="results.length > 0" style="display: flex; gap: 8px;">
+                            <el-button 
+                                type="primary" 
+                                size="small" 
+                                @click="runAIAnalysis" 
+                                :loading="isAnalyzing"
+                                :icon="MagicStick"
+                                class="ai-baseline-btn"
+                                :disabled="!config.groupBy"
+                            >
+                                AI 均衡性分析
+                            </el-button>
+                            <el-button v-if="methodology" type="info" size="small" @click="copyMethodology" plain icon="Document">复制方法学</el-button>
+                            <el-button type="success" size="small" @click="exportExcel" icon="Download">导出 Excel</el-button>
+                        </div>
                     </div>
                 </template>
 
@@ -124,11 +137,23 @@
                     </el-table-column>
                 </PublicationTable>
                 
+                <!-- Global AI Analysis Report -->
                 <InterpretationPanel 
-                    v-if="selectedRow && selectedRow.interpretation"
-                    :interpretation="selectedRow.interpretation"
+                    v-if="globalAnalysis"
+                    :interpretation="{ text: globalAnalysis, is_ai: true, level: 'info' }"
+                    style="margin-top: 20px;"
                 />
-                <el-empty v-else-if="results.length > 0" description="点击表格行查看详细智能分析" :image-size="60" />
+
+                <div v-if="results.length > 0" style="margin-top: 25px;">
+                    <el-divider content-position="left">
+                        <el-icon><InfoFilled /></el-icon> 变量详析 (Variable Details)
+                    </el-divider>
+                    <InterpretationPanel 
+                        v-if="selectedRow && selectedRow.interpretation"
+                        :interpretation="selectedRow.interpretation"
+                    />
+                    <el-empty v-else description="点击表格行查看该变量的详细智能解读" :image-size="40" />
+                </div>
             </el-card>
         </el-col>
     </el-row>
@@ -178,6 +203,8 @@ const loading = ref(false) // 加载状态
 const results = ref([])    // Table 1 结果数组
 const groupNames = ref([]) // 动态提取的组别名称列表
 const selectedRow = ref(null) // 当前选中的行，用于高亮显示智能解读
+const globalAnalysis = ref(null) // 全局 AI 分析结论
+const isAnalyzing = ref(false)
 
 const config = reactive({
     groupBy: null,
@@ -215,6 +242,8 @@ const generateTable = async () => {
     results.value = []
     groupNames.value = []
     methodology.value = ''
+    globalAnalysis.value = null
+    selectedRow.value = null
 
     try {
         const { data } = await api.post('/statistics/table1', {
@@ -239,6 +268,30 @@ const generateTable = async () => {
         ElMessage.error(error.response?.data?.message || "生成失败")
     } finally {
         loading.value = false
+    }
+}
+
+const runAIAnalysis = async () => {
+    if (results.value.length === 0) return
+    if (!config.groupBy) {
+        ElMessage.warning("请先设置‘分组变量’以进行均衡性分析")
+        return
+    }
+
+    isAnalyzing.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-analyze-table1', {
+            table_data: results.value,
+            group_by: config.groupBy
+        }, { timeout: 60000 })
+        
+        globalAnalysis.value = data.analysis
+        ElMessage.success("AI 均衡性分析完成")
+    } catch (e) {
+        console.error("AI Analysis failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 分析失败")
+    } finally {
+        isAnalyzing.value = false
     }
 }
 
@@ -289,5 +342,18 @@ const exportExcel = async () => {
 <style scoped>
 .tableone-container {
     padding: 20px;
+}
+.ai-baseline-btn {
+    background: linear-gradient(45deg, #6366f1, #a855f7);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-baseline-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
+}
+.ai-baseline-btn.is-disabled {
+    background: #f5f7fa;
+    color: #c0c4cc;
 }
 </style>

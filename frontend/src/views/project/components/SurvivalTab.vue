@@ -60,6 +60,17 @@
                             <el-tag v-if="pValue" type="info">
                                 Log-Rank P: {{ pValue }}
                             </el-tag>
+                            <el-button 
+                                v-if="pValue"
+                                type="primary" 
+                                size="small" 
+                                @click="runAIInterpretation" 
+                                :loading="isInterpreting"
+                                :icon="MagicStick"
+                                class="ai-km-btn"
+                            >
+                                AI 深度解读
+                            </el-button>
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <el-button v-if="kmMethodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
@@ -96,7 +107,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, MagicStick } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 
 /**
@@ -116,8 +127,10 @@ const props = defineProps({
 })
 
 const loading = ref(false) // 加载状态
+const isInterpreting = ref(false)
 const pValue = ref(null)    // Log-rank 检验的 P 值
 const kmInterpretation = ref(null) // 智能解读对象
+const rawPlotData = ref([])
 
 const config = reactive({
     time: null,
@@ -163,6 +176,7 @@ const generatePlot = async () => {
         pValue.value = data.km_data.p_value
         kmInterpretation.value = data.km_data.interpretation
         kmMethodology.value = data.km_data.methodology
+        rawPlotData.value = data.km_data.plot_data
         
         renderPlot(data.km_data.plot_data)
         
@@ -170,6 +184,30 @@ const generatePlot = async () => {
         ElMessage.error(error.response?.data?.message || "绘图失败")
     } finally {
         loading.value = false
+    }
+}
+
+const runAIInterpretation = async () => {
+    if (rawPlotData.value.length === 0) return
+    
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-interpret-km', {
+            plot_data: rawPlotData.value,
+            p_value: pValue.value
+        }, { timeout: 60000 })
+        
+        kmInterpretation.value = {
+            text: data.analysis,
+            is_ai: true,
+            level: 'info'
+        }
+        ElMessage.success("AI 深度解析完成")
+    } catch (e) {
+        console.error("AI KM Interpretation failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 解析失败")
+    } finally {
+        isInterpreting.value = false
     }
 }
 
@@ -244,5 +282,14 @@ const downloadPlot = async (format = 'png') => {
 <style scoped>
 .survival-container {
     padding: 20px;
+}
+.ai-km-btn {
+    background: linear-gradient(45deg, #6366f1, #a855f7);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-km-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
 }
 </style>
