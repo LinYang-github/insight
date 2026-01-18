@@ -141,9 +141,6 @@ class ModelingService:
             
             results = strategy.fit(df_processed, target, new_features, model_params)
             
-            # --- 生成结果解读 (解耦) ---
-            results['interpretation'] = ModelingService._generate_interpretation(model_type, results)
-            
             # --- 生成方法学描述 (解耦) ---
             results['methodology'] = ModelingService._generate_methodology(model_type, model_params)
 
@@ -213,98 +210,6 @@ class ModelingService:
                 
         return " ".join(lines)
 
-    @staticmethod
-    def _generate_interpretation(model_type: str, results: dict) -> dict:
-        """
-        为前端生成结构化的结论解读。
-        """
-        # 1. Machine Learning Models (RF, XGBoost)
-        if model_type in ['random_forest', 'xgboost']:
-            importance = results.get('importance')
-            if not importance: return None
-            
-            # Top 3 features
-            top_features = importance[:3]
-            feat_names = ", ".join([f['feature'] for f in top_features])
-            
-            return {
-                "text_template": "模型识别出的最重要的前 3 个特征变量为：{vars}。",
-                "params": {
-                    "vars": feat_names
-                },
-                "level": "info"
-            }
-            
-        # 2. Statistical Models
-        summary = results.get('summary')
-        if not summary:
-            return None
-            
-        # 筛选显著变量
-        sig_vars = [row for row in summary if row.get('p_value') is not None and row['p_value'] < 0.05]
-        
-        if not sig_vars:
-            return {
-                "text_template": "未发现统计学显著 (P < 0.05) 的变量。目前的证据尚不足以证明存在统计学关联。",
-                "params": {},
-                "level": "info"
-            }
-            
-        # 挑选解释力度最强的变量
-        top_var = None
-        if model_type == 'logistic':
-            # Max OR
-            top_var = max(sig_vars, key=lambda x: x.get('or', 0))
-        elif model_type == 'cox':
-            # Max HR
-            top_var = max(sig_vars, key=lambda x: x.get('hr', 0))
-        else: # 线性回归
-            # 系数绝对值最大
-            top_var = max(sig_vars, key=lambda x: abs(x.get('coef', 0)))
-            
-        # 构造解读信息
-        var_name = top_var['variable']
-        p_val_fmt = "< 0.001" if top_var['p_value'] < 0.001 else f"{top_var['p_value']:.3f}"
-        
-        if model_type == 'cox':
-            hr = top_var['hr']
-            direction = "增加" if hr > 1 else "降低"
-            return {
-                "text_template": "变量 {var} 风险{direction}显著 (HR={hr}, P={p})。",
-                "params": {
-                    "var": var_name,
-                    "direction": direction,
-                    "hr": hr,
-                    "p": p_val_fmt
-                },
-                "level": "danger" if hr > 1 else "success"
-            }
-        elif model_type == 'logistic':
-            or_val = top_var['or']
-            direction = "增加" if or_val > 1 else "降低"
-            return {
-                "text_template": "变量 {var} 风险{direction}显著 (OR={or_val}, P={p})。",
-                "params": {
-                    "var": var_name,
-                    "direction": direction,
-                    "or_val": or_val,
-                    "p": p_val_fmt
-                },
-                "level": "danger" if or_val > 1 else "success"
-            }
-        else: # Linear
-            coef = top_var['coef']
-            direction = "正相关" if coef > 0 else "负相关"
-            return {
-                "text_template": "变量 {var} 与结果呈显著{direction} (Coef={coef}, P={p})。",
-                "params": {
-                    "var": var_name,
-                    "direction": direction,
-                    "coef": coef,
-                    "p": p_val_fmt
-                },
-                "level": "info"
-            }
 
     @staticmethod
     def _diagnose_singularity(df, features):

@@ -4,7 +4,7 @@
   </div>
   <div v-else>
     <el-row :gutter="20">
-       <el-col :span="10">
+       <el-col :span="8">
            <el-card shadow="hover">
                <template #header>
                    <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-weight: bold; border-left: 4px solid #3b71ca; padding-left: 10px;">模型配置</span><el-button type="primary" size="small" class="ai-suggest-btn" :loading="isSuggesting" @click="autoSuggestRoles" :icon="MagicStick">{{ isSuggesting ? 'AI 正在分析变量...' : 'AI 智能角色推荐' }}</el-button></div>
@@ -150,8 +150,9 @@
            </el-card>
        </el-col>
        
-       <el-col :span="14">
-           <el-card shadow="hover" v-if="results">
+       <el-col :span="16">
+            <div v-if="results">
+                <el-card shadow="hover">
                 <template #header>
                     <div class="result-header">
                         <span>运行结果</span>
@@ -175,6 +176,16 @@
                                  对比基线
                              </el-button>
                              
+                             <el-button 
+                                 type="primary" 
+                                 size="small" 
+                                 @click="runAIInterpretation" 
+                                 :loading="isInterpreting"
+                                 :icon="MagicStick"
+                                 class="ai-interpret-btn"
+                             >
+                                 AI 深度解读
+                             </el-button>
                              <el-button type="info" plain size="small" @click="copyMethodology" :icon="CopyDocument">复制方法学</el-button>
                              <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
                         </div>
@@ -525,9 +536,43 @@
                             </el-table>
                          </div>
                     </el-tab-pane>
-                </el-tabs>
-           </el-card>
-       </el-col>
+                                </el-tabs>
+            </el-card>
+            </div>
+            <div v-else>
+                <el-card shadow="never" style="height: 100%; min-height: 640px; display: flex; align-items: center; justify-content: center; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px;">
+                    <el-empty :image-size="240" description=" ">
+                        <template #extra>
+                            <div style="text-align: center; color: #64748b; font-size: 14px; max-width: 480px; transform: translateY(-20px);">
+                                <h2 style="color: #3b71ca; margin-bottom: 24px; font-weight: 700; display: flex; align-items: center; justify-content: center;">
+                                    <MagicStick style="width: 24px; height: 24px; margin-right: 10px;" /> 准备就绪，开启智能发现
+                                </h2>
+                                <div style="background: white; padding: 24px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); text-align: left; border: 1px solid #e2e8f0;">
+                                    <p style="margin-top: 0; font-weight: 600; color: #1e293b; margin-bottom: 16px;">快速开始三部曲：</p>
+                                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                                        <div style="display: flex; gap: 12px;">
+                                            <span style="background: #eff6ff; color: #3b71ca; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">1</span>
+                                            <span>在左侧面板选定<b>模型类型</b>（如 Cox 或 Logistic）</span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px;">
+                                            <span style="background: #eff6ff; color: #3b71ca; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">2</span>
+                                            <span>指定<b>结局变量</b>，并点击右上角 <b>AI 智能角色推荐</b></span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px;">
+                                            <span style="background: #f0fdf4; color: #2e7d32; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">3</span>
+                                            <span>点击底部 <b style="color: #2e7d32;">运行模型</b> 实时获取统计洞察</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p style="margin-top: 24px; color: #94a3b8; font-size: 13px; line-height: 1.5;">
+                                    Insight 将为您自动计算 HR/OR 系数、P 值、生存曲线，<br/>并生成基于 LLM 的医学解读报告。
+                                </p>
+                            </div>
+                        </template>
+                    </el-empty>
+                </el-card>
+            </div>
+        </el-col>
     </el-row>
 
     <!-- Comparison Dialog -->
@@ -837,7 +882,38 @@ const applySelection = () => {
 
 
 const isSuggesting = ref(false)
+const isInterpreting = ref(false)
 const aiSuggestedFeatures = ref([])
+
+const runAIInterpretation = async () => {
+    if (!results.value) {
+        ElMessage.warning('请先运行模型以生成结果')
+        return
+    }
+    
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/modeling/ai-interpret', {
+            model_type: config.model_type,
+            summary: results.value.summary,
+            metrics: results.value.metrics
+        }, { timeout: 60000 })
+        
+        // Update results with AI interpretation
+        // We use a new structure that InterpretationPanel.vue recognizes
+        results.value.interpretation = {
+            text: data.interpretation,
+            is_ai: true,
+            level: 'info'
+        }
+        ElMessage.success('AI 深度解读完成')
+    } catch (e) {
+        console.error("AI Interpretation failed", e)
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.value = false
+    }
+}
 
 const autoSuggestRoles = async () => {
     if (!props.datasetId) return
@@ -1442,5 +1518,14 @@ const compareWithBaseline = () => {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(59, 113, 202, 0.4);
     background: linear-gradient(45deg, #4b81da, #b8d0ff);
+}
+.ai-interpret-btn {
+    background: linear-gradient(45deg, #6366f1, #a855f7);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-interpret-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
 }
 </style>

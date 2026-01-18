@@ -209,3 +209,35 @@ def ai_suggest_roles(current_user):
         }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
+@modeling_bp.route('/ai-interpret', methods=['POST'])
+@token_required
+def ai_interpret(current_user):
+    """
+    使用 AI 对模型结果进行医学解读。
+    """
+    data = request.get_json()
+    model_type = data.get('model_type')
+    summary = data.get('summary')
+    metrics = data.get('metrics')
+    
+    if not all([model_type, summary, metrics]):
+        return jsonify({'message': 'Missing required model results'}), 400
+        
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key，请前往“系统设置 -> AI 配置”中配置。'}), 400
+        
+    try:
+        content = AIService.interpret_results(
+            model_type, summary, metrics, api_key, api_base, model=api_model
+        )
+        return jsonify({
+            'interpretation': content
+        }), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
