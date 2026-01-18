@@ -7,13 +7,13 @@
        <el-col :span="10">
            <el-card shadow="hover">
                <template #header>
-                   <span>模型配置</span>
+                   <div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-weight: bold; border-left: 4px solid #3b71ca; padding-left: 10px;">模型配置</span><el-button type="primary" size="small" class="ai-suggest-btn" :loading="isSuggesting" @click="autoSuggestRoles" :icon="MagicStick">{{ isSuggesting ? 'AI 正在分析变量...' : 'AI 智能角色推荐' }}</el-button></div>
                </template>
                <el-form label-position="top">
                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                       <span style="font-size: 14px; color: #606266; font-weight: 500;">变量配置 (Configuration)</span>
+                       <div v-if="isSuggesting" style="margin-bottom: 15px;"><el-alert title="AI 助手正在分析变量..." type="info" show-icon :closable="false" /></div><span v-show="false" style="font-size: 14px; color: #606266; font-weight: 500;">变量配置 (Configuration)</span>
                        <el-tooltip content="智能推荐变量角色 (Auto-Suggest Roles)" placement="top">
-                           <el-button type="primary" link @click="autoSuggestRoles" :icon="MagicStick">自动推荐</el-button>
+                           <el-button v-show="false" type="primary" link @click="autoSuggestRoles" :icon="MagicStick">自动推荐</el-button>
                        </el-tooltip>
                    </div>
                    <el-form-item label="模型类型">
@@ -63,7 +63,7 @@
                        <el-select v-model="config.features" multiple placeholder="选择特征变量" filterable style="width: 100%">
                            <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value">
                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                   <span>{{ opt.label }}</span>
+                                   <span>{{ opt.label }}<el-tag v-if="aiSuggestedFeatures.includes(opt.value)" size="small" type="success" effect="plain" style="margin-left: 5px; transform: scale(0.7); vertical-align: middle;">AI</el-tag></span>
                                    <el-tooltip v-if="opt.status !== 'unknown'" :content="opt.msg" placement="right">
                                        <span :style="{
                                            display: 'inline-block',
@@ -836,8 +836,14 @@ const applySelection = () => {
 
 
 
+const isSuggesting = ref(false)
+const aiSuggestedFeatures = ref([])
+
 const autoSuggestRoles = async () => {
     if (!props.datasetId) return
+    
+    isSuggesting.value = true
+    aiSuggestedFeatures.value = []
     
     try {
         const { data } = await api.post('/modeling/ai-suggest-roles', {
@@ -856,6 +862,7 @@ const autoSuggestRoles = async () => {
         }
         
         config.features = rec.features
+        aiSuggestedFeatures.value = rec.features || []
         
         ElMessage.success(`AI 推荐完成`)
         if (rec.reason) {
@@ -871,6 +878,8 @@ const autoSuggestRoles = async () => {
     } catch (e) {
         console.error("AI Recommendation failed", e)
         ElMessage.error(e.response?.data?.message || 'AI 推荐失败')
+    } finally {
+        isSuggesting.value = false
     }
 }
 
@@ -1391,5 +1400,15 @@ const compareWithBaseline = () => {
     margin-bottom: 10px;
     font-weight: bold;
     color: #606266;
+}
+.ai-suggest-btn {
+    background: linear-gradient(45deg, #3b71ca, #a8c0ff);
+    border: none;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.ai-suggest-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 113, 202, 0.4);
+    background: linear-gradient(45deg, #4b81da, #b8d0ff);
 }
 </style>
