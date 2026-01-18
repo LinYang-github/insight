@@ -757,9 +757,9 @@ const renderNomogram = (res) => {
 
 // Shared
 const allVars = computed(() => props.metadata?.variables || [])
-const numVars = computed(() => allVars.value.filter(v => ['continuous','float','int'].includes(v.type)))
+const numVars = computed(() => allVars.value.filter(v => ['continuous', 'float', 'int'].includes(v.type)))
 const binaryVars = computed(() => allVars.value) 
-const catVars = computed(() => allVars.value.filter(v => ['object','category','string'].includes(v.type)))
+const catVars = computed(() => allVars.value.filter(v => ['categorical', 'object', 'category', 'string'].includes(v.type)))
 
 const formatP = (p) => {
     if (p < 0.001) return '<0.001'

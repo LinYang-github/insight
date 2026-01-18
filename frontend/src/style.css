@@ -1,11 +1,12 @@
+:root {
   font-family: 'Helvetica Neue',
-  Helvetica,
-  'PingFang SC',
-  'Hiragino Sans GB',
-  'Microsoft YaHei',
-  '微软雅黑',
-  Arial,
-  sans-serif;
+    Helvetica,
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    '微软雅黑',
+    Arial,
+    sans-serif;
 
   /* IDS Color Palette */
   --el-color-primary: #3B71CA;
@@ -22,8 +23,9 @@
   --color-bg: #F5F7FA;
 
   --font-mono: "Roboto Mono",
-  Consolas,
-  monospace;
+    Consolas,
+    monospace;
+}
 
   body {
     margin: 0;

@@ -55,10 +55,8 @@ class DataService:
                  raise ValueError("Unsupported format")
         finally:
             con.close()
-            # 需要时清理原始文件。由此方法的调用者决定或在此处执行。
-            # 通常进行严格清理是好的。
-            if os.path.exists(raw_filepath):
-                os.remove(raw_filepath)
+            # NOTE: We no longer delete the raw file here to prevent accidental data loss
+            # during auto-healing or re-ingest operations.
 
     @staticmethod
     def export_to_csv(db_filepath, output_csv_path):
@@ -85,12 +83,35 @@ class DataService:
             use_chunk (bool): 是否使用 chunksize 读取（仅用于元数据预览），返回 iterator
         """
         if filepath.endswith('.duckdb'):
-             con = duckdb.connect(filepath, read_only=True)
              try:
-                 # 旧版回退：将所有内容加载到 pandas（开销大但兼容性好）
-                 return con.sql("SELECT * FROM data").df()
-             finally:
-                 con.close()
+                 con = duckdb.connect(filepath, read_only=True)
+                 try:
+                     return con.sql("SELECT * FROM data").df()
+                 finally:
+                     con.close()
+             except (duckdb.SerializationException, duckdb.CatalogException, Exception) as e:
+                 # DuckDB version mismatch, missing file, or corruption: Attempt to heal if source exists
+                 source_found = False
+                 # Remove extension to get base path
+                 base_path = filepath.rsplit('.', 1)[0]
+                 for ext in ['.csv', '.xlsx', '.xls']:
+                     src_path = base_path + ext
+                     if os.path.exists(src_path):
+                         try:
+                             DataService.ingest_data(src_path, filepath)
+                             source_found = True
+                             break
+                         except Exception as ingest_error:
+                             # print(f"Ingest failed during healing: {ingest_error}")
+                             continue
+                 
+                 if source_found:
+                     con = duckdb.connect(filepath, read_only=True)
+                     try:
+                         return con.sql("SELECT * FROM data").df()
+                     finally:
+                         con.close()
+                 raise e
  
         # 1. 存在性检查
         if not os.path.exists(filepath):
@@ -143,13 +164,31 @@ class DataService:
         if filepath.endswith('.duckdb'):
             # 零解析查询（直接内存读取）
             try:
-                con = duckdb.connect(filepath, read_only=True)
+                try:
+                    con = duckdb.connect(filepath, read_only=True)
+                except (duckdb.SerializationException, duckdb.CatalogException, Exception):
+                    # Recovery: Probe for source files
+                    source_found = False
+                    base_path = filepath.rsplit('.', 1)[0]
+                    for ext in ['.csv', '.xlsx', '.xls']:
+                        src_path = base_path + ext
+                        if os.path.exists(src_path):
+                            try:
+                                DataService.ingest_data(src_path, filepath)
+                                con = duckdb.connect(filepath, read_only=True)
+                                source_found = True
+                                break
+                            except:
+                                continue
+                    if not source_found:
+                        raise
+
                 cols_sql = ", ".join([f'"{c}"' for c in columns])
                 df = con.sql(f"SELECT {cols_sql} FROM data").df()
                 con.close()
                 return df
             except Exception as e:
-                # 如果列缺失，DuckDB 会抛出通用的 Binder Error
+                # 如果列缺失或数据库损坏，抛出
                 raise ValueError(f"DuckDB 查询错误: {e}")
  
         if not filepath.endswith('.csv'):

@@ -40,12 +40,12 @@
                        <template v-else>
                            <el-row :gutter="10">
                                <el-col :span="12">
-                                   <el-select v-model="config.target.time" placeholder="时间变量 (Time)" filterable>
+                                   <el-select v-model="coxTarget.time" placeholder="时间变量 (Time)" filterable @change="syncCoxTarget">
                                        <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                                    </el-select>
                                </el-col>
                                <el-col :span="12">
-                                   <el-select v-model="config.target.event" placeholder="事件变量 (Event)" filterable>
+                                   <el-select v-model="coxTarget.event" placeholder="事件变量 (Event)" filterable @change="syncCoxTarget">
                                        <el-option v-for="opt in variableOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                                    </el-select>
                                </el-col>
@@ -86,7 +86,7 @@
                                size="small" 
                                :icon="Filter"
                                @click="showSelectionDialog = true"
-                               :disabled="!config.target || config.features.length < 2"
+                               :disabled="!isTargetSet || config.features.length < 2"
                            >
                                变量筛选 (Stepwise/LASSO)
                            </el-button>
@@ -748,6 +748,44 @@ const config = reactive({
     }
 })
 
+// 用于 Cox 模型时间/事件的临时状态，避免直接操作 config.target 导致的 null 访问异常
+const coxTarget = reactive({
+    time: null,
+    event: null
+})
+
+const isTargetSet = computed(() => {
+    if (config.model_type === 'cox') {
+        return config.target && config.target.time && config.target.event
+    }
+    return !!config.target
+})
+
+const syncCoxTarget = () => {
+    config.target = { ...coxTarget }
+}
+
+// 监听模型类型切换，确保 target 数据结构正确
+watch(() => config.model_type, (newType) => {
+    if (newType === 'cox') {
+        // 如果是从非 Cox 切换过来，初始化为对象
+        if (typeof config.target !== 'object' || config.target === null) {
+            config.target = { time: coxTarget.time, event: coxTarget.event }
+        } else {
+            // 如果已经是对象（可能来自自动推荐），读取其值同步到 coxTarget UI
+            coxTarget.time = config.target.time || null
+            coxTarget.event = config.target.event || null
+        }
+    } else {
+        // 如果是从 Cox 切换到其他，如果是对象则重置为 null
+        if (typeof config.target === 'object') {
+            config.target = null
+        }
+    }
+    // 切换模型通常需要重置结果，防止显示旧的统计图表
+    results.value = null
+})
+
 // --- 变量筛选 (Variable Selection) ---
 const showSelectionDialog = ref(false)
 const selectionLoading = ref(false)
@@ -819,6 +857,9 @@ const autoSuggestRoles = async () => {
                 time: rec.target.time,
                 event: rec.target.event
             }
+            // 同步到 UI 响应变量
+            coxTarget.time = rec.target.time
+            coxTarget.event = rec.target.event
         } else {
             config.target = rec.target
         }
