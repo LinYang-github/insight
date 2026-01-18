@@ -81,6 +81,40 @@
                         </el-form-item>
                     </el-form>
                 </el-tab-pane>
+
+                <!-- 4. AI Setup Tab -->
+                <el-tab-pane label="AI 配置 (AI Setup)" name="ai">
+                    <el-form label-position="top" style="max-width: 600px">
+                        <el-alert
+                            title="智能角色推荐协议"
+                            type="warning"
+                            :closable="false"
+                            show-icon
+                            style="margin-bottom: 20px"
+                        >
+                            启用此项将发送您的<b>变量名称（不含原始数据）</b>到第三方大模型。请确保您拥有相关授权。
+                        </el-alert>
+                        
+                        <el-form-item label="API Base URL">
+                            <el-input v-model="settings.llm_api_base" placeholder="https://api.openai.com/v1" />
+                            <div class="form-helper">连接第三方大模型的 API 入口。</div>
+                        </el-form-item>
+
+                        <el-form-item label="API Key">
+                            <el-input v-model="settings.llm_key" type="password" show-password placeholder="sk-..." />
+                            <div class="form-helper">用于鉴权的密钥，建议使用具有限额保护的 Key。</div>
+                        </el-form-item>
+
+                        <el-form-item label="模型名称 (Model Name)">
+                            <el-input v-model="settings.llm_model" placeholder="gpt-4o / deepseek-ai/DeepSeek-V3" />
+                            <div class="form-helper">指定调用的具体模型 ID。SiliconFlow 示例: <code style="background: #eee; padding: 2px 4px;">deepseek-ai/DeepSeek-V3</code></div>
+                        </el-form-item>
+                        
+                        <el-form-item>
+                            <el-button type="primary" @click="saveSettings" :loading="saving">保存 AI 配置 (Save AI Setup)</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-tab-pane>
             </el-tabs>
         </el-card>
     </div>
@@ -100,7 +134,10 @@ const pwdFormRef = ref(null)
 const settings = reactive({
     theme: 'light',
     p_value: 0.05,
-    digits: 3
+    digits: 3,
+    llm_key: '',
+    llm_api_base: 'https://api.openai.com/v1',
+    llm_model: 'gpt-4o'
 })
 
 const pwdForm = reactive({
@@ -142,6 +179,7 @@ const fetchSettings = async () => {
 const saveSettings = async () => {
     saving.value = true
     try {
+        console.log('Saving settings:', settings)
         await api.put('/settings/update', settings)
         userStore.applyTheme(settings.theme)
         ElMessage.success('配置已保存 (Preferences Saved)')

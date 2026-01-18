@@ -12,6 +12,7 @@ from app.models.dataset import Dataset
 import pandas as pd
 import os # missing import fixed
 from app.services.data_service import DataService # Moved import to top for consistency
+from app.services.ai_service import AIService
 
 modeling_bp = Blueprint('modeling', __name__)
 
@@ -175,4 +176,36 @@ def select_variables(current_user):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'message': str(e)}), 500
+
+@modeling_bp.route('/ai-suggest-roles', methods=['POST'])
+@token_required
+def ai_suggest_roles(current_user):
+    """
+    使用 AI 推荐变量角色。
+    """
+    data = request.get_json()
+    model_type = data.get('model_type')
+    variables = data.get('variables') # [{'name': '...', 'type': '...'}, ...]
+    
+    if not model_type or not variables:
+        return jsonify({'message': 'Missing model_type or variables'}), 400
+        
+    # 获取用户 AI 配置
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key，请前往“系统设置 -> AI 配置”中配置。'}), 400
+        
+    try:
+        recommendation = AIService.suggest_variable_roles(
+            model_type, variables, api_key, api_base, model=api_model
+        )
+        return jsonify({
+            'recommendation': recommendation
+        }), 200
+    except Exception as e:
         return jsonify({'message': str(e)}), 500

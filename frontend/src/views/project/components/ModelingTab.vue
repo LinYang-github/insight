@@ -839,36 +839,26 @@ const applySelection = () => {
 const autoSuggestRoles = async () => {
     if (!props.datasetId) return
     
-    // Check if configuration is already set by user? 
-    // Usually we only auto-suggest if empty or explicitly requested.
-    // But here we just overwrite or fill.
-    
     try {
-        const { data } = await api.post('/statistics/recommend-model', {
-            dataset_id: props.datasetId
-        })
+        const { data } = await api.post('/modeling/ai-suggest-roles', {
+            model_type: config.model_type,
+            variables: props.metadata.variables
+        }, { timeout: 60000 })
         const rec = data.recommendation
         
-        // Apply Recommendation
-        config.model_type = rec.model_type
-        
-        if (rec.model_type === 'cox') {
-            config.target = {
-                time: rec.target.time,
-                event: rec.target.event
-            }
-            // 同步到 UI 响应变量
-            coxTarget.time = rec.target.time
-            coxTarget.event = rec.target.event
+        // Apply AI Recommendation
+        if (config.model_type === 'cox') {
+            coxTarget.time = rec.time
+            coxTarget.event = rec.event
+            syncCoxTarget()
         } else {
             config.target = rec.target
         }
         
         config.features = rec.features
         
-        ElMessage.success(`智能推荐: 检测到适合 ${rec.model_type} 模型`)
+        ElMessage.success(`AI 推荐完成`)
         if (rec.reason) {
-            // Optional: nice notification
             setTimeout(() => {
                  ElMessage.info({
                     message: rec.reason,
@@ -879,9 +869,8 @@ const autoSuggestRoles = async () => {
         }
         
     } catch (e) {
-        console.error("Recommendation failed", e)
-        // Fallback to simple default if backend fails?
-        // Or just do nothing.
+        console.error("AI Recommendation failed", e)
+        ElMessage.error(e.response?.data?.message || 'AI 推荐失败')
     }
 }
 
@@ -972,11 +961,7 @@ const fetchHealthStatus = async () => {
 watch(() => props.metadata, (newVal) => {
     if (newVal) {
         fetchHealthStatus()
-        
-        if (!config.target || !config.target.time) {
-            // Only run if empty
-            autoSuggestRoles()
-        }
+        // Removed autoSuggestRoles() on load per user request
     }
 }, { immediate: true })
 
