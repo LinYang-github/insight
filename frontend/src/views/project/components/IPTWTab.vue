@@ -5,7 +5,18 @@
             <el-col :span="6">
                 <el-card shadow="never" class="config-card">
                     <template #header>
-                        <span>⚖️ 逆概率加权 (IPTW)</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>⚖️ 逆概率加权 (IPTW)</span>
+                             <el-button 
+                                type="primary" 
+                                link 
+                                :icon="MagicStick" 
+                                @click="suggestRoles"
+                                :loading="isSuggestingRoles"
+                            >
+                                AI 推荐
+                            </el-button>
+                        </div>
                     </template>
                     
                     <el-form label-position="top">
@@ -111,11 +122,26 @@
                     <!-- 3. SMD Table -->
                     <el-card shadow="never" style="margin-top: 20px">
                         <template #header>
-                             <div style="display: flex; justify-content: space-between;">
+                             <div style="display: flex; justify-content: space-between; align-items: center;">
                                  <span>平衡性详情 (SMD Table)</span>
-                                 <el-button size="small" @click="copyTable">复制表格</el-button>
+                                 <div style="display: flex; gap: 10px;">
+                                     <el-button 
+                                        type="primary" 
+                                        size="small" 
+                                        @click="runAIInterpretation" 
+                                        :loading="isInterpreting" 
+                                        :icon="MagicStick"
+                                        style="background: linear-gradient(45deg, #6366f1, #a855f7); border: none;"
+                                     >
+                                        AI 均衡性评价
+                                     </el-button>
+                                     <el-button size="small" @click="copyTable">复制表格</el-button>
+                                 </div>
                              </div>
                         </template>
+                        <div v-if="aiInterpretation" style="padding: 15px; background: #f8fafc; border-bottom: 1px solid #edf2f7;">
+                            <InterpretationPanel :interpretation="{ text: aiInterpretation, is_ai: true, level: 'info' }" />
+                        </div>
                         <el-table :data="results.balance" height="300" stripe size="small">
                             <el-table-column prop="variable" label="变量 (Variable)" />
                             <el-table-column label="加权前 SMD (Unweighted)">
@@ -158,9 +184,10 @@
  */
 import { ref, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { QuestionFilled } from '@element-plus/icons-vue'
+import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 import api from '../../../api/client' // Corrected path
 import Plotly from 'plotly.js-dist-min'
+import InterpretationPanel from './InterpretationPanel.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -175,6 +202,9 @@ const truncate = ref(true) // 是否对极端权重进行截断 (1%/99%)
 const saveResult = ref(false) // 是否保存结果为新数据集
 const loading = ref(false) // 加载状态
 const results = ref(null) // 统计分析结果
+const isSuggestingRoles = ref(false)
+const isInterpreting = ref(false)
+const aiInterpretation = ref(null)
 
 /**
  * 筛选二分类变量（处理组）。
@@ -234,6 +264,48 @@ const runIPTW = async () => {
         ElMessage.error(error.response?.data?.message || '分析失败')
     } finally {
         loading.value = false
+    }
+}
+
+const runAIInterpretation = async () => {
+    if (!results.value) return
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-interpret-causal', {
+            analysis_type: 'iptw',
+            balance_data: results.value.balance,
+            n_matched: results.value.n_total 
+        })
+        aiInterpretation.value = data.interpretation
+        ElMessage.success("AI 均衡性评价完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.value = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggestingRoles.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'iptw'
+        })
+        
+        treatment.value = data.treatment || treatment.value
+        covariates.value = data.covariates || covariates.value
+        
+        ElMessage({
+            message: `AI 已为您推荐最佳的处理变量和均衡协变量。\n理由: ${data.reason || '基于倾向性评分逻辑推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggestingRoles.value = false
     }
 }
 

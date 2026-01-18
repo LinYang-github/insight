@@ -39,6 +39,18 @@
                 <h3>选择匹配因素 (Covariates) <GlossaryTooltip term="or" v-if="false" /></h3>
                 <p class="step-desc">请选择那些即影响分组、又影响结果的混杂因素。匹配后，两组在这些变量上将达到均衡。</p>
                 
+                <div style="margin-bottom: 20px; text-align: right;">
+                    <el-button 
+                        type="primary" 
+                        link 
+                        :icon="MagicStick" 
+                        @click="suggestRoles"
+                        :loading="isSuggestingRoles"
+                    >
+                        AI 智能推荐协变量
+                    </el-button>
+                </div>
+
                 <el-form label-position="top" v-loading="isRecommending">
                     <el-form-item>
                         <template #label>
@@ -110,7 +122,26 @@
 
                      <el-alert v-if="results.new_dataset_id" title="新数据集已保存" type="info" show-icon style="margin-bottom: 20px" />
                      
-                     <h4>均衡性诊断表 (Balance Table)</h4>
+                                           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                         <h4 style="margin: 0">均衡性诊断表 (Balance Table)</h4>
+                         <el-button 
+                             type="primary" 
+                             size="small" 
+                             @click="runAIInterpretation" 
+                             :loading="isInterpreting" 
+                             :icon="MagicStick"
+                             class="ai-advanced-btn"
+                         >
+                             AI 均衡性评价
+                         </el-button>
+                      </div>
+
+                      <InterpretationPanel 
+                         v-if="aiInterpretation"
+                         :interpretation="{ text: aiInterpretation, is_ai: true, level: 'info' }"
+                         style="margin-bottom: 20px;"
+                      />
+
                      <el-table :data="results.balance" style="width: 100%; margin-bottom: 20px;" border stripe>
                         <el-table-column prop="variable" label="协变量" />
                         <el-table-column prop="smd_pre" label="匹配前 SMD">
@@ -167,6 +198,7 @@ import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
 import StepWizard from './StepWizard.vue'
 import GlossaryTooltip from './GlossaryTooltip.vue'
+import InterpretationPanel from './InterpretationPanel.vue'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -182,6 +214,9 @@ const activeStep = ref(0) // 当前所在的向导步骤
 const recommendedVars = ref([]) // 后端推荐的协变量列表
 const isRecommending = ref(false) // 推荐计算状态
 const healthReport = ref([]) // 数据健康检查结果报告
+const isSuggestingRoles = ref(false)
+const isInterpreting = ref(false)
+const aiInterpretation = ref(null)
 
 const config = reactive({
     treatment: null,
@@ -253,6 +288,30 @@ const fetchRecommendations = async (treatment) => {
     }
 }
 
+const suggestRoles = async () => {
+    isSuggestingRoles.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'psm'
+        })
+        
+        config.treatment = data.treatment || config.treatment
+        config.covariates = data.covariates || config.covariates
+        
+        ElMessage({
+            message: `AI 已为您推荐最佳的处理变量和匹配协变量。\n理由: ${data.reason || '基于因果推断逻辑推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggestingRoles.value = false
+    }
+}
+
 const steps = [
     { title: '设定组别', description: '选择处理组变量', slot: 'step1' },
     { title: '选择协变量', description: '选择需平衡的混杂因素', slot: 'step2' },
@@ -317,6 +376,25 @@ const runPSM = async () => {
         loading.value = false
     }
 }
+
+const runAIInterpretation = async () => {
+    if (!results.value) return
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-interpret-causal', {
+            analysis_type: 'psm',
+            balance_data: results.value.balance,
+            n_matched: results.value.stats.n_matched
+        })
+        aiInterpretation.value = data.interpretation
+        ElMessage.success("AI 均衡性评价完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.value = false
+    }
+}
+
 
 /**
  * 绘制协变量平衡图 (Love Plot)。

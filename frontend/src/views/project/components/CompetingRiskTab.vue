@@ -5,11 +5,22 @@
             <el-col :span="6">
                 <el-card shadow="hover" class="config-card">
                     <template #header>
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <span>⚡️ 竞争风险模型</span>
-                            <el-tooltip content="竞争风险模型适用于存在多个互斥终点事件的情况，如死于心血管疾病与死于其他疾病。" placement="top">
-                                <el-icon><QuestionFilled /></el-icon>
-                            </el-tooltip>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <el-button 
+                                    type="primary" 
+                                    link 
+                                    :icon="MagicStick" 
+                                    @click="suggestRoles"
+                                    :loading="isSuggestingRoles"
+                                >
+                                    AI 推荐
+                                </el-button>
+                                <el-tooltip content="竞争风险模型适用于存在多个互斥终点事件的情况，如死于心血管疾病与死于其他疾病。" placement="top">
+                                    <el-icon><QuestionFilled /></el-icon>
+                                </el-tooltip>
+                            </div>
                         </div>
                     </template>
                     <el-form label-position="top">
@@ -58,6 +69,25 @@
                 </div>
                 
                 <div v-else class="results-area">
+                    <div style="margin-bottom: 15px; text-align: right;">
+                        <el-button 
+                            type="primary" 
+                            size="small" 
+                            @click="runAIInterpretation" 
+                            :loading="isInterpreting" 
+                            :icon="MagicStick"
+                            class="ai-advanced-btn"
+                        >
+                            AI 深度解读 (Fine-Gray/CIF)
+                        </el-button>
+                    </div>
+
+                    <InterpretationPanel 
+                        v-if="aiInterpretation"
+                        :interpretation="{ text: aiInterpretation, is_ai: true, level: 'info' }"
+                        style="margin-bottom: 20px;"
+                    />
+
                     <el-tabs type="border-card" class="result-tabs">
                         <!-- 标签页 1：CIF 图表 -->
                         <el-tab-pane label="累积发生率 (CIF 曲线)">
@@ -168,9 +198,10 @@
  */
 import { ref, reactive, computed, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { InfoFilled, QuestionFilled } from '@element-plus/icons-vue'
+import { InfoFilled, QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 import api from '../../../api/client'
 import Plotly from 'plotly.js-dist-min'
+import InterpretationPanel from './InterpretationPanel.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -188,6 +219,9 @@ const loading = ref(false)
 const hasResults = ref(false)
 const cifResults = ref(null)
 const modelResults = ref(null)
+const isSuggestingRoles = ref(false)
+const isInterpreting = ref(false)
+const aiInterpretation = ref(null)
 
 const variables = computed(() => props.metadata?.variables || [])
 const numVars = computed(() => variables.value.filter(v => v.type === 'numeric' || v.type === 'integer'))
@@ -232,6 +266,51 @@ const runAnalysis = async () => {
         ElMessage.error(e.response?.data?.message || '分析失败')
     } finally {
         loading.value = false
+    }
+}
+
+const runAIInterpretation = async () => {
+    if (!modelResults.value) return
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-interpret-cif', {
+            plot_data: cifResults.value.cif_data,
+            time_col: config.time_col,
+            event_col: config.event_col,
+            // Also pass model summaries for a more comprehensive analysis
+            models: modelResults.value.fine_gray_models || modelResults.value.models
+        })
+        aiInterpretation.value = data.analysis
+        ElMessage.success("AI 竞争风险解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.value = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggestingRoles.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'km' // Reusing KM logic for CIF since inputs are similar (Time/Event/Group)
+        })
+        
+        config.time_col = data.time || config.time_col
+        config.event_col = data.event || config.event_col
+        config.group_col = data.group || config.group_col
+        
+        ElMessage({
+            message: `AI 已为您推荐竞争风险分析的最佳变量角色。\n理由: ${data.reason || '基于随访数据特征推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggestingRoles.value = false
     }
 }
 
@@ -373,6 +452,15 @@ const renderCIF = (cifData) => {
 .sig-p {
     font-weight: bold;
     color: #D32F2F;
+}
+.ai-advanced-btn {
+    background: linear-gradient(45deg, #6366f1, #a855f7);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-advanced-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
 }
 .model-footer {
     margin-top: 8px;

@@ -6,8 +6,17 @@
         <el-col :span="6">
             <el-card class="box-card">
                 <template #header>
-                    <div class="card-header">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>参数配置</span>
+                        <el-button 
+                            type="primary" 
+                            link 
+                            :icon="MagicStick" 
+                            @click="suggestRoles"
+                            :loading="isSuggesting"
+                        >
+                            AI 智能推荐
+                        </el-button>
                     </div>
                 </template>
                 <el-form label-position="top">
@@ -180,6 +189,7 @@
 import { ref, computed, reactive } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'
+import { MagicStick, InfoFilled, Document, Download } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import GlossaryTooltip from './GlossaryTooltip.vue'
 import DistributionDialog from './DistributionDialog.vue'
@@ -205,6 +215,7 @@ const groupNames = ref([]) // 动态提取的组别名称列表
 const selectedRow = ref(null) // 当前选中的行，用于高亮显示智能解读
 const globalAnalysis = ref(null) // 全局 AI 分析结论
 const isAnalyzing = ref(false)
+const isSuggesting = ref(false)
 
 const config = reactive({
     groupBy: null,
@@ -283,7 +294,7 @@ const runAIAnalysis = async () => {
         const { data } = await api.post('/statistics/ai-analyze-table1', {
             table_data: results.value,
             group_by: config.groupBy
-        }, { timeout: 60000 })
+        })
         
         globalAnalysis.value = data.analysis
         ElMessage.success("AI 均衡性分析完成")
@@ -292,6 +303,30 @@ const runAIAnalysis = async () => {
         ElMessage.error(e.response?.data?.message || "AI 分析失败")
     } finally {
         isAnalyzing.value = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggesting.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'table1'
+        })
+        
+        config.groupBy = data.groupBy || config.groupBy
+        config.variables = data.variables || config.variables
+        
+        ElMessage({
+            message: `AI 已为您推荐基线表的最佳配置方案。\n理由: ${data.reason || '基于临床显著性推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggesting.value = false
     }
 }
 

@@ -6,8 +6,17 @@
         <el-col :span="6">
             <el-card class="box-card">
                 <template #header>
-                    <div class="card-header">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>参数配置</span>
+                        <el-button 
+                            type="primary" 
+                            link 
+                            :icon="MagicStick" 
+                            @click="suggestRoles"
+                            :loading="isSuggesting"
+                        >
+                            AI 智能推荐
+                        </el-button>
                     </div>
                 </template>
                 <el-form label-position="top">
@@ -131,6 +140,7 @@ const isInterpreting = ref(false)
 const pValue = ref(null)    // Log-rank 检验的 P 值
 const kmInterpretation = ref(null) // 智能解读对象
 const rawPlotData = ref([])
+const isSuggesting = ref(false)
 
 const config = reactive({
     time: null,
@@ -195,7 +205,7 @@ const runAIInterpretation = async () => {
         const { data } = await api.post('/statistics/ai-interpret-km', {
             plot_data: rawPlotData.value,
             p_value: pValue.value
-        }, { timeout: 60000 })
+        })
         
         kmInterpretation.value = {
             text: data.analysis,
@@ -208,6 +218,31 @@ const runAIInterpretation = async () => {
         ElMessage.error(e.response?.data?.message || "AI 解析失败")
     } finally {
         isInterpreting.value = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggesting.value = true
+    try {
+        const { data } = await api.post('/statistics/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'km'
+        })
+        
+        config.time = data.time || config.time
+        config.event = data.event || config.event
+        config.group = data.group || config.group
+        
+        ElMessage({
+            message: `AI 已为您推荐生存分析的最佳变量角色。\n理由: ${data.reason || '基于随访数据特征推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggesting.value = false
     }
 }
 

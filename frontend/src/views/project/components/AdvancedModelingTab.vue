@@ -6,6 +6,20 @@
             <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <template #header>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>RCS 配置</span>
+                                <el-button 
+                                    type="primary" 
+                                    link 
+                                    :icon="MagicStick" 
+                                    @click="suggestRoles('rcs')"
+                                    :loading="isSuggestingRoles['rcs']"
+                                >
+                                    AI 智能推荐
+                                </el-button>
+                            </div>
+                        </template>
                         <el-alert
                              title="什么是 RCS?"
                              type="info"
@@ -65,10 +79,25 @@
                         <template #header>
                              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span>RCS Plot</span>
-                                <el-button v-if="rcsMethodology" size="small" type="primary" plain @click="copyText(rcsMethodology)">Copy Methods</el-button>
+                                <div v-if="rcsData" style="display: flex; gap: 8px;">
+                                    <el-button 
+                                        type="primary" 
+                                        size="small" 
+                                        @click="runAIRcsInterpretation" 
+                                        :loading="isInterpretingRcs" 
+                                        :icon="MagicStick"
+                                        class="ai-advanced-btn"
+                                    >
+                                        AI 深度解读
+                                    </el-button>
+                                    <el-button size="small" type="primary" plain @click="copyText(rcsMethodology)">Copy Methods</el-button>
+                                </div>
                              </div>
                         </template>
-                        <div v-if="processRCSInterpretation()" style="margin-bottom: 10px;">
+                        <div v-if="rcsAiInterpretation" style="margin-bottom: 20px;">
+                            <InterpretationPanel :interpretation="{ text: rcsAiInterpretation, is_ai: true, level: 'info' }" />
+                        </div>
+                        <div v-else-if="processRCSInterpretation()" style="margin-bottom: 15px;">
                             <el-alert :title="processRCSInterpretation()" type="info" :closable="false" show-icon />
                         </div>
                         
@@ -99,6 +128,20 @@
              <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <template #header>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>亚组配置</span>
+                                <el-button 
+                                    type="primary" 
+                                    link 
+                                    :icon="MagicStick" 
+                                    @click="suggestRoles('subgroup')"
+                                    :loading="isSuggestingRoles['subgroup']"
+                                >
+                                    AI 智能推荐
+                                </el-button>
+                            </div>
+                        </template>
                         <el-alert
                              title="交互作用检验"
                              type="success"
@@ -159,9 +202,24 @@
                         <template #header>
                             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span>Forest Plot</span>
-                                <el-button v-if="subMethodology" size="small" type="primary" plain @click="copyText(subMethodology)">Copy Methods</el-button>
+                                <div v-if="subgroupData" style="display: flex; gap: 8px;">
+                                    <el-button 
+                                        type="primary" 
+                                        size="small" 
+                                        @click="runAISubgroupInterpretation" 
+                                        :loading="isInterpretingSubgroup" 
+                                        :icon="MagicStick"
+                                        class="ai-advanced-btn"
+                                    >
+                                        AI 深度解读
+                                    </el-button>
+                                    <el-button size="small" type="primary" plain @click="copyText(subMethodology)">Copy Methods</el-button>
+                                </div>
                             </div>
                         </template>
+                        <div v-if="subgroupAiInterpretation" style="margin-bottom: 20px;">
+                            <InterpretationPanel :interpretation="{ text: subgroupAiInterpretation, is_ai: true, level: 'info' }" />
+                        </div>
                         <div id="forest-plot" style="width: 100%; height: 700px; background: #fff;"></div>
                     </el-card>
                 </el-col>
@@ -173,6 +231,20 @@
              <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <template #header>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>竞争风险配置</span>
+                                <el-button 
+                                    type="primary" 
+                                    link 
+                                    :icon="MagicStick" 
+                                    @click="suggestRoles('cif')"
+                                    :loading="isSuggestingRoles['cif']"
+                                >
+                                    AI 智能推荐
+                                </el-button>
+                            </div>
+                        </template>
                          <el-alert
                              title="为什么不用 Kaplan-Meier?"
                              type="warning"
@@ -214,11 +286,24 @@
                 <el-col :span="18">
                     <el-card shadow="never">
                         <template #header>
-                            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span>CIF Plot</span>
-                                <el-button v-if="cifMethodology" size="small" type="primary" plain @click="copyText(cifMethodology)">Copy Methods</el-button>
-                            </div>
+                                <div v-if="cifResults" style="display: flex; gap: 8px;">
+                                    <el-button 
+                                        type="primary" 
+                                        size="small" 
+                                        @click="runAICifInterpretation" 
+                                        :loading="isInterpretingCif" 
+                                        :icon="MagicStick"
+                                        class="ai-advanced-btn"
+                                    >
+                                        AI 深度解读
+                                    </el-button>
+                                    <el-button v-if="cifMethodology" size="small" type="primary" plain @click="copyText(cifMethodology)">Copy Methods</el-button>
+                                </div>
                         </template>
+                        <div v-if="cifAiInterpretation" style="margin-bottom: 20px;">
+                            <InterpretationPanel :interpretation="{ text: cifAiInterpretation, is_ai: true, level: 'info' }" />
+                        </div>
                         <div id="cif-plot" style="width: 100%; height: 600px; background: #fff;"></div>
                     </el-card>
                 </el-col>
@@ -230,6 +315,20 @@
              <el-row :gutter="20">
                 <el-col :span="6">
                     <el-card shadow="never">
+                        <template #header>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>列线图配置</span>
+                                <el-button 
+                                    type="primary" 
+                                    link 
+                                    :icon="MagicStick" 
+                                    @click="suggestRoles('nomogram')"
+                                    :loading="isSuggestingRoles['nomogram']"
+                                >
+                                    AI 智能推荐
+                                </el-button>
+                            </div>
+                        </template>
                          <el-alert
                              title="临床应用"
                              type="success"
@@ -291,10 +390,25 @@
                         </div>
                      </el-card>
                      
-                     <div id="nomogram-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
-                     <div style="margin-top: 10px; text-align: right;" v-if="nomoMethodology">
-                         <el-button size="small" type="primary" plain @click="copyText(nomoMethodology)">Copy Methods</el-button>
+                     <div v-if="nomoData" style="margin-bottom: 20px;">
+                        <div v-if="nomoAiInterpretation" style="margin-bottom: 20px;">
+                            <InterpretationPanel :interpretation="{ text: nomoAiInterpretation, is_ai: true, level: 'info' }" />
+                        </div>
+                        <div style="margin-top: 10px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+                            <el-button 
+                                type="primary" 
+                                size="small" 
+                                @click="runAINomoInterpretation" 
+                                :loading="isInterpretingNomo" 
+                                :icon="MagicStick"
+                                class="ai-advanced-btn"
+                            >
+                                AI 模型解读
+                            </el-button>
+                            <el-button v-if="nomoMethodology" size="small" type="primary" plain @click="copyText(nomoMethodology)">Copy Methods</el-button>
+                        </div>
                      </div>
+                     <div id="nomogram-plot" style="width: 100%; height: 600px; background: #fff; border-radius: 4px;"></div>
                 </el-col>
              </el-row>
         </el-tab-pane>
@@ -308,11 +422,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { InfoFilled } from '@element-plus/icons-vue'
+import { InfoFilled, MagicStick } from '@element-plus/icons-vue'
 import Plotly from 'plotly.js-dist-min'
 import api from '../../../api/client'
+import InterpretationPanel from './InterpretationPanel.vue'
 import ModelComparisonTab from './ModelComparisonTab.vue'
 
 const props = defineProps({
@@ -321,6 +436,13 @@ const props = defineProps({
 })
 
 const activeTab = ref('rcs') // 'rcs', 'subgroup', 'cif'
+
+const isSuggestingRoles = reactive({
+    rcs: false,
+    subgroup: false,
+    cif: false,
+    nomogram: false
+})
 
 // --- 1. RCS State & Logic ---
 const rcsLoading = ref(false)
@@ -333,6 +455,8 @@ const rcsParams = ref({
     covariates: [],
     knots: 4
 })
+const rcsAiInterpretation = ref(null)
+const isInterpretingRcs = ref(false)
 
 const runRCS = async () => {
     rcsLoading.value = true
@@ -349,6 +473,26 @@ const runRCS = async () => {
         ElMessage.error(e.response?.data?.message || 'RCS 运行失败')
     } finally {
         rcsLoading.value = false
+    }
+}
+
+const runAIRcsInterpretation = async () => {
+    if (!rcsData.value) return
+    isInterpretingRcs.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-interpret-rcs', {
+            plot_data: rcsData.value.plot_data,
+            model_type: rcsParams.value.model_type,
+            exposure: rcsParams.value.exposure,
+            target: rcsParams.value.target,
+            p_non_linear: rcsData.value.p_non_linear
+        })
+        rcsAiInterpretation.value = data.analysis
+        ElMessage.success("AI RCS 解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpretingRcs.value = false
     }
 }
 
@@ -392,6 +536,9 @@ const subgroupParams = ref({
     subgroups: [],
     covariates: []
 })
+const subgroupData = ref(null)
+const subgroupAiInterpretation = ref(null)
+const isInterpretingSubgroup = ref(false)
 
 const runSubgroup = async () => {
     subgroupLoading.value = true
@@ -401,12 +548,31 @@ const runSubgroup = async () => {
             ...subgroupParams.value
         }
         const { data } = await api.post('/advanced/subgroup', payload)
+        subgroupData.value = data
         subMethodology.value = data.methodology
         renderForest(data.forest_data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || '亚组分析失败')
     } finally {
         subgroupLoading.value = false
+    }
+}
+
+const runAISubgroupInterpretation = async () => {
+    if (!subgroupData.value) return
+    isInterpretingSubgroup.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-interpret-subgroup', {
+            forest_data: subgroupData.value.forest_data,
+            exposure: subgroupParams.value.exposure,
+            target: subgroupParams.value.target
+        })
+        subgroupAiInterpretation.value = data.analysis
+        ElMessage.success("AI 亚组解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpretingSubgroup.value = false
     }
 }
 
@@ -474,6 +640,9 @@ const cifParams = ref({
     event_col: '',
     group_col: ''
 })
+const cifResults = ref(null)
+const cifAiInterpretation = ref(null)
+const isInterpretingCif = ref(false)
 
 const runCIF = async () => {
     cifLoading.value = true
@@ -483,12 +652,31 @@ const runCIF = async () => {
             ...cifParams.value
         }
         const { data } = await api.post('/advanced/cif', payload)
+        cifResults.value = data.cif_data
         cifMethodology.value = data.methodology
         renderCIF(data.cif_data)
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'CIF 分析失败')
     } finally {
         cifLoading.value = false
+    }
+}
+
+const runAICifInterpretation = async () => {
+    if (!cifResults.value) return
+    isInterpretingCif.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-interpret-cif', {
+            plot_data: cifResults.value,
+            time_col: cifParams.value.time_col,
+            event_col: cifParams.value.event_col
+        })
+        cifAiInterpretation.value = data.analysis
+        ElMessage.success("AI CIF 解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpretingCif.value = false
     }
 }
 
@@ -522,6 +710,8 @@ const nomoParams = ref({
     predictors: []
 })
 const calcValues = ref({})
+const nomoAiInterpretation = ref(null)
+const isInterpretingNomo = ref(false)
 
 // Methodologies
 const rcsMethodology = ref('')
@@ -563,6 +753,24 @@ const runNomogram = async () => {
         ElMessage.error(e.response?.data?.message || 'Nomogram 生成失败')
     } finally {
         nomoLoading.value = false
+    }
+}
+
+const runAINomoInterpretation = async () => {
+    if (!nomoData.value) return
+    isInterpretingNomo.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-interpret-nomogram', {
+            variables: nomoData.value.variables,
+            model_type: nomoParams.value.model_type,
+            target: nomoParams.value.target
+        })
+        nomoAiInterpretation.value = data.analysis
+        ElMessage.success("AI 列线图解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpretingNomo.value = false
     }
 }
 
@@ -765,6 +973,48 @@ const formatP = (p) => {
     if (p < 0.001) return '<0.001'
     return p.toFixed(3)
 }
+
+const suggestRoles = async (type) => {
+    isSuggestingRoles[type] = true
+    try {
+        const { data } = await api.post('/advanced/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: type
+        })
+        
+        if (type === 'rcs') {
+            rcsParams.value.target = data.target || rcsParams.value.target
+            rcsParams.value.event_col = data.event_col || rcsParams.value.event_col
+            rcsParams.value.exposure = data.exposure || rcsParams.value.exposure
+            rcsParams.value.covariates = data.covariates || rcsParams.value.covariates
+        } else if (type === 'subgroup') {
+            subgroupParams.value.target = data.target || subgroupParams.value.target
+            subgroupParams.value.event_col = data.event_col || subgroupParams.value.event_col
+            subgroupParams.value.exposure = data.exposure || subgroupParams.value.exposure
+            subgroupParams.value.subgroups = data.subgroups || subgroupParams.value.subgroups
+            subgroupParams.value.covariates = data.covariates || subgroupParams.value.covariates
+        } else if (type === 'cif') {
+            cifParams.value.time_col = data.time_col || cifParams.value.time_col
+            cifParams.value.event_col = data.event_col || cifParams.value.event_col
+            cifParams.value.group_col = data.group_col || cifParams.value.group_col
+        } else if (type === 'nomogram') {
+            nomoParams.value.target = data.target || nomoParams.value.target
+            nomoParams.value.event_col = data.event_col || nomoParams.value.event_col
+            nomoParams.value.predictors = data.predictors || nomoParams.value.predictors
+        }
+        
+        ElMessage({
+            message: `AI 已为您推荐 "${type.toUpperCase()}" 的最佳变量角色。\n理由: ${data.reason || '基于临床相关性推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggestingRoles[type] = false
+    }
+}
 </script>
 
 <style scoped>
@@ -776,5 +1026,14 @@ const formatP = (p) => {
     color: #909399;
     font-size: 16px;
     background: #f5f7fa;
+}
+.ai-advanced-btn {
+    background: linear-gradient(45deg, #6366f1, #a855f7);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-advanced-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
 }
 </style>

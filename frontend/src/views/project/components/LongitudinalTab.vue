@@ -5,6 +5,20 @@
   <div v-else>
       <!-- Configuration Panel -->
      <el-card shadow="hover" style="margin-bottom: 20px;">
+          <template #header>
+               <div style="display: flex; justify-content: space-between; align-items: center;">
+                   <span>纵向分析配置 (Longitudinal Config)</span>
+                   <el-button 
+                        type="primary" 
+                        link 
+                        :icon="MagicStick" 
+                        @click="suggestRoles"
+                        :loading="isSuggestingRoles"
+                    >
+                        AI 智能推荐
+                    </el-button>
+               </div>
+           </template>
           <el-form :inline="true" class="demo-form-inline">
               <el-form-item label="个体 ID (Subject ID)">
                   <el-select v-model="config.id_col" filterable placeholder="选择 ID 变量">
@@ -44,10 +58,28 @@
                  
                  <el-row :gutter="20">
                      <el-col :span="14">
-                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                             <h4 style="margin: 0;">固定效应 (Population Trends)</h4>
-                             <el-button v-if="lmmMethodology" size="small" type="primary" link @click="copyText(lmmMethodology)">复制方法学 (Copy Methods)</el-button>
-                         </div>
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                              <h4 style="margin: 0;">固定效应 (Population Trends)</h4>
+                              <div>
+                                  <el-button 
+                                      type="primary" 
+                                      size="small" 
+                                      @click="runAILMM" 
+                                      :loading="isInterpreting.lmm" 
+                                      :icon="MagicStick" 
+                                      class="ai-advanced-btn" 
+                                      style="margin-right: 10px;" 
+                                  >
+                                      AI 深度解读
+                                  </el-button>
+                                  <el-button v-if="lmmMethodology" size="small" type="primary" link @click="copyText(lmmMethodology)">复制方法学 (Copy Methods)</el-button>
+                              </div>
+                          </div>
+                          <InterpretationPanel 
+                                v-if="aiInterpretation.lmm"
+                                :interpretation="{ text: aiInterpretation.lmm, is_ai: true, level: 'info' }"
+                                style="margin-bottom: 15px;"
+                          />
                          <PublicationTable :data="results.lmm.summary">
                              <el-table-column prop="variable" label="变量" />
                              <el-table-column prop="coef" label="系数 (Coef)">
@@ -90,6 +122,44 @@
               </div>
               
               <div v-if="results.clustering">
+                  <div style="margin-bottom: 15px;">
+                      <el-button 
+                          type="primary" 
+                          size="small" 
+                          @click="runAIClustering" 
+                          :loading="isInterpreting.clustering"
+                          :icon="MagicStick"
+                          class="ai-advanced-btn"
+                      >
+                          AI 聚类解读
+                      </el-button>
+                  </div>
+                  
+                  <InterpretationPanel 
+                        v-if="aiInterpretation.clustering"
+                        :interpretation="{ text: aiInterpretation.clustering, is_ai: true, level: 'info' }"
+                        style="margin-bottom: 20px;"
+                  />
+
+                  <div style="margin-bottom: 15px;">
+                      <el-button 
+                          type="primary" 
+                          size="small" 
+                          @click="runAIClustering" 
+                          :loading="isInterpreting.clustering"
+                          :icon="MagicStick"
+                          class="ai-advanced-btn"
+                      >
+                          AI 聚类解读
+                      </el-button>
+                  </div>
+                  
+                  <InterpretationPanel 
+                        v-if="aiInterpretation.clustering"
+                        :interpretation="{ text: aiInterpretation.clustering, is_ai: true, level: 'info' }"
+                        style="margin-bottom: 20px;"
+                  />
+
                   <el-row :gutter="20">
                       <el-col :span="16">
                           <InsightChart
@@ -165,6 +235,8 @@
 import { ref, reactive, computed } from 'vue'
 import api from '../../../api/client'
 import { ElMessage } from 'element-plus'
+import { MagicStick } from '@element-plus/icons-vue'
+import InterpretationPanel from './InterpretationPanel.vue'
 import PublicationTable from '../../../components/PublicationTable.vue'
 import StatValue from '../../../components/StatValue.vue'
 import InsightChart from './InsightChart.vue'
@@ -200,6 +272,9 @@ const charts = reactive({
     slopes: { data: [], layout: {} },
     trajectory: { data: [], layout: {} }
 }) // 图表配置与数据
+const isSuggestingRoles = ref(false)
+const isInterpreting = reactive({ lmm: false, clustering: false })
+const aiInterpretation = reactive({ lmm: null, clustering: null })
 
 // Methodology
 const lmmMethodology = ref('')
@@ -240,6 +315,31 @@ const fitLMM = async () => {
         ElMessage.error(e.response?.data?.message || 'Failed')
     } finally {
         loading.lmm = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggestingRoles.value = true
+    try {
+        const { data } = await api.post('/longitudinal/ai-suggest-roles', {
+            dataset_id: props.datasetId
+        })
+        
+        config.id_col = data.id_col || config.id_col
+        config.time_col = data.time_col || config.time_col
+        config.outcome_col = data.outcome_col || config.outcome_col
+        config.fixed_effects = data.fixed_effects || config.fixed_effects
+        
+        ElMessage({
+            message: `AI 已为您推荐纵向分析的最佳变量角色。\n理由: ${data.reason || '基于重复测量数据特征推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggestingRoles.value = false
     }
 }
 
@@ -292,6 +392,57 @@ const calcVariability = async () => {
         loading.variability = false
     }
 }
+
+const runAILMM = async () => {
+    isInterpreting.lmm = true
+    try {
+        const { data } = await api.post('/longitudinal/ai-interpret-longitudinal', {
+            analysis_type: 'lmm',
+            results: results.lmm.summary.map(row => ({
+               term: row.variable,
+               estimate: row.coef,
+               p: row.p_value,
+               lower: row.ci_lower,
+               upper: row.ci_upper
+            })),
+            target: config.outcome_col,
+            time_col: config.time_col
+        })
+        aiInterpretation.lmm = data.interpretation
+        ElMessage.success("AI LMM 解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.lmm = false
+    }
+}
+
+const runAIClustering = async () => {
+    isInterpreting.clustering = true
+    try {
+        // Prepare cluster centers
+        // Backend expects dict {cluster_id: {slope: float, intercept: float, n: int}}
+        // results.clustering.centroids is array [{cluster, slope, intercept, n}, ...]
+        const centers = {}
+        results.clustering.centroids.forEach(c => {
+            centers[c.cluster] = { slope: c.slope, intercept: c.intercept || 0, n: c.n || 0 }
+        })
+
+        const { data } = await api.post('/longitudinal/ai-interpret-longitudinal', {
+            analysis_type: 'clustering',
+            results: centers,
+            target: config.outcome_col,
+            time_col: config.time_col
+        })
+        aiInterpretation.clustering = data.interpretation
+        ElMessage.success("AI 聚类解读完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 解读失败')
+    } finally {
+        isInterpreting.clustering = false
+    }
+}
+
 
 // Chart Helpers
 const renderSlopesChart = (re_data) => {

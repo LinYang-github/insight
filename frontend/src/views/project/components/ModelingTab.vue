@@ -892,7 +892,7 @@ const runAIInterpretation = async () => {
             model_type: config.model_type,
             summary: results.value.summary,
             metrics: results.value.metrics
-        }, { timeout: 60000 })
+        })
         
         // Update results with AI interpretation
         // We use a new structure that InterpretationPanel.vue recognizes
@@ -920,7 +920,7 @@ const autoSuggestRoles = async () => {
         const { data } = await api.post('/modeling/ai-suggest-roles', {
             model_type: config.model_type,
             variables: props.metadata.variables
-        }, { timeout: 60000 })
+        })
         const rec = data.recommendation
         
         // Apply AI Recommendation

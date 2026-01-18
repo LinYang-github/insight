@@ -380,3 +380,61 @@ def ai_interpret_km(current_user):
         }), 200
     except Exception as e:
         return jsonify({'message': str(e)}), 500
+
+@statistics_bp.route('/ai-interpret-causal', methods=['POST'])
+@token_required
+def ai_interpret_causal(current_user):
+    data = request.get_json()
+    analysis_type = data.get('analysis_type') # psm, iptw
+    balance_data = data.get('balance_data')
+    n_matched = data.get('n_matched')
+
+    if not analysis_type or not balance_data:
+        return jsonify({'message': 'Missing required data'}), 400
+        
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        interpretation = AIService.interpret_causal_inference(
+            analysis_type, balance_data, n_matched,
+            api_key, api_base, api_model
+        )
+        return jsonify({'interpretation': interpretation}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@statistics_bp.route('/ai-suggest-roles', methods=['POST'])
+@token_required
+def ai_suggest_roles(current_user):
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    analysis_type = data.get('analysis_type') # table1, km, psm, iptw
+    
+    if not dataset_id or not analysis_type:
+        return jsonify({'message': 'Missing dataset_id or analysis_type'}), 400
+        
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if not dataset or not dataset.meta_data:
+        return jsonify({'message': 'Dataset metadata not found'}), 404
+        
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        recommendations = AIService.suggest_advanced_roles(
+            analysis_type, dataset.meta_data['variables'],
+            api_key, api_base, api_model
+        )
+        return jsonify(recommendations), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+

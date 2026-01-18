@@ -5,8 +5,17 @@
             <el-col :span="8">
                 <el-card shadow="never" class="config-card">
                     <template #header>
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <span>🛠️ 模型对比配置 (Model Builder)</span>
+                             <el-button 
+                                type="primary" 
+                                link 
+                                :icon="MagicStick" 
+                                @click="suggestRoles"
+                                :loading="isSuggesting"
+                            >
+                                AI 智能推荐
+                            </el-button>
                         </div>
                     </template>
                     
@@ -102,6 +111,18 @@
                                 <el-button v-if="results" size="small" type="success" plain @click="copyTableData" style="margin-right: 10px;">
                                     <el-icon style="margin-right: 4px"><DocumentCopy /></el-icon> 复制表格数据
                                 </el-button>
+                                <el-button 
+                                    v-if="results"
+                                    type="primary" 
+                                    size="small" 
+                                    @click="runAIComparison" 
+                                    :loading="isInterpreting" 
+                                    :icon="MagicStick"
+                                    class="ai-compare-btn"
+                                    style="margin-right: 10px;"
+                                >
+                                    AI 自动选优
+                                </el-button>
                                 <el-button v-if="methodology" size="small" type="primary" plain @click="copyText">复制研究方法</el-button>
                             </div>
                         </div>
@@ -116,6 +137,10 @@
                              </el-radio-group>
                         </div>
                     </template>
+
+                    <div v-if="aiRecommendation" style="margin-bottom: 20px;">
+                        <InterpretationPanel :interpretation="{ text: aiRecommendation, is_ai: true, level: 'success' }" />
+                    </div>
 
                     <el-table :data="tableData" stripe border size="small">
                         <el-table-column prop="name" label="模型名称" width="130" fixed="left" />
@@ -267,8 +292,11 @@
  */
 import { ref, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DocumentCopy, MagicStick, QuestionFilled } from '@element-plus/icons-vue'
 import AdvancedModelingService from '@/services/advanced_modeling_service'
 import Plotly from 'plotly.js-dist-min'
+import api from '@/api/client'
+import InterpretationPanel from './InterpretationPanel.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -283,6 +311,9 @@ const loading = ref(false) // 加载状态
 const results = ref(null) // 后端返回的所有对比数据
 const selectedTimePoint = ref(null) // Cox 模型下当前选中的预测时间点
 const activeVizTab = ref('roc') // 当前活跃的可视化标签页 (roc/calibration/dca)
+const aiRecommendation = ref(null)
+const isInterpreting = ref(false)
+const isSuggesting = ref(false)
 
 // Computed
 const allVars = computed(() => {
@@ -383,6 +414,50 @@ const runComparison = async () => {
         console.error(e)
     } finally {
         loading.value = false
+    }
+}
+
+const runAIComparison = async () => {
+    if (!results.value) return
+    isInterpreting.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-compare-models', {
+            results: results.value,
+            model_type: modelType.value
+        })
+        aiRecommendation.value = data.analysis
+        ElMessage.success("AI 选优分析完成")
+    } catch (e) {
+        ElMessage.error(e.response?.data?.message || 'AI 选优分析失败')
+    } finally {
+        isInterpreting.value = false
+    }
+}
+
+const suggestRoles = async () => {
+    isSuggesting.value = true
+    try {
+        const { data } = await api.post('/advanced/ai-suggest-roles', {
+            dataset_id: props.datasetId,
+            analysis_type: 'comparison'
+        })
+        
+        target.value = data.target || target.value
+        eventCol.value = data.event_col || eventCol.value
+        if (data.models && Array.isArray(data.models)) {
+            modelConfigs.value = data.models
+        }
+        
+        ElMessage({
+            message: `AI 已为您推荐模型对比的最佳配置方案。\n理由: ${data.reason || '基于变量显著性推荐'}`,
+            type: 'success',
+            duration: 5000
+        })
+    } catch (e) {
+        console.error("AI Role suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || "AI 推荐失败")
+    } finally {
+        isSuggesting.value = false
     }
 }
 
@@ -489,7 +564,6 @@ const tableData = computed(() => {
         }
     })
 })
-import { DocumentCopy } from '@element-plus/icons-vue'
 
 /**
  * 以 TSV 格式（Tab 分隔）将统计表格数据复制到剪贴板。
@@ -766,5 +840,14 @@ watch([results, selectedTimePoint], () => {
     position: absolute;
     color: #909399;
     margin-left: 4px;
+}
+.ai-compare-btn {
+    background: linear-gradient(45deg, #059669, #10b981);
+    border: none;
+    transition: all 0.3s ease;
+}
+.ai-compare-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
 }
 </style>

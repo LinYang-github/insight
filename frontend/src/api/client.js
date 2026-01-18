@@ -3,7 +3,7 @@ import router from '../router'
 
 const api = axios.create({
     baseURL: '/api', // Proxy or relative path for production
-    timeout: 10000
+    timeout: 120000 // Increased to 120s to allow AI requests more time
 })
 
 // Request Interceptor

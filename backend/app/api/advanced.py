@@ -210,3 +210,129 @@ def fit_competing_risks(current_user):
         df, time_col, event_col, covariates
     )
     return jsonify(results), 200
+
+def get_ai_config(current_user):
+    user_settings = current_user.settings or {}
+    api_key = user_settings.get('llm_key')
+    api_base = user_settings.get('llm_api_base') or "https://api.openai.com/v1"
+    api_model = user_settings.get('llm_model') or "gpt-4o"
+    return api_key, api_base, api_model
+
+@advanced_bp.route('/ai-interpret-rcs', methods=['POST'])
+@token_required
+def ai_interpret_rcs(current_user):
+    data = request.get_json()
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.interpret_rcs(
+            data['plot_data'], data['model_type'], data['exposure'], 
+            data['target'], data['p_non_linear'],
+            api_key, api_base, api_model
+        )
+        return jsonify({'analysis': report}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@advanced_bp.route('/ai-interpret-subgroup', methods=['POST'])
+@token_required
+def ai_interpret_subgroup(current_user):
+    data = request.get_json()
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.interpret_subgroup(
+            data['forest_data'], data['exposure'], data['target'], 
+            api_key, api_base, api_model
+        )
+        return jsonify({'analysis': report}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@advanced_bp.route('/ai-interpret-nomogram', methods=['POST'])
+@token_required
+def ai_interpret_nomogram(current_user):
+    data = request.get_json()
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.interpret_nomogram(
+            data['variables'], data['model_type'], data['target'], 
+            api_key, api_base, api_model
+        )
+        return jsonify({'analysis': report}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@advanced_bp.route('/ai-interpret-cif', methods=['POST'])
+@token_required
+def ai_interpret_cif(current_user):
+    data = request.get_json()
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.interpret_cif(
+            data['plot_data'], data['time_col'], data['event_col'],
+            api_key, api_base, api_model
+        )
+        return jsonify({'analysis': report}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@advanced_bp.route('/ai-compare-models', methods=['POST'])
+@token_required
+def ai_compare_models(current_user):
+    data = request.get_json()
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        report = AIService.suggest_best_model(
+            data['results'], data['model_type'],
+            api_key, api_base, api_model
+        )
+        return jsonify({'analysis': report}), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@advanced_bp.route('/ai-suggest-roles', methods=['POST'])
+@token_required
+def ai_suggest_roles(current_user):
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    analysis_type = data.get('analysis_type') # rcs, subgroup, cif, nomogram
+    
+    if not dataset_id or not analysis_type:
+        return jsonify({'message': 'Missing dataset_id or analysis_type'}), 400
+        
+    dataset = db.session.get(Dataset, dataset_id)
+    if not dataset or not dataset.meta_data:
+        return jsonify({'message': 'Dataset metadata not found'}), 404
+        
+    api_key, api_base, api_model = get_ai_config(current_user)
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+        
+    from app.services.ai_service import AIService
+    try:
+        recommendations = AIService.suggest_advanced_roles(
+            analysis_type, dataset.meta_data['variables'],
+            api_key, api_base, api_model
+        )
+        return jsonify(recommendations), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
