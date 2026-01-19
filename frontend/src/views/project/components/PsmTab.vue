@@ -157,7 +157,7 @@
                             <template #header>
                                 <GlossaryTooltip term="smd">匹配前 SMD</GlossaryTooltip>
                             </template>
-                            <template #default="scope">{{ scope.row.smd_pre.toFixed(3) }}</template>    
+                            <template #default="scope">{{ formatNumber(scope.row.smd_pre, 3) }}</template>    
                         </el-table-column>
                         <el-table-column prop="smd_post" label="匹配后 SMD">
                             <template #header>
@@ -165,7 +165,7 @@
                             </template>
                             <template #default="scope">
                                 <span :style="{ fontWeight: 'bold', color: scope.row.smd_post < 0.1 ? 'green' : 'red' }">
-                                    {{ scope.row.smd_post.toFixed(3) }}
+                                    {{ formatNumber(scope.row.smd_post, 3) }}
                                 </span>
                             </template>
                         </el-table-column>
@@ -215,6 +215,7 @@ import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
+import { formatNumber } from '../../../utils/formatters'
 
 const props = defineProps({
     datasetId: Number,

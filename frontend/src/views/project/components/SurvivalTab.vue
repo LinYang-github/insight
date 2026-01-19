@@ -67,7 +67,7 @@
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span>生存分析 (Kaplan-Meier)</span>
                             <el-tag v-if="pValue" type="info">
-                                Log-Rank P: {{ pValue }}
+                                Log-Rank P: {{ formatPValue(pValue) }}
                             </el-tag>
                             <el-button 
                                 v-if="pValue"
@@ -122,6 +122,7 @@ import { MagicStick } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
+import { formatPValue } from '../../../utils/formatters'
 
 /**
  * SurvivalTab.vue

@@ -265,7 +265,7 @@
                                         <el-icon style="margin-left: 4px"><QuestionFilled /></el-icon>
                                      </el-tooltip>
                                 </template>
-                                <template #default="scope">{{ scope.row.coef.toFixed(4) }}</template>
+                                <template #default="scope">{{ formatNumber(scope.row.coef, 3) }}</template>
                             </el-table-column>
                             <el-table-column prop="p_value" label="P值">
                                 <template #header>
@@ -276,7 +276,7 @@
                                 </template>
                                 <template #default="scope">
                                     <span :style="{ fontWeight: scope.row.p_value < 0.05 ? 'bold' : 'normal', color: scope.row.p_value < 0.05 ? 'red' : 'inherit' }">
-                                        {{ scope.row.p_value < 0.001 ? '<0.001' : typeof scope.row.p_value === 'number' ? scope.row.p_value.toFixed(4) : scope.row.p_value }}
+                                        {{ formatPValue(scope.row.p_value) }}
                                     </span>
                                 </template>
                             </el-table-column>
@@ -288,7 +288,7 @@
                                      </el-tooltip>
                                 </template>
                                 <template #default="scope">
-                                    {{ scope.row.or.toFixed(2) }} ({{ scope.row.or_ci_lower.toFixed(2) }}-{{ scope.row.or_ci_upper.toFixed(2) }})
+                                    {{ formatEffectSize(scope.row.or, scope.row.or_ci_lower, scope.row.or_ci_upper) }}
                                 </template>
                             </el-table-column>
                             <el-table-column v-if="config.model_type === 'cox'" label="HR (95% CI)">
@@ -299,7 +299,7 @@
                                      </el-tooltip>
                                 </template>
                                 <template #default="scope">
-                                    {{ scope.row.hr.toFixed(2) }} ({{ scope.row.hr_ci_lower.toFixed(2) }}-{{ scope.row.hr_ci_upper.toFixed(2) }})
+                                    {{ formatEffectSize(scope.row.hr, scope.row.hr_ci_lower, scope.row.hr_ci_upper) }}
                                 </template>
                             </el-table-column>
                             
@@ -746,6 +746,7 @@ import InsightChart from './InsightChart.vue'
 import NomogramVisualizer from './NomogramVisualizer.vue'
 import { MagicStick, QuestionFilled, Setting, CopyDocument, Filter, Search, ArrowDown } from '@element-plus/icons-vue'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
+import { formatPValue, formatNumber, formatEffectSize } from '../../../utils/formatters'
 
 const props = defineProps({
     projectId: { type: String, required: true },

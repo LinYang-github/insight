@@ -1,20 +1,21 @@
 <template>
   <span :class="['stat-value', type, { 'is-significant': isSignificant, 'is-insignificant': isInsignificant }]">
     <template v-if="type === 'p-value'">
-      {{ formattedP }}
+      {{ formatPValue(value) }}
     </template>
     <template v-else-if="type === 'range'">
-      <span class="range-val">{{ formattedVal }}</span> 
-      <psan class="range-bracket">({{ formattedLower }}-{{ formattedUpper }})</psan>
+      <span class="range-val">{{ formatNumber(value, digits) }}</span> 
+      <span class="range-bracket">({{ formatNumber(lower, digits) }} - {{ formatNumber(upper, digits) }})</span>
     </template>
     <template v-else>
-      {{ formattedVal }}
+      {{ formatNumber(value, digits) }}
     </template>
   </span>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { formatPValue, formatNumber } from '../utils/formatters'
 
 const props = defineProps({
   value: { type: [Number, String], required: true },
@@ -42,31 +43,6 @@ const isInsignificant = computed(() => {
         }
     }
     return false
-})
-
-const formattedP = computed(() => {
-  const val = parseFloat(props.value)
-  if (isNaN(val)) return props.value
-  if (val < 0.001) return '<0.001'
-  return val.toFixed(3)
-})
-
-const formattedVal = computed(() => {
-    const val = parseFloat(props.value)
-    if (isNaN(val)) return props.value
-    return val.toFixed(props.digits)
-})
-
-const formattedLower = computed(() => {
-    const val = parseFloat(props.lower)
-    if (isNaN(val)) return props.lower
-    return val.toFixed(props.digits)
-})
-
-const formattedUpper = computed(() => {
-    const val = parseFloat(props.upper)
-    if (isNaN(val)) return props.upper
-    return val.toFixed(props.digits)
 })
 </script>
 
