@@ -195,6 +195,7 @@ import GlossaryTooltip from './GlossaryTooltip.vue'
 import DistributionDialog from './DistributionDialog.vue'
 import PublicationTable from '../../../components/PublicationTable.vue'
 import StatValue from '../../../components/StatValue.vue'
+import { useVariableOptions } from '../../../composables/useVariableOptions'
 
 const props = defineProps({
     datasetId: Number,
@@ -222,20 +223,14 @@ const config = reactive({
     variables: []
 })
 
-const variableOptions = computed(() => {
-    if (!props.metadata || !props.metadata.variables) return []
-    return props.metadata.variables.map(v => ({
-        label: v.name,
-        value: v.name,
-        type: v.type
-    }))
-})
+// 使用公共 Composable 提取变量选项
+const { 
+    allOptions: variableOptions,
+    categoricalOptions: categoricalOnlyOptions
+} = useVariableOptions(computed(() => props.metadata))
 
-// Filter categorical for GroupBy (usually few unique values, but here just heuristic or user choice)
-const categoricalOptions = computed(() => {
-    return variableOptions.value // Allow any for now, user knows better
-})
-
+// Table 1 一般允许所有变量作为行列显示
+const categoricalOptions = computed(() => variableOptions.value)
 const allOptions = computed(() => variableOptions.value)
 
 const methodology = ref('')

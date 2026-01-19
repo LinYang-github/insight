@@ -121,6 +121,7 @@ import api from '../../../api/client'
 import { MagicStick } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
+import { useVariableOptions } from '../../../composables/useVariableOptions'
 
 /**
  * SurvivalTab.vue
@@ -152,18 +153,11 @@ const config = reactive({
     group: null
 })
 
-const variableOptions = computed(() => {
-    if (!props.metadata || !props.metadata.variables) return []
-    return props.metadata.variables.map(v => ({ 
-        label: v.name, 
-        value: v.name, 
-        type: v.type 
-    }))
-})
-
-const numericOptions = computed(() => {
-    return variableOptions.value.filter(v => v.type === 'continuous')
-})
+// 使用公共 Composable 提取变量选项
+const { 
+    allOptions: variableOptions, 
+    numericOptions 
+} = useVariableOptions(computed(() => props.metadata))
 
 const kmMethodology = ref('')
 

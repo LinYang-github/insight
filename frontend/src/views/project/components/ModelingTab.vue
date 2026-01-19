@@ -745,6 +745,7 @@ import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import NomogramVisualizer from './NomogramVisualizer.vue'
 import { MagicStick, QuestionFilled, Setting, CopyDocument, Filter, Search, ArrowDown } from '@element-plus/icons-vue'
+import { useVariableOptions } from '../../../composables/useVariableOptions'
 
 const props = defineProps({
     projectId: { type: String, required: true },
@@ -752,10 +753,14 @@ const props = defineProps({
     metadata: { type: Object, default: null }
 })
 
-const loading = ref(false)
-const results = ref(null)
-const activeResultTab = ref('details')
 const isGlobalPublicationReady = ref(false)
+
+const varHealthMap = ref({})
+
+// 使用公共 Composable 提取变量选项
+const { 
+    allOptions: variableOptions
+} = useVariableOptions(computed(() => props.metadata), varHealthMap)
 
 
 
@@ -1003,20 +1008,9 @@ watch(() => config.features, (newVal) => {
     }, 1000) // Debounce 1s
 })
 
-const variableOptions = computed(() => {
-    if (!props.metadata) return []
-    return props.metadata.variables.map(v => {
-        // Find health status
-        const h = varHealthMap.value[v.name]
-        return { 
-            label: v.name, 
-            value: v.name,
-            type: v.type, // Added type for filtering
-            status: h ? h.status : 'unknown',
-            msg: h ? h.message : ''
-        }
-    })
-})
+const loading = ref(false)
+const results = ref(null)
+const activeResultTab = ref('details')
 
 const targetOptions = computed(() => {
     return variableOptions.value.map(v => {
@@ -1061,7 +1055,7 @@ const featureOptions = computed(() => {
     })
 })
 
-const varHealthMap = ref({})
+// 已移至顶部并使用 useVariableOptions
 
 const fetchHealthStatus = async () => {
     if (!props.metadata || !props.datasetId) return

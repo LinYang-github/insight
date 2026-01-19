@@ -214,6 +214,7 @@ import GlossaryTooltip from './GlossaryTooltip.vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
+import { useVariableOptions } from '../../../composables/useVariableOptions'
 
 const props = defineProps({
     datasetId: Number,
@@ -333,13 +334,10 @@ const steps = [
     { title: '匹配诊断', description: '查看匹配效果与平衡性', slot: 'step3' }
 ]
 
-const variableOptions = computed(() => {
-    if (!props.metadata || !props.metadata.variables) return []
-    return props.metadata.variables.map(v => ({ 
-        label: v.name, 
-        value: v.name 
-    }))
-})
+// 使用公共 Composable 提取变量选项
+const { 
+    allOptions: variableOptions 
+} = useVariableOptions(computed(() => props.metadata))
 
 // Control next button
 const disableNext = computed(() => {
