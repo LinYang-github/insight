@@ -149,9 +149,8 @@
             <div v-if="results">
                 <el-card shadow="hover">
                 <template #header>
-                    <div class="result-header">
-                        <span>运行结果</span>
-                        <div>
+                    <AnalysisHeader title="分析结果与临床洞察">
+                        <template #actions>
                              <el-button 
                                  v-if="!baselineResult" 
                                  size="small" 
@@ -182,17 +181,9 @@
                                  AI 深度解读
                              </el-button>
                              <el-button type="info" plain size="small" @click="copyMethodology" :icon="CopyDocument">复制方法学</el-button>
-                             <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
-                             <el-switch
-                                v-model="isGlobalPublicationReady"
-                                inline-prompt
-                                active-text="学术绘图级"
-                                inactive-text="普通预览"
-                                style="margin-left: 15px; --el-switch-on-color: #67C23A"
-                                title="一键切换所有图表为学术发表样式 (Times New Roman, 无网格, 高粗度)"
-                             />
-                        </div>
-                    </div>
+                             <el-button v-if="results" type="success" size="small" @click="exportResults">导出 Excel</el-button>
+                        </template>
+                    </AnalysisHeader>
                 </template>
 
                   <!-- PH Violation Warning -->
@@ -256,7 +247,7 @@
                         </div>
 
                         <!-- Statistical Summary Table -->
-                        <el-table v-else :data="results.summary" style="width: 100%" height="400" stripe border size="small">
+                        <PublicationTable v-else :data="results.summary" style="width: 100%" height="400">
                             <el-table-column prop="variable" label="变量" />
                             <el-table-column prop="coef" label="系数 (Coef)">
                                 <template #header>
@@ -326,7 +317,7 @@
                                     </span>
                                 </template>
                              </el-table-column>
-                        </el-table>
+                        </PublicationTable>
                     </el-tab-pane>
 
                     <el-tab-pane label="评估图表 (Clinical Eval)" name="clinical" v-if="config.model_type !== 'linear'">
@@ -432,7 +423,7 @@
                                     :title="config.model_type === 'cox' ? `ROC 曲线 (t=${evaluationTimePoint})` : 'ROC 曲线 (ROC Curve)'"
                                     :data="chartData.roc.data"
                                     :layout="chartData.roc.layout"
-                                    :publicationReady="isGlobalPublicationReady"
+                                    :publicationReady="uiStore.isAcademicMode"
                                 />
                             </el-col>
                             
@@ -443,7 +434,7 @@
                                     :title="config.model_type === 'cox' ? `校准曲线 (Calibration) (t=${evaluationTimePoint})` : '校准曲线 (Calibration)'"
                                     :data="chartData.calibration.data"
                                     :layout="chartData.calibration.layout"
-                                    :publicationReady="isGlobalPublicationReady"
+                                    :publicationReady="uiStore.isAcademicMode"
                                 />
                             </el-col>
                             
@@ -454,7 +445,7 @@
                                     :title="config.model_type === 'cox' ? `临床决策曲线 (DCA) (t=${evaluationTimePoint})` : '临床决策曲线 (DCA)'"
                                     :data="chartData.dca.data"
                                     :layout="chartData.dca.layout"
-                                    :publicationReady="isGlobalPublicationReady"
+                                    :publicationReady="uiStore.isAcademicMode"
                                 />
                             </el-col>
                         </el-row>
@@ -515,7 +506,7 @@
                                 title="Multicollinearity (VIF)"
                                 :data="chartData.vif.data"
                                 :layout="chartData.vif.layout"
-                                :publicationReady="isGlobalPublicationReady"
+                                :publicationReady="uiStore.isAcademicMode"
                             />
                          </div>
                          
@@ -744,7 +735,10 @@ import Plotly from 'plotly.js-dist-min'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import NomogramVisualizer from './NomogramVisualizer.vue'
+import PublicationTable from '../../../components/PublicationTable.vue'
+import AnalysisHeader from '../../../components/AnalysisHeader.vue'
 import { MagicStick, QuestionFilled, Setting, CopyDocument, Filter, Search, ArrowDown } from '@element-plus/icons-vue'
+import { useUiStore } from '../../../stores/ui'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
 import { formatPValue, formatNumber, formatEffectSize } from '../../../utils/formatters'
 
@@ -754,7 +748,7 @@ const props = defineProps({
     metadata: { type: Object, default: null }
 })
 
-const isGlobalPublicationReady = ref(false)
+const uiStore = useUiStore()
 
 const varHealthMap = ref({})
 

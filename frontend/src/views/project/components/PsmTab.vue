@@ -122,28 +122,19 @@
 
                      <el-alert v-if="results.new_dataset_id" title="新数据集已保存" type="info" show-icon style="margin-bottom: 20px" />
                      
-                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                          <div style="display: flex; align-items: center; gap: 15px;">
-                            <h4 style="margin: 0">均衡性诊断表 (Balance Table)</h4>
-                            <el-switch
-                                v-model="isGlobalPublicationReady"
-                                inline-prompt
-                                active-text="学术绘图"
-                                inactive-text="普通预览"
-                                style="--el-switch-on-color: #67C23A"
-                            />
-                          </div>
-                          <el-button 
-                              type="primary" 
-                              size="small" 
-                              @click="runAIInterpretation" 
-                              :loading="isInterpreting" 
-                              :icon="MagicStick"
-                              class="ai-advanced-btn"
-                          >
-                              AI 均衡性评价
-                          </el-button>
-                       </div>
+                       <AnalysisHeader title="均衡性诊断表 (Balance Table)">
+                           <template #actions>
+                              <el-button 
+                                  type="primary" 
+                                  size="small" 
+                                  @click="runAIInterpretation" 
+                                  :loading="isInterpreting" 
+                                  :icon="MagicStick"
+                              >
+                                  AI 均衡性评价
+                              </el-button>
+                           </template>
+                       </AnalysisHeader>
 
                       <InterpretationPanel 
                          v-if="aiInterpretation"
@@ -184,7 +175,7 @@
                         :data="lovePlotData"
                         :layout="lovePlotLayout"
                         height="500px"
-                        :publicationReady="isGlobalPublicationReady"
+                        :publicationReady="uiStore.isAcademicMode"
                      />
                 </div>
                 <div v-else-if="!loading" style="text-align: center; color: gray;">
@@ -214,6 +205,8 @@ import GlossaryTooltip from './GlossaryTooltip.vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
+import AnalysisHeader from '../../../components/AnalysisHeader.vue'
+import { useUiStore } from '../../../stores/ui'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
 import { formatNumber } from '../../../utils/formatters'
 
@@ -233,7 +226,7 @@ const healthReport = ref([]) // 数据健康检查结果报告
 const isSuggestingRoles = ref(false)
 const isInterpreting = ref(false)
 const aiInterpretation = ref(null)
-const isGlobalPublicationReady = ref(false)
+const uiStore = useUiStore()
 
 const config = reactive({
     treatment: null,

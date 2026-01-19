@@ -62,13 +62,10 @@
         <!-- Plot Panel -->
         <el-col :span="18">
             <el-card class="box-card" v-loading="loading">
-                 <template #header>
-                     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span>生存分析 (Kaplan-Meier)</span>
-                            <el-tag v-if="pValue" type="info">
-                                Log-Rank P: {{ formatPValue(pValue) }}
-                            </el-tag>
+                <template #header>
+                    <AnalysisHeader title="生存分析 (Kaplan-Meier)">
+                        <template #actions>
+                            <el-tag v-if="pValue" type="info">Log-Rank P: {{ formatPValue(pValue) }}</el-tag>
                             <el-button 
                                 v-if="pValue"
                                 type="primary" 
@@ -76,20 +73,11 @@
                                 @click="runAIInterpretation" 
                                 :loading="isInterpreting"
                                 :icon="MagicStick"
-                                class="ai-km-btn"
                             >
                                 AI 深度解读
                             </el-button>
-                            <el-switch
-                                v-if="rawPlotData.length > 0"
-                                v-model="isGlobalPublicationReady"
-                                inline-prompt
-                                active-text="学术绘图"
-                                inactive-text="普通预览"
-                                style="--el-switch-on-color: #67C23A; margin-left: 10px;"
-                            />
-                        </div>
-                    </div>
+                        </template>
+                    </AnalysisHeader>
                 </template>
                 
                 <InterpretationPanel 
@@ -104,7 +92,7 @@
                     :data="kmPlotData"
                     :layout="kmLayout"
                     height="500px"
-                    :publicationReady="isGlobalPublicationReady"
+                    :publicationReady="uiStore.isAcademicMode"
                 />
                 <el-empty v-else description="暂无图表数据，请配置参数后点击绘制" />
                 
@@ -121,6 +109,8 @@ import api from '../../../api/client'
 import { MagicStick } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
 import InsightChart from './InsightChart.vue'
+import AnalysisHeader from '../../../components/AnalysisHeader.vue'
+import { useUiStore } from '../../../stores/ui'
 import { useVariableOptions } from '../../../composables/useVariableOptions'
 import { formatPValue } from '../../../utils/formatters'
 
@@ -140,7 +130,7 @@ const props = defineProps({
     metadata: Object
 })
 
-const isGlobalPublicationReady = ref(false)
+const uiStore = useUiStore()
 const loading = ref(false) // 加载状态
 const isInterpreting = ref(false)
 const pValue = ref(null)    // Log-rank 检验的 P 值

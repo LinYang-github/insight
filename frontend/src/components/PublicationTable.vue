@@ -1,9 +1,9 @@
 <template>
   <el-table
     v-bind="$attrs"
-    :class="['publication-table']"
-    :border="false"
-    :stripe="false"
+    :class="['publication-table', { 'academic-style': uiStore.isAcademicMode }]"
+    :border="!uiStore.isAcademicMode"
+    :stripe="!uiStore.isAcademicMode"
     style="width: 100%"
   >
     <slot />
@@ -11,43 +11,40 @@
 </template>
 
 <script setup>
-// Simply wraps el-table but enforces specific classes and props
+import { useUiStore } from '../stores/ui'
+const uiStore = useUiStore()
 </script>
 
 <style>
-/* Global styles for Publication Table to override Element Plus */
-.publication-table {
+/* 学术样式：标准三线表 (Three-Line Table) */
+.publication-table.academic-style {
     border-top: 2px solid #000 !important;
     border-bottom: 2px solid #000 !important;
-    font-family: var(--font-mono); /* Numbers aligned */
-    --el-table-header-font-color: #000;
-    --el-table-border-color: transparent; /* Hide internal borders */
+    font-family: var(--font-mono);
+    --el-table-header-bg-color: #fff;
+    --el-table-border-color: transparent;
 }
 
-/* Header bottom border */
-.publication-table th.el-table__cell {
-    border-bottom: 1px solid #000 !important;
-    background-color: #fff !important; /* No gray background */
-    font-weight: bold;
+.publication-table.academic-style .el-table__header-wrapper th {
+    border-bottom: 1.5px solid #000 !important;
+    background-color: #fff !important;
     color: #000;
+    font-weight: 700;
 }
 
-/* Row bottom border */
-.publication-table td.el-table__cell {
-    border-bottom: none !important; /* Remove row dividing lines by default for clean look */
-    /* Or keep them light? Academic usually has few lines. */
-    /* Let's keep specific dividing lines if needed, but standard is minimal. */
-    /* For Table 1, usually no horizontal lines except header and footer. */
-    padding: 8px 0;
+.publication-table.academic-style .el-table__row td {
+    border-bottom: none !important;
+    background-color: #fff !important;
 }
 
-/* Hover effect can stay or be subtle */
-.publication-table .el-table__body tr:hover > td {
-    background-color: #f5f7fa !important;
+/* 移除所有垂直线 */
+.publication-table.academic-style.el-table--border .el-table__cell,
+.publication-table.academic-style .el-table__inner-fixed .el-table__cell {
+    border-right: none !important;
 }
 
-/* Remove vertical lines if any */
-.publication-table--enable-row-hover .el-table__body tr > td.el-table__cell {
-    border-right: none;
+/* 仅在特定行（如分组行）保留轻微分割线 - 可扩展 */
+.publication-table.academic-style .is-group-row td {
+    border-bottom: 1px solid #eee !important;
 }
 </style>
