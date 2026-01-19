@@ -183,6 +183,14 @@
                              </el-button>
                              <el-button type="info" plain size="small" @click="copyMethodology" :icon="CopyDocument">复制方法学</el-button>
                              <el-button type="success" size="small" @click="exportResults">导出 Excel</el-button>
+                             <el-switch
+                                v-model="isGlobalPublicationReady"
+                                inline-prompt
+                                active-text="学术绘图级"
+                                inactive-text="普通预览"
+                                style="margin-left: 15px; --el-switch-on-color: #67C23A"
+                                title="一键切换所有图表为学术发表样式 (Times New Roman, 无网格, 高粗度)"
+                             />
                         </div>
                     </div>
                 </template>
@@ -424,6 +432,7 @@
                                     :title="config.model_type === 'cox' ? `ROC 曲线 (t=${evaluationTimePoint})` : 'ROC 曲线 (ROC Curve)'"
                                     :data="chartData.roc.data"
                                     :layout="chartData.roc.layout"
+                                    :publicationReady="isGlobalPublicationReady"
                                 />
                             </el-col>
                             
@@ -434,6 +443,7 @@
                                     :title="config.model_type === 'cox' ? `校准曲线 (Calibration) (t=${evaluationTimePoint})` : '校准曲线 (Calibration)'"
                                     :data="chartData.calibration.data"
                                     :layout="chartData.calibration.layout"
+                                    :publicationReady="isGlobalPublicationReady"
                                 />
                             </el-col>
                             
@@ -444,6 +454,7 @@
                                     :title="config.model_type === 'cox' ? `临床决策曲线 (DCA) (t=${evaluationTimePoint})` : '临床决策曲线 (DCA)'"
                                     :data="chartData.dca.data"
                                     :layout="chartData.dca.layout"
+                                    :publicationReady="isGlobalPublicationReady"
                                 />
                             </el-col>
                         </el-row>
@@ -504,6 +515,7 @@
                                 title="Multicollinearity (VIF)"
                                 :data="chartData.vif.data"
                                 :layout="chartData.vif.layout"
+                                :publicationReady="isGlobalPublicationReady"
                             />
                          </div>
                          
@@ -743,6 +755,7 @@ const props = defineProps({
 const loading = ref(false)
 const results = ref(null)
 const activeResultTab = ref('details')
+const isGlobalPublicationReady = ref(false)
 
 
 

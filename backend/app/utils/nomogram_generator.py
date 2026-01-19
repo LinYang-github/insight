@@ -123,11 +123,22 @@ class NomogramGenerator:
                                 'coef': float(coef)
                             })
                             
+                        # 添加分布数据 (各水平的计数)
+                        counts = df[feat].value_counts().to_dict()
+                        distribution = {str(k): int(v) for k, v in counts.items()}
+                            
                         var_specs[feat] = {
                             'type': 'categorical',
                             'levels': level_specs,
-                            'effect_range': max_coef - min_coef
+                            'effect_range': max_coef - min_coef,
+                            'distribution': distribution
                         }
+
+            # 针对连续变量也添加分布数据 (分位数)
+            if feat in var_specs and var_specs[feat]['type'] == 'continuous':
+                # 计算 10 个分位数作为分布展示
+                deciles = df[feat].quantile(np.linspace(0, 1, 11)).tolist()
+                var_specs[feat]['distribution'] = [float(d) for d in deciles]
 
         # 2. 归一化到 100 分
         # 寻找效应范围 (effect_range) 最大的变量
@@ -186,7 +197,8 @@ class NomogramGenerator:
                     'points': {
                         str(spec['min']): 0 if spec['coef'] > 0 else spec['points_at_max'],
                         str(spec['max']): spec['points_at_max'] if spec['coef'] > 0 else 0
-                    }
+                    },
+                    'distribution': spec.get('distribution', [])
                 })
                 
             elif spec['type'] == 'categorical':
@@ -210,7 +222,8 @@ class NomogramGenerator:
                 axes.append({
                     'name': name,
                     'type': 'categorical',
-                    'levels': levels_visual
+                    'levels': levels_visual,
+                    'distribution': spec.get('distribution', {})
                 })
 
         # 4. 结局概率映射

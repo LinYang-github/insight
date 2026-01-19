@@ -110,7 +110,10 @@ class LogisticRegressionStrategy(BaseModelStrategy):
         # 3. 列线图 (Nomogram) 数据 (用于打分系统)
         try:
             from app.utils.nomogram_generator import NomogramGenerator
-            nomogram_spec = NomogramGenerator.generate_spec(res, df, features)
+            original_df = params.get('original_df', df)
+            original_features = params.get('original_features', features)
+            
+            nomogram_spec = NomogramGenerator.generate_spec(res, original_df, original_features)
             if nomogram_spec:
                  plots['nomogram'] = nomogram_spec
         except Exception as e:

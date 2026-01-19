@@ -80,20 +80,14 @@
                             >
                                 AI 深度解读
                             </el-button>
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <el-button v-if="kmMethodology" type="primary" size="small" @click="copyMethodology" plain>复制方法学 (Methods)</el-button>
-                            <el-dropdown trigger="click" @command="downloadPlot">
-                                <el-button type="primary" size="small">
-                                    导出图片 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                                </el-button>
-                                <template #dropdown>
-                                    <el-dropdown-menu>
-                                        <el-dropdown-item command="png">高清 PNG (300dpi)</el-dropdown-item>
-                                        <el-dropdown-item command="svg">矢量 SVG (Vector)</el-dropdown-item>
-                                    </el-dropdown-menu>
-                                </template>
-                            </el-dropdown>
+                            <el-switch
+                                v-if="rawPlotData.length > 0"
+                                v-model="isGlobalPublicationReady"
+                                inline-prompt
+                                active-text="学术绘图"
+                                inactive-text="普通预览"
+                                style="--el-switch-on-color: #67C23A; margin-left: 10px;"
+                            />
                         </div>
                     </div>
                 </template>
@@ -103,7 +97,16 @@
                     :interpretation="kmInterpretation"
                 />
                 
-                <div id="km-plot" style="width: 100%; height: 500px;"></div>
+                <InsightChart
+                    v-if="rawPlotData.length > 0"
+                    chartId="km-plot"
+                    title="Kaplan-Meier 生存估计 (Survival Estimates)"
+                    :data="kmPlotData"
+                    :layout="kmLayout"
+                    height="500px"
+                    :publicationReady="isGlobalPublicationReady"
+                />
+                <el-empty v-else description="暂无图表数据，请配置参数后点击绘制" />
                 
             </el-card>
         </el-col>
@@ -112,12 +115,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
-import Plotly from 'plotly.js-dist-min'
-import { ArrowDown, MagicStick } from '@element-plus/icons-vue'
+import { MagicStick } from '@element-plus/icons-vue'
 import InterpretationPanel from './InterpretationPanel.vue'
+import InsightChart from './InsightChart.vue'
 
 /**
  * SurvivalTab.vue
@@ -135,6 +138,7 @@ const props = defineProps({
     metadata: Object
 })
 
+const isGlobalPublicationReady = ref(false)
 const loading = ref(false) // 加载状态
 const isInterpreting = ref(false)
 const pValue = ref(null)    // Log-rank 检验的 P 值
@@ -187,8 +191,6 @@ const generatePlot = async () => {
         kmInterpretation.value = data.km_data.interpretation
         kmMethodology.value = data.km_data.methodology
         rawPlotData.value = data.km_data.plot_data
-        
-        renderPlot(data.km_data.plot_data)
         
     } catch (error) {
         ElMessage.error(error.response?.data?.message || "绘图失败")
@@ -258,60 +260,25 @@ const copyMethodology = () => {
     })
 }
 
-/**
- * 将后端返回的 KM 数据绘制成图表。
- * 
- * @param {Array} plotData - 后端返回的分组数据 [{name: 'GroupA', times: [], probs: []}, ...]
- * @description
- * KM 曲线是阶梯状 (Step Function)，因此 line.shape 必须设为 'hv' (Horizontal-Vertical)。
- * Log-rank 检验用于比较两个或多个组的生存曲线是否存在显著差异。
- */
-const renderPlot = (plotData) => {
-    const traces = []
-    
-    plotData.forEach(g => {
-        // 主曲线
-        traces.push({
-            x: g.times,
-            y: g.probs,
-            mode: 'lines',
-            name: g.name,
-            line: { shape: 'hv' }, // 关键配置：阶梯线
-            type: 'scatter'
-        })
-        
-        // Censored markers? (Not passed from backend yet, MVP just lines)
-        
-        // CI Area (Optional, maybe cluttering? Let's skip for simple MVP or add as transparent fill)
-    })
-    
-    const layout = {
-        title: 'Kaplan-Meier 生存估计 (Survival Estimates)',
-        xaxis: { title: '时间 (Time)' },
-        yaxis: { title: '生存概率 (Survival Probability)', range: [0, 1.05] },
-        showlegend: true
-    }
-    
-    Plotly.newPlot('km-plot', traces, layout, {responsive: true})
-}
+const kmPlotData = computed(() => {
+    return rawPlotData.value.map(g => ({
+        x: g.times,
+        y: g.probs,
+        mode: 'lines',
+        name: g.name,
+        line: { shape: 'hv', width: 3 },
+        type: 'scatter'
+    }))
+})
+
+const kmLayout = computed(() => ({
+    xaxis: { title: '时间 (Time)' },
+    yaxis: { title: '生存概率 (Survival Probability)', range: [0, 1.05] },
+    showlegend: true
+}))
 
 
-const downloadPlot = async (format = 'png') => {
-    try {
-        const el = document.getElementById('km-plot')
-        if (!el) return
-        
-        await Plotly.downloadImage(el, {
-            format: format,
-            width: 1200,
-            height: 800,
-            filename: 'kaplan_meier_plot',
-            scale: format === 'png' ? 3 : 1
-        })
-    } catch (error) {
-        ElMessage.error('图片导出失败')
-    }
-}
+// 导出和渲染逻辑现在由 InsightChart 托管
 </script>
 
 <style scoped>

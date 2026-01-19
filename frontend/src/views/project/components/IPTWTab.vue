@@ -108,13 +108,25 @@
                         <el-col :span="14">
                             <el-card shadow="never">
                                 <template #header>Love 图 (标准化均值差 Standardized Mean Differences)</template>
-                                <div id="love-plot" style="width: 100%; height: 400px;"></div>
+                                <InsightChart
+                                    chartId="love-plot"
+                                    :data="lovePlotData"
+                                    :layout="lovePlotLayout"
+                                    height="400px"
+                                    :publicationReady="isGlobalPublicationReady"
+                                />
                             </el-card>
                         </el-col>
                         <el-col :span="10">
                             <el-card shadow="never">
                                 <template #header>权重分布 (Weight Distribution)</template>
-                                <div id="weight-plot" style="width: 100%; height: 400px;"></div>
+                                <InsightChart
+                                    chartId="weight-plot"
+                                    :data="weightPlotData"
+                                    :layout="weightPlotLayout"
+                                    height="400px"
+                                    :publicationReady="isGlobalPublicationReady"
+                                />
                             </el-card>
                         </el-col>
                     </el-row>
@@ -124,7 +136,14 @@
                         <template #header>
                              <div style="display: flex; justify-content: space-between; align-items: center;">
                                  <span>平衡性详情 (SMD Table)</span>
-                                 <div style="display: flex; gap: 10px;">
+                                 <div style="display: flex; gap: 10px; align-items: center;">
+                                     <el-switch
+                                        v-model="isGlobalPublicationReady"
+                                        inline-prompt
+                                        active-text="学术绘图"
+                                        inactive-text="普通预览"
+                                        style="--el-switch-on-color: #67C23A; margin-right: 10px;"
+                                     />
                                      <el-button 
                                         type="primary" 
                                         size="small" 
@@ -182,12 +201,12 @@
  * 3. 可视化加权效果 (Love Plot) 与权重分布 (Weight Distribution)。
  * 4. 支持保存加权后的数据集，以便在回归模型中使用加权分析。
  */
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
-import api from '../../../api/client' // Corrected path
-import Plotly from 'plotly.js-dist-min'
+import api from '../../../api/client'
 import InterpretationPanel from './InterpretationPanel.vue'
+import InsightChart from './InsightChart.vue'
 
 const props = defineProps({
     datasetId: Number,
@@ -205,6 +224,7 @@ const results = ref(null) // 统计分析结果
 const isSuggestingRoles = ref(false)
 const isInterpreting = ref(false)
 const aiInterpretation = ref(null)
+const isGlobalPublicationReady = ref(false)
 
 /**
  * 筛选二分类变量（处理组）。
@@ -254,11 +274,6 @@ const runIPTW = async () => {
         const { data } = await api.post('/statistics/iptw', payload)
         results.value = data
         ElMessage.success('IPTW 分析完成')
-        
-        nextTick(() => {
-            renderLovePlot()
-            renderWeightPlot()
-        })
         
     } catch (error) {
         ElMessage.error(error.response?.data?.message || '分析失败')
@@ -310,80 +325,64 @@ const suggestRoles = async () => {
 }
 
 /**
- * 渲染协变量平衡图 (Love Plot)。
+ * 绘图数据计算
  */
-const renderLovePlot = () => {
-    const el = document.getElementById('love-plot')
-    if (!el || !results.value) return
-    
-    const vars = results.value.balance.map(r => r.variable)
+const lovePlotData = computed(() => {
+    if (!results.value) return []
     const smd_pre = results.value.balance.map(r => r.smd_pre)
     const smd_post = results.value.balance.map(r => r.smd_post)
+    const vars = results.value.balance.map(r => r.variable)
     
-    // Reverse for nice top-down plotting in horizontal bar
-    // Actually scatter is better for Love Plot
-    
-    const trace1 = {
-        x: smd_pre,
-        y: vars,
-        mode: 'markers',
-        type: 'scatter',
-        name: '未加权 (Unweighted)',
-        marker: { color: 'red', size: 8, symbol: 'circle-open' }
-    }
-    
-    const trace2 = {
-        x: smd_post,
-        y: vars,
-        mode: 'markers',
-        type: 'scatter',
-        name: '加权后 (Weighted)',
-        marker: { color: 'green', size: 10, symbol: 'circle' }
-    }
-    
-    const layout = {
-        title: '协变量平衡性诊断 (Love Plot)',
-        xaxis: { title: '绝对标准化均值差 (Absolute SMD)', range: [0, Math.max(0.5, ...smd_pre) + 0.1] },
-        yaxis: { automargin: true },
-        shapes: [
-            {
-                type: 'line',
-                x0: 0.1, x1: 0.1,
-                y0: 0, y1: 1, yref: 'paper',
-                line: { color: 'gray', dash: 'dash', width: 1 }
-            }
-        ],
-        margin: { l: 150, r: 20, t: 40, b: 40 }
-    }
-    
-    Plotly.newPlot(el, [trace1, trace2], layout)
-}
+    return [
+        {
+            x: smd_pre,
+            y: vars,
+            mode: 'markers',
+            type: 'scatter',
+            name: '未加权 (Unweighted)',
+            marker: { color: '#D32F2F', size: 8, symbol: 'circle-open' }
+        },
+        {
+            x: smd_post,
+            y: vars,
+            mode: 'markers',
+            type: 'scatter',
+            name: '加权后 (Weighted)',
+            marker: { color: '#3B71CA', size: 10, symbol: 'circle' }
+        }
+    ]
+})
 
-/**
- * 渲染权重分布直方图。
- */
-const renderWeightPlot = () => {
-    const el = document.getElementById('weight-plot')
-    if (!el || !results.value) return
-    
-    const weights = results.value.weights
-    
-    const trace = {
-        x: weights,
+const lovePlotLayout = computed(() => ({
+    xaxis: { title: '绝对标准化均值差 (Absolute SMD)' },
+    yaxis: { automargin: true },
+    shapes: [
+        {
+            type: 'line',
+            x0: 0.1, x1: 0.1,
+            y0: 0, y1: 1, yref: 'paper',
+            line: { color: 'gray', dash: 'dash', width: 1 }
+        }
+    ],
+    margin: { l: 150, r: 20, t: 10, b: 40 }
+}))
+
+const weightPlotData = computed(() => {
+    if (!results.value) return []
+    return [{
+        x: results.value.weights,
         type: 'histogram',
         marker: { color: '#3B71CA' },
-        opacity: 0.7
-    }
-    
-    const layout = {
-        title: '权重分布 (Weight Distribution)',
-        xaxis: { title: '权重 (Weight)' },
-        yaxis: { title: '频数 (Frequency)' },
-        margin: { l: 40, r: 20, t: 40, b: 40 }
-    }
-    
-    Plotly.newPlot(el, [trace], layout)
-}
+        opacity: 0.7,
+        name: 'Weights'
+    }]
+})
+
+const weightPlotLayout = computed(() => ({
+    xaxis: { title: '权重 (Weight)' },
+    yaxis: { title: '频数 (Frequency)' },
+    margin: { l: 40, r: 20, t: 10, b: 40 }
+}))
 
 const copyTable = () => {
     // TSV copy logic similar to other tabs

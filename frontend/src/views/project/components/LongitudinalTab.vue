@@ -105,8 +105,10 @@
                          <InsightChart
                             chartId="hist-slopes"
                             title="个体斜率分布 (Indiv. Slopes Distribution)"
-                            :data="charts.slopes.data"
-                            :layout="charts.slopes.layout"
+                            :data="slopePlotData"
+                            :layout="slopePlotLayout"
+                            height="300px"
+                            :publicationReady="isGlobalPublicationReady"
                          />
                      </el-col>
                  </el-row>
@@ -122,36 +124,26 @@
               </div>
               
               <div v-if="results.clustering">
-                  <div style="margin-bottom: 15px;">
-                      <el-button 
-                          type="primary" 
-                          size="small" 
-                          @click="runAIClustering" 
-                          :loading="isInterpreting.clustering"
-                          :icon="MagicStick"
-                          class="ai-advanced-btn"
-                      >
-                          AI 聚类解读
-                      </el-button>
-                  </div>
-                  
-                  <InterpretationPanel 
-                        v-if="aiInterpretation.clustering"
-                        :interpretation="{ text: aiInterpretation.clustering, is_ai: true, level: 'info' }"
-                        style="margin-bottom: 20px;"
-                  />
-
-                  <div style="margin-bottom: 15px;">
-                      <el-button 
-                          type="primary" 
-                          size="small" 
-                          @click="runAIClustering" 
-                          :loading="isInterpreting.clustering"
-                          :icon="MagicStick"
-                          class="ai-advanced-btn"
-                      >
-                          AI 聚类解读
-                      </el-button>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                          <el-switch
+                            v-model="isGlobalPublicationReady"
+                            inline-prompt
+                            active-text="学术绘图"
+                            inactive-text="普通预览"
+                            style="--el-switch-on-color: #67C23A"
+                          />
+                          <el-button 
+                              type="primary" 
+                              size="small" 
+                              @click="runAIClustering" 
+                              :loading="isInterpreting.clustering"
+                              :icon="MagicStick"
+                              class="ai-advanced-btn"
+                          >
+                              AI 聚类解读
+                          </el-button>
+                      </div>
                   </div>
                   
                   <InterpretationPanel 
@@ -165,8 +157,10 @@
                           <InsightChart
                              chartId="traj-plot"
                              title="按簇划分的轨迹图 (Spaghetti Plot by Cluster)"
-                             :data="charts.trajectory.data"
-                             :layout="charts.trajectory.layout"
+                             :data="trajectoryPlotData"
+                             :layout="trajectoryPlotLayout"
+                             height="400px"
+                             :publicationReady="isGlobalPublicationReady"
                           />
                       </el-col>
                       <el-col :span="8">
@@ -265,13 +259,11 @@ const loading = reactive({
 const results = reactive({
     lmm: null,
     clustering: null,
-    variability: null
+    variability: null,
+    random_effects: [] // Store RE raw data
 }) // 各模块的分析结果
 
-const charts = reactive({
-    slopes: { data: [], layout: {} },
-    trajectory: { data: [], layout: {} }
-}) // 图表配置与数据
+const isGlobalPublicationReady = ref(false)
 const isSuggestingRoles = ref(false)
 const isInterpreting = reactive({ lmm: false, clustering: false })
 const aiInterpretation = reactive({ lmm: null, clustering: null })
@@ -308,8 +300,8 @@ const fitLMM = async () => {
             ...config
         })
         results.lmm = data.results
+        results.random_effects = data.results.random_effects
         lmmMethodology.value = data.results.methodology
-        renderSlopesChart(data.results.random_effects)
         ElMessage.success('LMM 运行成功')
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'Failed')
@@ -359,7 +351,6 @@ const runClustering = async () => {
         })
         results.clustering = data.results
         trajMethodology.value = data.results.methodology
-        renderTrajChart(data.results.clusters)
         ElMessage.success('聚类完成')
     } catch (e) {
         ElMessage.error(e.response?.data?.message || 'Failed')
@@ -444,73 +435,68 @@ const runAIClustering = async () => {
 }
 
 
-// Chart Helpers
-const renderSlopesChart = (re_data) => {
-    const slopes = re_data.map(d => d.total_slope)
-    charts.slopes.data = [{
+/**
+ * 图表计算逻辑 (Computed)
+ */
+const slopePlotData = computed(() => {
+    if (!results.random_effects || results.random_effects.length === 0) return []
+    const slopes = results.random_effects.map(d => d.total_slope)
+    return [{
         x: slopes,
         type: 'histogram',
-        marker: { color: '#3B71CA' }
+        marker: { color: '#3B71CA' },
+        name: 'Slopes'
     }]
-    charts.slopes.layout = {
-        title: '总斜率分布 (固定+随机效应)',
-        xaxis: { title: '斜率值 (Slope Value)' },
-        yaxis: { title: '频数 (Count)' }
-    }
-}
+})
 
-const renderTrajChart = (clusters) => {
-    // This assumes we have the raw time/outcome points to draw lines.
-    // However, the current API `cluster_trajectories` returns slopes/intercepts in `result.clustering.clusters`.
-    // It does NOT return the full longitudinal time points. 
-    // To draw spaghetti, we ideally need the original data points joined with cluster ID.
-    // For MVP, we can plot the "Estimated Trajectories" (lines) for each patient, 
-    // using the regression params (intercept, slope) we have.
+const slopePlotLayout = computed(() => ({
+    xaxis: { title: '斜率值 (Slope Value)' },
+    yaxis: { title: '频数 (Count)' },
+    margin: { l: 40, r: 20, t: 10, b: 40 }
+}))
+
+const trajectoryPlotData = computed(() => {
+    if (!results.clustering || !results.clustering.clusters) return []
+    const clusters = results.clustering.clusters
     
-    // Limit to first 100 lines per cluster to avoid browser crash
-    const traces = []
+    // Limit to sample for performance
     const clusterGroups = {}
-    
     clusters.forEach(c => {
         if (!clusterGroups[c.cluster]) clusterGroups[c.cluster] = []
         clusterGroups[c.cluster].push(c)
     })
     
+    const traces = []
     Object.keys(clusterGroups).forEach((k, i) => {
-        const members = clusterGroups[k].slice(0, 50) // Sample 50 lines per cluster for clarity
+        const members = clusterGroups[k].slice(0, 50) 
         const color = clusterColors[i % clusterColors.length]
-        
-        // We need a time range to plot the line. Let's assume 0 to 5 (canonical).
-        // Or we should ask backend for min/max time.
-        // For visual, 0 to 10 is fine.
-        const x = [0, 5] 
+        const xRange = [0, 5] 
         
         members.forEach(m => {
             const y = [m.intercept, m.intercept + m.slope * 5]
             traces.push({
-                x: x, y: y,
+                x: xRange, y: y,
                 mode: 'lines',
-                line: { color: color, width: 1, opacity: 0.5 },
+                line: { color: color, width: 1, opacity: 0.4 },
                 showlegend: false,
                 hoverinfo: 'none'
             })
         })
         
-        // Add a dummy trace for legend
         traces.push({
             x: [null], y: [null],
             name: `Cluster ${k}`,
-            line: { color: color, width: 2 },
+            line: { color: color, width: 3 },
             mode: 'lines'
         })
     })
-    
-    charts.trajectory.data = traces
-    charts.trajectory.layout = {
-        title: '预测轨迹图 (抽样展示)',
-        xaxis: { title: '时间 (Time)' },
-        yaxis: { title: '结局指标值 (Outcome)' }
-    }
-}
+    return traces
+})
+
+const trajectoryPlotLayout = computed(() => ({
+    xaxis: { title: '时间 (Time)' },
+    yaxis: { title: '结局指标值 (Outcome)' },
+    margin: { l: 60, r: 20, t: 10, b: 40 }
+}))
 
 </script>

@@ -122,19 +122,28 @@
 
                      <el-alert v-if="results.new_dataset_id" title="新数据集已保存" type="info" show-icon style="margin-bottom: 20px" />
                      
-                                           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                         <h4 style="margin: 0">均衡性诊断表 (Balance Table)</h4>
-                         <el-button 
-                             type="primary" 
-                             size="small" 
-                             @click="runAIInterpretation" 
-                             :loading="isInterpreting" 
-                             :icon="MagicStick"
-                             class="ai-advanced-btn"
-                         >
-                             AI 均衡性评价
-                         </el-button>
-                      </div>
+                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                          <div style="display: flex; align-items: center; gap: 15px;">
+                            <h4 style="margin: 0">均衡性诊断表 (Balance Table)</h4>
+                            <el-switch
+                                v-model="isGlobalPublicationReady"
+                                inline-prompt
+                                active-text="学术绘图"
+                                inactive-text="普通预览"
+                                style="--el-switch-on-color: #67C23A"
+                            />
+                          </div>
+                          <el-button 
+                              type="primary" 
+                              size="small" 
+                              @click="runAIInterpretation" 
+                              :loading="isInterpreting" 
+                              :icon="MagicStick"
+                              class="ai-advanced-btn"
+                          >
+                              AI 均衡性评价
+                          </el-button>
+                       </div>
 
                       <InterpretationPanel 
                          v-if="aiInterpretation"
@@ -170,7 +179,13 @@
                      </el-table>
                      
                      <h4>协变量平衡图 (Love Plot)</h4>
-                     <div id="love-plot" style="width: 100%; height: 500px;"></div>
+                     <InsightChart
+                        chartId="love-plot"
+                        :data="lovePlotData"
+                        :layout="lovePlotLayout"
+                        height="500px"
+                        :publicationReady="isGlobalPublicationReady"
+                     />
                 </div>
                 <div v-else-if="!loading" style="text-align: center; color: gray;">
                     准备就绪，系统正在进行匹配计算...
@@ -195,10 +210,9 @@
 import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../../api/client'
-import Plotly from 'plotly.js-dist-min'
-import StepWizard from './StepWizard.vue'
 import GlossaryTooltip from './GlossaryTooltip.vue'
 import InterpretationPanel from './InterpretationPanel.vue'
+import InsightChart from './InsightChart.vue'
 import { QuestionFilled, MagicStick } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -217,6 +231,7 @@ const healthReport = ref([]) // 数据健康检查结果报告
 const isSuggestingRoles = ref(false)
 const isInterpreting = ref(false)
 const aiInterpretation = ref(null)
+const isGlobalPublicationReady = ref(false)
 
 const config = reactive({
     treatment: null,
@@ -363,10 +378,7 @@ const runPSM = async () => {
             })
         }
         
-        // Render Love Plot
-        nextTick(() => {
-            if (data.balance) renderLovePlot(data.balance)
-        })
+        // Result visualization triggered by reactivity
         
     } catch (error) {
         ElMessage.error(error.response?.data?.message || "匹配失败")
@@ -396,61 +408,50 @@ const runAIInterpretation = async () => {
 }
 
 
-/**
- * 绘制协变量平衡图 (Love Plot)。
- * 展示匹配前后各变量 SM (Standardized Mean Difference) 的变化。
- */
-const renderLovePlot = (balanceData) => {
-    // balanceData: [{variable, smd_pre, smd_post}, ...]
-    const sorted = [...balanceData].sort((a,b) => Math.abs(a.smd_pre) - Math.abs(b.smd_pre));
-    
+const lovePlotData = computed(() => {
+    if (!results.value || !results.value.balance) return []
+    const sorted = [...results.value.balance].sort((a,b) => Math.abs(a.smd_pre) - Math.abs(b.smd_pre));
     const vars = sorted.map(d => d.variable);
     const pre = sorted.map(d => Math.abs(d.smd_pre));
     const post = sorted.map(d => Math.abs(d.smd_post));
     
-    const trace1 = {
-        x: pre,
-        y: vars,
-        mode: 'markers',
-        name: '未匹配 (Unmatched)',
-        marker: { color: '#F56C6C', size: 10, symbol: 'circle-open' }, // Red open circle
-        type: 'scatter'
-    };
-    
-    const trace2 = {
-        x: post,
-        y: vars,
-        mode: 'markers',
-        name: '已匹配 (Matched)',
-        marker: { color: '#67C23A', size: 10, symbol: 'circle' }, // Green filled circle
-        type: 'scatter'
-    };
-    
-    const layout = {
-        title: '协变量平衡性诊断 (Love Plot)',
-        xaxis: { 
-            title: '绝对标准化均值差 (Absolute SMD)', 
-            range: [0, Math.max(0.2, ...pre) + 0.1],
-            zeroline: true
+    return [
+        {
+            x: pre,
+            y: vars,
+            mode: 'markers',
+            name: '未匹配 (Unmatched)',
+            marker: { color: '#F56C6C', size: 10, symbol: 'circle-open' },
+            type: 'scatter'
         },
-        yaxis: { 
-            title: '',
-            automargin: true 
-        },
-        shapes: [
-            {
-                type: 'line',
-                x0: 0.1, x1: 0.1,
-                y0: 0, y1: 1, yref: 'paper',
-                line: { color: 'gray', width: 1, dash: 'dash' }
-            }
-        ],
-        margin: { l: 150, r: 20, t: 40, b: 40 },
-        legend: { x: 0.8, y: 0.1 }
-    };
-    
-    Plotly.newPlot('love-plot', [trace1, trace2], layout);
-}
+        {
+            x: post,
+            y: vars,
+            mode: 'markers',
+            name: '已匹配 (Matched)',
+            marker: { color: '#67C23A', size: 10, symbol: 'circle' },
+            type: 'scatter'
+        }
+    ]
+})
+
+const lovePlotLayout = computed(() => ({
+    xaxis: { 
+        title: '绝对标准化均值差 (Absolute SMD)', 
+        zeroline: true
+    },
+    yaxis: { automargin: true },
+    shapes: [
+        {
+            type: 'line',
+            x0: 0.1, x1: 0.1,
+            y0: 0, y1: 1, yref: 'paper',
+            line: { color: 'gray', width: 1, dash: 'dash' }
+        }
+    ],
+    margin: { l: 150, r: 20, t: 10, b: 40 },
+    legend: { x: 0.8, y: 0.1 }
+}))
 </script>
 
 <style scoped>
