@@ -186,3 +186,48 @@ def calculate_slope(current_user):
             'metadata': new_dataset.meta_data
         }
     }), 200
+@clinical_bp.route('/ai-suggest-roles', methods=['POST'])
+@token_required
+def ai_suggest_roles(current_user):
+    """
+    AI 智能角色推荐 (Clinical).
+    """
+    data = request.get_json()
+    dataset_id = data.get('dataset_id')
+    tool_type = data.get('tool_type') # 'egfr', 'staging', 'slope'
+    
+    if not dataset_id or not tool_type:
+        return jsonify({'message': 'Missing parameters'}), 400
+
+    dataset = db.session.get(Dataset, dataset_id)
+    if not dataset or dataset.project.user_id != current_user.id:
+        return jsonify({'message': 'Dataset not found'}), 404
+
+    # Get AI Config
+    from app.api.projects import get_ai_config
+    api_key, api_base, api_model = get_ai_config(current_user)
+    
+    if not api_key:
+        return jsonify({'message': '未配置 AI API Key'}), 400
+
+    from app.services.ai_service import AIService
+    try:
+        # Map tool_type to AIService model_type
+        # tool_type from frontend: 'egfr', 'staging', 'slope'
+        model_type_map = {
+            'egfr': 'clinical_egfr',
+            'staging': 'clinical_staging',
+            'slope': 'clinical_slope'
+        }
+        
+        analysis_type = model_type_map.get(tool_type, 'clinical_egfr')
+        
+        # Get variables
+        variables = dataset.meta_data.get('variables', [])
+        
+        suggestion = AIService.suggest_variable_roles(
+            analysis_type, variables, api_key, api_base, api_model
+        )
+        return jsonify(suggestion), 200
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500

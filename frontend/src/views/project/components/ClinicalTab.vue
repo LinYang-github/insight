@@ -46,6 +46,15 @@
                     <div class="card-header">
                         <span>⚙️ 参数映射 (Variable Mapping)</span>
                         <div style="display: flex; gap: 10px; align-items: center;">
+                            <el-button 
+                                type="primary" 
+                                link 
+                                :icon="MagicStick" 
+                                @click="suggestRoles('egfr')"
+                                :loading="isSuggestingRoles"
+                            >
+                                AI 智能推荐
+                            </el-button>
                             <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
                                 <template #reference>
                                     <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -143,6 +152,15 @@
                     <div class="card-header">
                         <span>📊 CKD 分期 (Staging & Risk)</span>
                         <div style="display: flex; gap: 10px; align-items: center;">
+                            <el-button 
+                                type="primary" 
+                                link 
+                                :icon="MagicStick" 
+                                @click="suggestRoles('staging')"
+                                :loading="isSuggestingRoles"
+                            >
+                                AI 智能推荐
+                            </el-button>
                             <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
                                 <template #reference>
                                     <el-button size="small">输出设置: {{ saveMode === 'new' ? '另存为新' : '覆盖当前' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -201,6 +219,15 @@
                     <div class="card-header">
                         <span>📈 纵向趋势分析 (Slope Analysis)</span>
                         <div style="display: flex; gap: 10px; align-items: center;">
+                             <el-button 
+                                type="primary" 
+                                link 
+                                :icon="MagicStick" 
+                                @click="suggestRoles('slope')"
+                                :loading="isSuggestingRoles"
+                            >
+                                AI 智能推荐
+                            </el-button>
                              <!-- Melt Actions -->
                              <template v-if="slopeMode === 'melt'">
                                 <el-popover placement="bottom" title="保存选项 (Output Options)" :width="250" trigger="click">
@@ -331,6 +358,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../../../api/client'
+import { MagicStick, ArrowDown, InfoFilled, Plus, Minus } from '@element-plus/icons-vue'
 
 const props = defineProps({
     dataset: Object,
@@ -342,6 +370,7 @@ const emit = defineEmits(['dataset-updated'])
 const activeTool = ref('egfr') // 当前活跃的工具模块 (egfr/staging/slope)
 const egfrMethod = ref('egfr_ckdepi2021') // 当前选中的 eGFR 计算公式
 const calculating = ref(false) // 计算状态
+const isSuggestingRoles = ref(false) // AI 推荐状态
 
 const params = ref({
     scr: '',   // 血肌酐变量名
@@ -395,6 +424,56 @@ const canCalculate = computed(() => {
     return params.value.scr && params.value.age && params.value.sex
 })
 
+/**
+ * AI 智能角色推荐
+ */
+const suggestRoles = async (toolType) => {
+    isSuggestingRoles.value = true
+    try {
+        const { data } = await api.post('/clinical/ai-suggest-roles', {
+            dataset_id: props.dataset.dataset_id,
+            tool_type: toolType
+        })
+        
+        let reason = data.reasoning || '基于变量名智能推荐'
+        let appliedCount = 0
+
+        if (toolType === 'egfr') {
+            if (data.scr) { params.value.scr = data.scr; appliedCount++ }
+            if (data.age) { params.value.age = data.age; appliedCount++ }
+            if (data.sex) { params.value.sex = data.sex; appliedCount++ }
+            if (data.race) { params.value.race = data.race; appliedCount++ }
+            if (data.height) { params.value.height = data.height; appliedCount++ }
+        } else if (toolType === 'staging') {
+            if (data.egfr) { stagingParams.value.egfr = data.egfr; appliedCount++ }
+            if (data.acr) { stagingParams.value.acr = data.acr; appliedCount++ }
+        } else if (toolType === 'slope') {
+            if (data.id_col) { 
+                slopeParams.value.id_col = data.id_col
+                meltParams.value.id_col = data.id_col // Also set for melt
+                appliedCount++ 
+            }
+            if (data.time_col) { slopeParams.value.time_col = data.time_col; appliedCount++ }
+            if (data.value_col) { slopeParams.value.value_col = data.value_col; appliedCount++ }
+        }
+        
+        if (appliedCount > 0) {
+            ElMessage({
+                message: `AI 已为您推荐 ${appliedCount} 个变量映射。\n理由: ${reason}`,
+                type: 'success',
+                duration: 5000
+            })
+        } else {
+            ElMessage.warning('AI 未能识别出相关变量，请手动选择。')
+        }
+
+    } catch (e) {
+        console.error("AI Suggestion failed", e)
+        ElMessage.error(e.response?.data?.message || 'AI 推荐失败，请检查 API Key 配置')
+    } finally {
+        isSuggestingRoles.value = false
+    }
+}
 
 /**
  * 执行 eGFR 衍生计算。

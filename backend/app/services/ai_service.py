@@ -25,17 +25,38 @@ class AIService:
         
         system_prompt = """你是一个医学统计专家。你的任务是根据提供的数据集变量列表和用户选择的模型类型，推荐变量在模型中的角色。
 你必须返回一个合法的 JSON 对象，不要包含任何额外的解释文字，也不要使用 Markdown 代码块。
-JSON 字段如下：
-- target: 结局变量名称（如果是 Cox 模型，则设为 null）
-- time: 时间变量名称（仅 Cox 模型需要，用于随访时间，否则为 null）
-- event: 事件状态变量名称（仅 Cox 模型需要，0=删失/1=事件，否则为 null）
-- features: 推荐纳入模型的特征变量列表（协变量，剔除 ID 和无意义变量）
-- reason: 简短的推荐理由
+
+通用 JSON 字段：
+- target: 结局变量名称（如 eGFR, Death, Status）
+- reasoning: 简短的推荐理由
+
+针对不同模型类型的特定字段：
+
+1. **cox** / **km** / **competing_risk**:
+   - time: 时间变量 (Time to event)
+   - event: 事件变量 (Status, 0=Censor, 1=Event)
+   - features: 协变量列表 (Covariates)
+
+2. **clinical_egfr**:
+   - scr: 血肌酐 (Serum Creatinine, e.g. Scr, Creatinine, Cr)
+   - age: 年龄 (Age)
+   - sex: 性别 (Sex/Gender)
+   - race: 种族 (Black/Non-Black, 可为 null)
+   - height: 身高 (Height/cm, 仅 bedsite schwartz 需要, 可为 null)
+
+3. **clinical_staging**:
+   - egfr: 肾小球滤过率 (eGFR)
+   - acr: 尿白蛋白肌酐比 (ACR, mg/g, 可为 null)
+
+4. **clinical_slope**:
+   - id_col: 病人ID (Patient ID)
+   - time_col: 时间变量 (Time/Month/Year)
+   - value_col: 数值变量 (Value/eGFR/Measure)
 
 注意：
-1. 识别潜在的结局变量（如：死亡、复发、ESRD、Survival_Time 等）。
-2. 在医学研究中，ID、姓名、日期等变量不应作为特征。
-3. 如果模型是 Cox，必须识别出时间（Time）和事件状态（Event/Status）。
+1. 你的识别必须基于变量名和类型进行推断。
+2. 对于 eGFR 计算，优先识别 "Scr", "Cr", "Creatinine", "肌酐"。
+3. 对于性别，优先识别 "Sex", "Gender", "Male", "Female"。
 """
 
         user_prompt = f"""模型类型: {model_type}
