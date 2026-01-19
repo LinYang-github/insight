@@ -1,15 +1,28 @@
 <template>
   <div>
     <div class="data-actions">
+      <div v-if="uploading" class="upload-progress">
+          <el-progress 
+            :percentage="uploadPercent" 
+            :status="uploadStatus"
+            :format="progressFormat"
+          />
+          <div class="upload-tip">{{ uploadTip }}</div>
+      </div>
       <el-upload
+        v-else
         class="upload-demo"
         :action="uploadUrl"
         :headers="headers"
         :on-success="handleUploadFinish"
         :on-error="handleUploadError"
+        :before-upload="beforeUpload"
+        :on-progress="onUploadProgress"
         :show-file-list="false"
       >
-        <el-button type="primary">上传文件 (CSV/Excel)</el-button>
+        <el-button type="primary" :loading="processing">
+            {{ processing ? '正在处理大文件...' : '上传文件 (CSV/Excel)' }}
+        </el-button>
       </el-upload>
     </div>
 
@@ -71,6 +84,11 @@ const props = defineProps({
 const emit = defineEmits(['dataset-updated'])
 
 const metadata = ref(null)
+const uploading = ref(false)
+const processing = ref(false)
+const uploadPercent = ref(0)
+const uploadStatus = ref('') // 'success', 'exception', 'warning'
+const uploadTip = ref('正在上传...')
 
 watch(() => props.dataset, (newVal) => {
     if (newVal && newVal.metadata) {
@@ -83,17 +101,65 @@ const headers = computed(() => ({
     Authorization: `Bearer ${localStorage.getItem('token')}`
 }))
 
-const handleUploadFinish = (response) => {
-    ElMessage.success('上传成功')
-    metadata.value = response.metadata
-    emit('dataset-updated', { 
-        dataset_id: response.dataset_id, 
-        metadata: response.metadata 
-    })
+const beforeUpload = (file) => {
+    const isLt500M = file.size / 1024 / 1024 < 500
+    if (!isLt500M) {
+        ElMessage.error('上传文件大小不能超过 500MB!')
+        return false
+    }
+    uploading.value = true
+    uploadPercent.value = 0
+    uploadStatus.value = ''
+    uploadTip.value = '正在上传...'
+    return true
 }
 
-const handleUploadError = () => {
-    ElMessage.error('上传失败')
+const onUploadProgress = (event) => {
+    if (event.percent < 90) {
+        uploadPercent.value = Math.round(event.percent)
+    } else {
+        // Stuck at 90% to wait for backend processing
+        uploadPercent.value = 90
+        uploadTip.value = '正在解析元数据 (DuckDB)...'
+        processing.value = true
+    }
+}
+
+const progressFormat = (percentage) => {
+    return processing.value ? 'Processing' : `${percentage}%`
+}
+
+const handleUploadFinish = (response) => {
+    uploadPercent.value = 100
+    uploadStatus.value = 'success'
+    uploadTip.value = '上传成功！'
+    processing.value = false
+    
+    setTimeout(() => {
+        uploading.value = false
+        ElMessage.success('上传成功')
+        metadata.value = response.metadata
+        emit('dataset-updated', { 
+            dataset_id: response.dataset_id, 
+            metadata: response.metadata 
+        })
+    }, 800)
+}
+
+const handleUploadError = (err) => {
+    uploadStatus.value = 'exception'
+    uploadTip.value = '上传失败'
+    processing.value = false
+    uploading.value = false
+    
+    // Parse error message
+    let msg = '上传失败'
+    try {
+        const res = JSON.parse(err.message)
+        msg = res.message || msg
+    } catch(e) {}
+    
+    ElMessage.error(msg)
 }
 
 const handleDownload = () => {
@@ -106,7 +172,6 @@ const handleDownload = () => {
         const link = document.createElement('a');
         link.href = href;
         
-        // Try to get filename
         let filename = props.dataset.name || 'dataset.csv';
         if (!filename.toLowerCase().endsWith('.csv')) filename += '.csv'
 

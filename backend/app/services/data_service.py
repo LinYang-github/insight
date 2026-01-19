@@ -227,70 +227,120 @@ class DataService:
     @staticmethod
     def get_initial_metadata(filepath):
         """
-        读取并生成数据集的初始元数据。
+        读取并生成数据集的初始元数据 (使用 DuckDB 优化大文件读取)。
 
         Args:
-            filepath (str): 数据文件路径。
+            filepath (str): 数据文件路径 (.duckdb, .csv, .xlsx)。
 
         Returns:
             dict: 包含变量列表、类型推断、缺失值统计及数据预览的字典。
         """
-        # Use chunk mode to avoid loading entire large file just for metadata
-        # However, for accurate missing_count / unique_count, we ideally need full data.
-        # But reading full data is slow.
-        # Strategy: 
-        # 1. Read full data if possible (safe with MAX_FILE_SIZE check).
-        # 2. To strictly follow requirement "use chunksize to avoid loading all", 
-        #    we might lose accurate global stats (missing/unique) unless we iterate all chunks.
-        #    BUT user asked for "chunksize for metadata extraction".
-        #    Let's compromise: Read full file (since we have size limit) BUT open possibility for chunking.
-        #    Wait, user explicitly asked "Use chunksize ... to avoid loading at once".
-        #    If I read only 1st chunk, I can't get global unique_count.
-        #    Let's stick to full read because 200MB is manageable, but I implemented the check.
-        #    Actually, user said "chunksize for metadata extraction". 
-        #    If file is huge, `read_csv` without chunksize might OOM.
-        #    Let's read the *first chunk* for type inference and preview, 
-        #    but we really need full scan for accurate stats. 
-        #    User requirement priority: Robustness.
-        #    Let's implement an optimized approach: Read full file but with size limit check first.
-        #    Actually, `use_chunk` in `load_data` is a good first step.
+        preview_data = []
+        raw_metadata = []
+        row_count = 0
         
-        # TODO: 重新阅读用户需求：“使用 chunksize 进行大文件元数据提取，避免一次性读入”
-        # 好的，我将读取第一个分块以获取列名和类型。
-        # 对于行数/缺失值/唯一值，如果不加载所有数据，扫描整改文件的开销很大。
-        # 我现在使用全量加载，因为 200MB 的限制保护了我们。
-        # 但我会使用 load_data 中的 use_chunk 参数逻辑来支持未来的扩展。
-        
-        # 当前实现：全量加载（由于有大小检查，是安全的）。
-        df = DataService.load_data(filepath)
-            
-        metadata = []
-        for col in df.columns:
-            dtype = str(df[col].dtype)
-            var_type = 'continuous' if 'int' in dtype or 'float' in dtype else 'categorical'
-            
-            # 启发式规则：如果分类变量唯一值过多，可能是 ID 或 文本
-            if var_type == 'categorical' and df[col].nunique() > 50:
-                 var_type = 'text/id'
-            
-            # 启发式规则：如果数值变量唯一值很少（如 0/1），可能是分类变量
-            if var_type == 'continuous' and df[col].nunique() < 10:
-                var_type = 'categorical'
+        # Use DuckDB for metadata extraction without full load
+        con = None
+        try:
+            # 1. Connect / Create View
+            if filepath.endswith('.duckdb'):
+                con = duckdb.connect(filepath, read_only=True)
+                table_name = "data"
+            else:
+                con = duckdb.connect(":memory:")
+                if filepath.endswith('.csv'):
+                    # Create a view directly on the CSV file (zero-copy if possible)
+                    con.sql(f"CREATE VIEW data AS SELECT * FROM read_csv_auto('{filepath}', ignore_errors=true)")
+                    table_name = "data"
+                elif filepath.endswith('.xlsx') or filepath.endswith('.xls'):
+                    # Excel still needs Pandas load unfortunately, unless we use extensions
+                    # Assuming we might have ingested it to DuckDB in upload_data, but if not:
+                    df = pd.read_excel(filepath)
+                    con.sql("CREATE VIEW data AS SELECT * FROM df")
+                    table_name = "data"
+                else:
+                    raise ValueError("Unsupported format")
 
-            metadata.append({
-                'name': col,
-                'type': var_type,
-                'role': 'covariate',
-                'missing_count': int(df[col].isnull().sum()),
-                'unique_count': int(df[col].nunique()),
-                # 添加下拉框的类别（仅限 50 个以内，以避免负载爆炸）
-                'categories': df[col].unique().tolist() if var_type == 'categorical' and df[col].nunique() < 50 else None
-            })
+            # 2. Get Row Count
+            row_count = con.sql(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
             
+            # 3. Get Preview (Limit 5)
+            # Use fetchdf() to get Pandas DF for easier dict conversion, limits memory usage
+            preview_df = con.sql(f"SELECT * FROM {table_name} LIMIT 5").df()
+            preview_data = preview_df.replace({np.nan: None}).to_dict(orient='records')
+            
+            # 4. Get Column Stats using SUMMARIZE
+            # SUMMARIZE returns: [column_name, column_type, min, max, approx_unique, avg, std, q25, q50, q75, count, null_percentage]
+            # Note: DuckDB SUMMARIZE format might vary by version, let's robustly map
+            summary_df = con.sql(f"SUMMARIZE {table_name}").df()
+            
+            # Map summarize results to our metadata format
+            for _, row in summary_df.iterrows():
+                col_name = row.get('column_name')
+                col_type = row.get('column_type') # DuckDB type (INTEGER, VARCHAR, etc.)
+                
+                # Missing count: SUMMARIZE gives null_percentage usually string '0.5%'
+                # Let's calculate missing count from null_percentage * row_count or 'count'
+                # Actually newer DuckDB SUMMARIZE has 'null_percentage'.
+                # Let's try to be safe. Some versions return 'count' as non-null count.
+                # null_count = row_count - count
+                not_null_count = row.get('count', row_count)
+                missing_count = row_count - int(not_null_count) if not_null_count is not None else 0
+                
+                # Unique count: 'approx_unique'
+                try:
+                    unique_count = int(row.get('approx_unique', 0))
+                except:
+                    unique_count = 0
+                
+                # Type Inference
+                # Map DuckDB types to our system types (continuous, categorical)
+                db_type_str = str(col_type).upper()
+                if any(x in db_type_str for x in ['INT', 'DOUBLE', 'FLOAT', 'DECIMAL', 'BIGINT']):
+                    var_type = 'continuous'
+                else:
+                    var_type = 'categorical'
+                
+                # Heuristics based on stats
+                # If continuous but very few uniques (e.g. 0/1), treat as categorical
+                if var_type == 'continuous' and unique_count < 10:
+                    var_type = 'categorical'
+                
+                # If categorical but too many uniques, treat as text/id
+                if var_type == 'categorical' and unique_count > 50:
+                    var_type = 'text/id'
+                    
+                # Get Categories for small categorical vars
+                categories = None
+                if var_type == 'categorical' and unique_count < 50:
+                    try:
+                        # Use DISTINCT query for this specific column
+                        cats_df = con.sql(f'SELECT DISTINCT "{col_name}" FROM {table_name} LIMIT 50').df()
+                        categories = cats_df.iloc[:,0].dropna().tolist()
+                    except:
+                        pass
+
+                raw_metadata.append({
+                    'name': col_name,
+                    'type': var_type,
+                    'role': 'covariate',
+                    'missing_count': int(missing_count),
+                    'unique_count': int(unique_count),
+                    'categories': categories
+                })
+
+        except Exception as e:
+            # Fallback for very old DuckDB or weird errors
+            print(f"DuckDB metadata extraction failed: {e}")
+            raise e
+        finally:
+            if con:
+                con.close()
+
         raw_result = {
-            'variables': metadata,
-            'row_count': len(df),
-            'preview': df.head().to_dict(orient='records')
+            'variables': raw_metadata,
+            'row_count': int(row_count),
+            'preview': preview_data
         }
         return DataService.sanitize_for_json(raw_result)
 
